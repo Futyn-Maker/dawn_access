@@ -49,4 +49,8 @@ namespace da::diag
     // Logs the frame times of every half minute as percentiles, which is where the mod's
     // own cost shows first.
     void InstallFrameTimer();
+
+    // With [Diag] FirstLaunch=1, clears the game's own "first time completed" flags in memory
+    // as the game starts, so that its first-launch screens come up once more.
+    void InstallFirstLaunch();
 }

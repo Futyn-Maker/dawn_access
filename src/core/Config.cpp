@@ -193,6 +193,7 @@ namespace da::cfg
         }
 
         s.traceClassPrefixes = ini.GetList(L"Diag", L"TraceClassPrefixes", s.traceClassPrefixes);
+        s.firstLaunch = ini.GetBool(L"Diag", L"FirstLaunch", s.firstLaunch);
         return s;
     }
 

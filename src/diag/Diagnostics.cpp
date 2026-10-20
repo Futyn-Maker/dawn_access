@@ -22,6 +22,7 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <set>
 
 namespace da::diag
 {
@@ -288,6 +289,50 @@ namespace da::diag
     void InstallFrameTimer()
     {
         gamethread::AddPoller(L"frames", &PollFrameTimes);
+    }
+
+    namespace
+    {
+        // The flags the game keeps of its first launch, in its user settings object; each is
+        // cleared once, the first time it is seen set, within the first two minutes.
+        void PollFirstLaunch(float)
+        {
+            static bool done = !cfg::Get().firstLaunch;
+            static double since = -1.0;
+            static std::set<std::wstring> cleared;
+            if (done) return;
+            const double now = gamethread::NowSeconds();
+            if (since < 0.0) since = now;
+            if (now - since > 120.0)
+            {
+                done = true;
+                return;
+            }
+            UObject* settings = obj::FindFirstLive(L"BatesGameUserSettings");
+            if (!settings) return;
+            for (const wchar_t* name :
+                 {L"bHasCompletedFirstTimeSplash", L"bHasCompletedFirstTimeEULA", L"bHasCompletedFirstTimeSettings", L"bPCAllowDataCollectionChoiceMade"})
+            {
+                if (cleared.contains(name)) continue;
+                bool set = false;
+                if (!obj::ReadBool(settings, name, set))
+                {
+                    cleared.insert(name);
+                    log::Info(L"diag: the game keeps no flag {}", name);
+                    continue;
+                }
+                if (!set) continue;
+                cleared.insert(name);
+                log::Info(L"diag: first-launch flag {} cleared {}", name, obj::WriteBool(settings, name, false) ? L"" : L"(write failed)");
+            }
+            if (cleared.size() >= 4) done = true;
+        }
+    }
+
+    void InstallFirstLaunch()
+    {
+        if (cfg::Get().firstLaunch) log::Info(L"diag: the first-launch screens are asked for again ([Diag] FirstLaunch=1)");
+        gamethread::AddPoller(L"firstlaunch", &PollFirstLaunch);
     }
 
     // How a widget hangs in the drawn hierarchy: through a slot, as the root of its owner's

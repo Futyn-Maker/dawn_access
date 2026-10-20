@@ -441,6 +441,14 @@ namespace da::obj
         return ReadBoolAt(object, FindProperty(object, name), out);
     }
 
+    bool WriteBool(UObject* object, std::wstring_view name, bool value)
+    {
+        FProperty* property = object ? FindProperty(object, name) : nullptr;
+        if (!property || PropertyTypeName(property) != L"BoolProperty") return false;
+        static_cast<FBoolProperty*>(property)->SetPropertyValueInContainer(object, value);
+        return true;
+    }
+
     bool ReadInt(UObject* object, std::wstring_view name, int64_t& out)
     {
         return ReadIntAt(object, FindProperty(object, name), out);

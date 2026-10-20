@@ -55,6 +55,7 @@ namespace da::cfg
 
         // [Diag]
         std::vector<std::wstring> traceClassPrefixes{L"WBP_", L"BMUI"};
+        bool firstLaunch = false; // the game's first-launch screens once more, for a test
 
         bool FeatureEnabled(std::wstring_view name) const;
         // A [Hotkeys] setting by name, or the default given when the file does not set it.

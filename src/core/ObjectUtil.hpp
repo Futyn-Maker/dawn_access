@@ -61,6 +61,8 @@ namespace da::obj
     void* ValuePtrAt(void* container, FProperty* property);
 
     bool ReadBool(UObject* object, std::wstring_view name, bool& out);
+    // Writes a bool property of an object; false when the object has no such bool.
+    bool WriteBool(UObject* object, std::wstring_view name, bool value);
     bool ReadInt(UObject* object, std::wstring_view name, int64_t& out); // byte/int/int64/enum
     bool ReadFloat(UObject* object, std::wstring_view name, double& out);
     bool ReadString(UObject* object, std::wstring_view name, std::wstring& out); // FString/FText/FName

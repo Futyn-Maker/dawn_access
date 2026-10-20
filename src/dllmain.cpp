@@ -135,6 +135,7 @@ public:
         da::hotkeys::Install();
         da::diag::InstallCommandFile();
         da::diag::InstallFrameTimer();
+        da::diag::InstallFirstLaunch();
         // The features are registered now and installed once the greeting has been said, so
         // that nothing of the screen is read before it.
         da::features::Register(std::make_unique<da::features::MenusFeature>());
