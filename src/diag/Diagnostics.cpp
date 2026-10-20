@@ -261,8 +261,20 @@ namespace da::diag
             std::sort(g_frames.begin(), g_frames.end());
             const auto at = [&](double fraction)
             { return g_frames[std::min(g_frames.size() - 1, static_cast<size_t>(fraction * static_cast<double>(g_frames.size())))]; };
-            log::Info(L"frames: {} in {:.0f} s; median {:.1f} ms, 95% {:.1f} ms, 99% {:.1f} ms, worst {:.1f} ms", g_frames.size(), now - g_framesSince, at(0.5),
-                      at(0.95), at(0.99), g_frames.back());
+            // The mod's own share of those frames: what its pollers took, and which took longest.
+            auto costs = gamethread::TakePollerCosts();
+            std::wstring share;
+            if (!costs.frameMs.empty())
+            {
+                std::sort(costs.frameMs.begin(), costs.frameMs.end());
+                const auto cost = [&](double fraction)
+                { return costs.frameMs[std::min(costs.frameMs.size() - 1, static_cast<size_t>(fraction * static_cast<double>(costs.frameMs.size())))]; };
+                share = std::format(L"; mod median {:.2f} ms, 95% {:.2f} ms, worst {:.1f} ms", cost(0.5), cost(0.95), costs.frameMs.back());
+                const auto worst = std::max_element(costs.worst.begin(), costs.worst.end(), [](const auto& a, const auto& b) { return a.second < b.second; });
+                if (worst != costs.worst.end()) share += std::format(L" ({} {:.1f} ms)", worst->first, worst->second);
+            }
+            log::Info(L"frames: {} in {:.0f} s; median {:.1f} ms, 95% {:.1f} ms, 99% {:.1f} ms, worst {:.1f} ms{}", g_frames.size(), now - g_framesSince,
+                      at(0.5), at(0.95), at(0.99), g_frames.back(), share);
             g_frames.clear();
             g_framesSince = now;
         }

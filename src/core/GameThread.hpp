@@ -7,6 +7,8 @@
 
 #include <functional>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace da::gamethread
 {
@@ -25,4 +27,13 @@ namespace da::gamethread
     bool IsGameThread();
     unsigned long long FrameCount();
     double NowSeconds(); // steady clock seconds since first tick
+
+    // What the mod's pollers cost since the last call: the milliseconds they took in each
+    // frame, and the longest single run of each poller. Taking the record empties it.
+    struct PollerCosts
+    {
+        std::vector<float> frameMs;                        // the pollers' total per frame
+        std::vector<std::pair<std::wstring, float>> worst; // each poller's longest run, in ms
+    };
+    PollerCosts TakePollerCosts();
 }

@@ -4,6 +4,7 @@
 
 #include <Unreal/Hooks.hpp>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <deque>
@@ -18,6 +19,8 @@ namespace da::gamethread
         std::mutex g_queueMutex;
         std::deque<Task> g_queue;
         std::vector<std::pair<std::wstring, Poller>> g_pollers;
+        std::vector<float> g_pollerFrameMs; // the pollers' total per frame since the last take
+        std::vector<float> g_pollerWorst;   // each poller's longest run since the last take
         std::atomic<std::thread::id> g_gameThreadId{};
         std::atomic<unsigned long long> g_frame{0};
         std::chrono::steady_clock::time_point g_firstTick{};
@@ -50,8 +53,13 @@ namespace da::gamethread
                 }
             }
 
-            for (auto& [name, poller] : g_pollers)
+            // Each poller is timed, so that the mod's share of a slow frame is known.
+            if (g_pollerWorst.size() != g_pollers.size()) g_pollerWorst.assign(g_pollers.size(), 0.0f);
+            float frameMs = 0.0f;
+            for (size_t i = 0; i < g_pollers.size(); ++i)
             {
+                auto& [name, poller] = g_pollers[i];
+                const auto started = std::chrono::steady_clock::now();
                 try
                 {
                     poller(deltaSeconds);
@@ -64,7 +72,12 @@ namespace da::gamethread
                 {
                     log::Error(L"poller '{}' failed (unknown exception)", name);
                 }
+                const float ms = std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - started).count();
+                frameMs += ms;
+                g_pollerWorst[i] = std::max(g_pollerWorst[i], ms);
             }
+            g_pollerFrameMs.push_back(frameMs);
+            if (g_pollerFrameMs.size() > 20000) g_pollerFrameMs.erase(g_pollerFrameMs.begin(), g_pollerFrameMs.begin() + 10000);
         }
     }
 
@@ -105,5 +118,15 @@ namespace da::gamethread
     {
         if (g_firstTick.time_since_epoch().count() == 0) return 0.0;
         return std::chrono::duration<double>(std::chrono::steady_clock::now() - g_firstTick).count();
+    }
+
+    PollerCosts TakePollerCosts()
+    {
+        PollerCosts costs;
+        costs.frameMs.swap(g_pollerFrameMs);
+        for (size_t i = 0; i < g_pollers.size() && i < g_pollerWorst.size(); ++i)
+            costs.worst.emplace_back(g_pollers[i].first, g_pollerWorst[i]);
+        std::fill(g_pollerWorst.begin(), g_pollerWorst.end(), 0.0f);
+        return costs;
     }
 }
