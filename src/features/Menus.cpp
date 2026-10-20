@@ -27,6 +27,7 @@ namespace da::features
         unsigned long long g_screenGeneration = 0; // the display generation the screen was read at
         obj::ObjectKey g_control;
         std::wstring g_title;                           // the page's title as read, so that a page refilled under the same widget is read again
+        std::wstring g_arrivalText;                     // what the page's arrival said, so that the same page shown anew with the same words is not read again
         std::wstring g_controlLabel;                    // the focused control's label as read, for the same reason
         std::wstring g_group;                           // the heading last said
         std::wstring g_value;                           // the value last said of the focused control
@@ -38,6 +39,7 @@ namespace da::features
         // An arrival waits for the page to settle: the focus and the texts land a few frames
         // after the page is displayed.
         bool g_arrivalPending = false;
+        bool g_arrivalAnew = false; // the pending arrival is the same page shown anew, not a page the player came to
         double g_arrivalAt = 0.0;
         constexpr double kSettleSeconds = 0.3;
         constexpr double kSettleMaxSeconds = 1.2;
@@ -142,7 +144,7 @@ namespace da::features
             g_value = d ? d->value : std::wstring();
         }
 
-        void SpeakArrival(UObject* page)
+        void SpeakArrival(UObject* page, bool anew)
         {
             UObject* control = FocusedControl();
             ui::Description d;
@@ -150,7 +152,13 @@ namespace da::features
             const auto text = ScreenText(page, control, true);
             log::Verbose(L"menus: arrival on {} {} focus {} {}", obj::ClassName(page), obj::ObjectName(page), obj::ClassName(control),
                          obj::ObjectName(control));
-            if (!text.empty()) speech::Focus(text);
+            // The same page shown anew says nothing new when its words are the ones just said:
+            // its stack displayed it a moment after it was read, or re-displayed it as it was.
+            if (anew && text == g_arrivalText)
+                log::Verbose(L"menus: shown anew with the same words, not read again");
+            else if (!text.empty())
+                speech::Focus(text);
+            g_arrivalText = text;
             g_screen = obj::KeyOf(page);
             g_screenGeneration = watch::DisplayGeneration();
             g_title = ui::ScreenTitle(page);
@@ -192,6 +200,7 @@ namespace da::features
             g_screenGeneration = 0;
             g_control = {};
             g_title.clear();
+            g_arrivalText.clear();
             g_controlLabel.clear();
             g_group.clear();
             g_value.clear();
@@ -201,6 +210,7 @@ namespace da::features
             g_opacitySeen.clear();
             g_promptsChangedAt = -1.0;
             g_arrivalPending = false;
+            g_arrivalAnew = false;
         }
 
         void Poll(float)
@@ -222,22 +232,27 @@ namespace da::features
                 if (!g_arrivalPending)
                 {
                     g_arrivalPending = true;
+                    g_arrivalAnew = shownAnew;
                     g_arrivalAt = now;
                     g_opacitySeen.clear();
                     g_screen = {};
                     log::Verbose(L"menus: new screen {} {}", obj::ClassName(page), obj::ObjectName(page));
                 }
                 SampleOpacity(page);
-                // The page is read once its focus has landed, or after the longest wait.
-                const bool settled = now - g_arrivalAt >= kSettleSeconds && FocusedControl() != nullptr;
+                // The page is read once its focus has landed and its stack displays it (the
+                // focus can be given to a page a few frames before it is drawn, as the
+                // collectibles' first tab is), or after the longest wait.
+                const bool settled = now - g_arrivalAt >= kSettleSeconds && FocusedControl() != nullptr && obj::IsWidgetShown(page, false);
                 if (settled || now - g_arrivalAt >= kSettleMaxSeconds)
                 {
                     g_arrivalPending = false;
-                    SpeakArrival(page);
+                    SpeakArrival(page, g_arrivalAnew);
+                    g_arrivalAnew = false;
                 }
                 return;
             }
             g_arrivalPending = false;
+            g_arrivalAnew = false;
 
             UObject* control = FocusedControl();
             const obj::ObjectKey controlKey = obj::KeyOf(control);
