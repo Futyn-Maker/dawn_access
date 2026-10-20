@@ -17,6 +17,7 @@
 #include "speech/Outputs.hpp"
 #include "speech/Sounds.hpp"
 #include "speech/Speech.hpp"
+#include "watch/Narration.hpp"
 #include "watch/Watchers.hpp"
 
 #include <Mod/CppUserModBase.hpp>
@@ -130,6 +131,7 @@ public:
         da::input::InstallActivityTracker();
         da::hooks::Install();
         da::watch::Install();
+        da::narration::Install();
         da::hotkeys::Install();
         da::diag::InstallCommandFile();
         da::diag::InstallFrameTimer();

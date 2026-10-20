@@ -44,8 +44,14 @@ namespace da::sym
         // controller settings ("Xbox", "PS5", or nothing for the pad connected): its icon
         // picker (UBMUIActionIcons::GetBestIconForKey, 0x4213f50) draws for that vendor
         // when it is set, and for GetCurrentGamepadVendor() otherwise.
+        //
+        // The narration subsystem's queue items (UBMTTSQueueItem, 0x50 bytes) are plain
+        // objects without reflected members: the line, its priority and the priority tag.
         constexpr Member kMembers[] = {
             {L"UBMUISubsystem.ForceGamepadVendorIcons", 0x100}, // FString
+            {L"UBMTTSQueueItem.Priority", 0x30},                // int32
+            {L"UBMTTSQueueItem.PriorityTag", 0x34},             // FGameplayTag (an FName)
+            {L"UBMTTSQueueItem.TTSLine", 0x40},                 // FString
         };
 
         struct CodeViewRecord
