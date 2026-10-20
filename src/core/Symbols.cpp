@@ -52,6 +52,8 @@ namespace da::sym
             {L"UBMTTSQueueItem.Priority", 0x30},                // int32
             {L"UBMTTSQueueItem.PriorityTag", 0x34},             // FGameplayTag (an FName)
             {L"UBMTTSQueueItem.TTSLine", 0x40},                 // FString
+            // A key-rebind slot of the settings keeps the key it draws its cap from.
+            {L"UBatesKeyRebindSlotWidget.CurrentKey", 0x330}, // FKey, whose first member is the key's name
         };
 
         struct CodeViewRecord

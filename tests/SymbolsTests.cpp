@@ -23,6 +23,7 @@ TEST_CASE("the members known by offset are in the table, and nothing else answer
 {
     CHECK(Offset(L"UBMUISubsystem.ForceGamepadVendorIcons") != 0);
     CHECK(Offset(L"UBMTTSQueueItem.TTSLine") != 0);
+    CHECK(Offset(L"UBatesKeyRebindSlotWidget.CurrentKey") != 0);
     CHECK(Offset(L"UBMTTSQueueItem.Priority") < Offset(L"UBMTTSQueueItem.PriorityTag"));
     CHECK(Offset(L"UBMTTSQueueItem.PriorityTag") < Offset(L"UBMTTSQueueItem.TTSLine"));
     CHECK(Offset(L"UBMUISubsystem.CurrentGamepadVendor") == 0);

@@ -9,6 +9,11 @@
 #include <string_view>
 #include <vector>
 
+namespace RC::Unreal
+{
+    class UObject;
+}
+
 namespace da::input
 {
     enum class Scheme
@@ -30,6 +35,9 @@ namespace da::input
     // The spoken names of up to `count` keys bound to an action for the current scheme, in the
     // order of the game's mapping, for an action drawn with a key cap per direction.
     std::vector<std::wstring> KeysForAction(std::wstring_view actionName, int count);
+
+    // The keys a key-rebind row of the settings draws in its slots, as one spoken line.
+    std::wstring KeysOfRebindRow(RC::Unreal::UObject* row);
 
     // The keys of an action and what is spoken, for the log.
     std::wstring DescribeAction(std::wstring_view actionName);

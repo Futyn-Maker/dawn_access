@@ -60,6 +60,7 @@ namespace da::input
 
         std::mutex g_mutex;
         std::map<std::pair<int, std::wstring>, std::wstring> g_actionCache;
+        std::map<std::pair<int, std::wstring>, std::vector<std::wstring>> g_schemeKeysCache; // an action's keys per scheme
         std::map<std::wstring, std::wstring> g_keyNameCache;
         std::map<std::wstring, UObject*> g_actions; // input action assets by name
         UObject* g_inputSubsystem = nullptr;
@@ -412,10 +413,55 @@ namespace da::input
         return display;
     }
 
+    namespace
+    {
+        // The keys of an action for a scheme, remembered: the prompts ask every few frames.
+        std::vector<std::wstring> SchemeKeysCached(const std::wstring& action, Scheme scheme)
+        {
+            const auto cacheKey = std::make_pair(static_cast<int>(scheme), action);
+            {
+                std::lock_guard lock(g_mutex);
+                const auto it = g_schemeKeysCache.find(cacheKey);
+                if (it != g_schemeKeysCache.end()) return it->second;
+            }
+            const auto keys = SchemeKeys(action, scheme);
+            if (!keys.empty())
+            {
+                std::lock_guard lock(g_mutex);
+                g_schemeKeysCache[cacheKey] = keys;
+            }
+            return keys;
+        }
+
+    }
+
+    std::wstring KeysOfRebindRow(UObject* row)
+    {
+        // Each slot of the row keeps the key it draws its cap from (CurrentKey, by the
+        // database's layout); a slot without a key draws an empty backing.
+        std::vector<std::wstring> names;
+        std::vector<UObject*> slots;
+        if (row) obj::ReadObjectArray(row, L"SlotWidgets", slots);
+        int shown = 0;
+        for (UObject* slot : slots)
+        {
+            if (!slot || !obj::IsLive(slot) || !obj::IsWidgetShown(slot)) continue;
+            ++shown;
+            void* key = sym::MemberOf(slot, L"UBatesKeyRebindSlotWidget.CurrentKey");
+            if (!key) continue;
+            const auto keyName = reinterpret_cast<FName*>(key)->ToString();
+            if (keyName.empty() || keyName == L"None") continue;
+            const auto name = KeyDisplayName(keyName);
+            if (!name.empty() && std::find(names.begin(), names.end(), name) == names.end()) names.push_back(name);
+        }
+        if (names.empty()) log::Verbose(L"input: the rebind row {} shows {} slot(s) and no key", obj::ObjectName(row), shown);
+        return str::Join(names, L", ");
+    }
+
     std::vector<std::wstring> KeysForAction(std::wstring_view actionName, int count)
     {
         std::vector<std::wstring> names;
-        for (const auto& key : SchemeKeys(std::wstring(actionName), CurrentScheme()))
+        for (const auto& key : SchemeKeysCached(std::wstring(actionName), CurrentScheme()))
         {
             const auto name = KeyDisplayName(key);
             if (name.empty() || std::find(names.begin(), names.end(), name) != names.end()) continue;
@@ -442,6 +488,7 @@ namespace da::input
     {
         std::lock_guard lock(g_mutex);
         g_actionCache.clear();
+        g_schemeKeysCache.clear();
         g_keyNameCache.clear();
         g_actions.clear();
     }
