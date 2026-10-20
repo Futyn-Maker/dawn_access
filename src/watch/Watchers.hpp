@@ -38,6 +38,9 @@ namespace da::watch
     UObject* CurrentFocused();
     // The pages the game's page stacks display right now, most useful when nothing is focused.
     std::vector<UObject*> CurrentScreens();
+    // Counts up every time a page stack starts displaying another page, or the same page anew:
+    // a screen the game shows again in the same widget is told apart from one left on display.
+    unsigned long long DisplayGeneration();
 
     void Install();
     void Reset(); // after map load

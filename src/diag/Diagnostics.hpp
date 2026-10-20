@@ -30,7 +30,8 @@ namespace da::diag
 
     // Developer command file: Mods\DawnAccess\command.txt is polled twice a second; each
     // line is executed and the file is deleted. Commands: "trace on|off", "dump", "loglevel
-    // Error|Info|Verbose|Trace", "say <text>", "read", "help", "onoff" (the mod's switch, as
+    // Error|Info|Verbose|Trace", "say <text>", "note <text>" (a line in the log, nothing
+    // spoken), "read", "help", "onoff" (the mod's switch, as
     // F1), "props <object path or class name>", "key <input action>", "walkkeys", "objects"
     // (every object with its properties, to the dumps folder), "headers" (C++ headers of
     // every class, likewise), "focus" (every focus signal of the UI, to the log), and the

@@ -26,11 +26,13 @@ add_executable(tests
     LocaleTests.cpp
     KeySpecTests.cpp
     HotkeyTableTests.cpp
+    DescribeTests.cpp
     "${DA_SRC}/core/Strings.cpp"
     "${DA_SRC}/core/Config.cpp"
     "${DA_SRC}/locale/Locale.cpp"
     "${DA_SRC}/hotkeys/KeySpec.cpp"
-    "${DA_SRC}/hotkeys/HotkeyTable.cpp")
+    "${DA_SRC}/hotkeys/HotkeyTable.cpp"
+    "${DA_SRC}/ui/Describe.cpp")
 
 target_include_directories(tests PRIVATE "${DA_SRC}" "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(tests PRIVATE doctest::doctest)

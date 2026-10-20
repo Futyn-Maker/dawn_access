@@ -27,6 +27,10 @@ namespace da::input
     // such as "Escape" or "B button". Empty when the action is unknown or nothing is bound.
     std::wstring KeyForAction(std::wstring_view actionName);
 
+    // The spoken names of up to `count` keys bound to an action for the current scheme, in the
+    // order of the game's mapping, for an action drawn with a key cap per direction.
+    std::vector<std::wstring> KeysForAction(std::wstring_view actionName, int count);
+
     // The keys of an action and what is spoken, for the log.
     std::wstring DescribeAction(std::wstring_view actionName);
     // Spoken name of an engine key name ("SpaceBar" -> "Space", "Gamepad_FaceButton_Bottom" -> "A button").

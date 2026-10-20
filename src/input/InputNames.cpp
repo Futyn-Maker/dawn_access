@@ -298,6 +298,27 @@ namespace da::input
         return result;
     }
 
+    namespace
+    {
+        // The keys of an action that belong to the scheme in hand, in the game's order: the
+        // gamepad's for the gamepad, the keyboard's and the mouse's otherwise, never the
+        // touch pad's or a gesture's.
+        std::vector<std::wstring> SchemeKeys(const std::wstring& action, Scheme scheme)
+        {
+            const std::vector<std::wstring> keys = KeysOfAction(ActionByName(action));
+            std::vector<std::wstring> chosen;
+            const bool wantPad = scheme == Scheme::Gamepad;
+            for (const auto& k : keys)
+            {
+                if (str::StartsWith(k, L"Touch") || str::StartsWith(k, L"Gesture")) continue;
+                if (str::StartsWith(k, L"Gamepad_") == wantPad) chosen.push_back(k);
+            }
+            if (chosen.empty() && !keys.empty()) chosen.push_back(keys.front());
+            log::Verbose(L"input: action {} -> keys [{}] -> [{}] (scheme {})", action, str::Join(keys, L", "), str::Join(chosen, L", "), SchemeName(scheme));
+            return chosen;
+        }
+    }
+
     std::wstring KeyForAction(std::wstring_view actionName)
     {
         const Scheme scheme = CurrentScheme();
@@ -308,23 +329,8 @@ namespace da::input
             const auto it = g_actionCache.find(cacheKey);
             if (it != g_actionCache.end()) return it->second;
         }
-
-        const std::vector<std::wstring> keys = KeysOfAction(ActionByName(action));
-        std::wstring chosen;
-        const bool wantPad = scheme == Scheme::Gamepad;
-        for (const auto& k : keys)
-        {
-            const bool isPad = str::StartsWith(k, L"Gamepad_");
-            if (str::StartsWith(k, L"Touch") || str::StartsWith(k, L"Gesture")) continue;
-            if (isPad == wantPad)
-            {
-                chosen = k;
-                break;
-            }
-        }
-        if (chosen.empty() && !keys.empty()) chosen = keys.front();
-        const std::wstring display = KeyDisplayName(chosen);
-        log::Verbose(L"input: action {} -> keys [{}] -> \"{}\" (scheme {})", action, str::Join(keys, L", "), display, SchemeName(scheme));
+        const auto keys = SchemeKeys(action, scheme);
+        const std::wstring display = keys.empty() ? std::wstring() : KeyDisplayName(keys.front());
         // Nothing found is not remembered: the action's context may not be applied yet.
         if (!display.empty())
         {
@@ -332,6 +338,19 @@ namespace da::input
             g_actionCache[cacheKey] = display;
         }
         return display;
+    }
+
+    std::vector<std::wstring> KeysForAction(std::wstring_view actionName, int count)
+    {
+        std::vector<std::wstring> names;
+        for (const auto& key : SchemeKeys(std::wstring(actionName), CurrentScheme()))
+        {
+            const auto name = KeyDisplayName(key);
+            if (name.empty() || std::find(names.begin(), names.end(), name) != names.end()) continue;
+            names.push_back(name);
+            if (static_cast<int>(names.size()) >= count) break;
+        }
+        return names;
     }
 
     std::wstring DescribeAction(std::wstring_view actionName)

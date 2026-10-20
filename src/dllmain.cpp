@@ -8,6 +8,7 @@
 #include "core/Strings.hpp"
 #include "diag/Diagnostics.hpp"
 #include "features/Feature.hpp"
+#include "features/Menus.hpp"
 #include "hooks/HookDispatcher.hpp"
 #include "hotkeys/Hotkeys.hpp"
 #include "input/InputNames.hpp"
@@ -132,7 +133,9 @@ public:
         da::hotkeys::Install();
         da::diag::InstallCommandFile();
         da::diag::InstallFrameTimer();
-        da::features::InstallAll();
+        // The features are registered now and installed once the greeting has been said, so
+        // that nothing of the screen is read before it.
+        da::features::Register(std::make_unique<da::features::MenusFeature>());
 
         Unreal::Hook::FCallbackOptions options{};
         options.bReadonly = true;
@@ -149,6 +152,7 @@ public:
                         da::log::Info(L"map loaded; resetting caches");
                         da::obj::ResetCaches();
                         da::watch::Reset();
+                        da::features::ResetMenus();
                         da::input::InvalidateCache();
                     });
             },
@@ -208,6 +212,7 @@ private:
             da::speech::Announce(da::cfg::Detailed() ? da::locale::Mod(L"greeting", std::vector<std::wstring>{ModVersion, reader, da::locale::CurrentCode()})
                                                      : da::locale::Mod(L"greeting.brief"));
         }
+        da::features::InstallAll();
         da::log::Info(L"ready");
     }
 

@@ -184,6 +184,10 @@ namespace da::diag
             }
             else if (str::StartsWith(lower, L"say "))
                 speech::Announce(cmd.substr(4));
+            else if (str::StartsWith(lower, L"note "))
+                log::Info(L"note: {}", str::Trim(cmd.substr(5)));
+            else if (str::StartsWith(lower, L"note "))
+                log::Info(L"note: {}", str::Trim(cmd.substr(5)));
             else if (lower == L"walkkeys")
                 log::Info(L"input: {}", input::DescribeWalkKeys());
             else if (str::StartsWith(lower, L"key "))
@@ -303,6 +307,60 @@ namespace da::diag
         return out;
     }
 
+    // The state a control carries besides its text: whether it is enabled, checked, which entry
+    // of its carousel it shows, where its slider stands.
+    std::wstring ControlState(UObject* w)
+    {
+        std::wstring out;
+        bool enabled = true;
+        if (obj::ReadBool(w, L"bIsButtonEnabled", enabled) && !enabled) out += L" disabled";
+        bool checked = false;
+        if (obj::FindProperty(w, L"bIsChecked") && obj::ReadBool(w, L"bIsChecked", checked)) out += checked ? L" checked" : L" unchecked";
+        int64_t index = 0;
+        if (obj::FindProperty(w, L"CurrentIndex") && obj::ReadInt(w, L"CurrentIndex", index)) out += std::format(L" index={}", index);
+        double value = 0.0;
+        if (obj::IsA(w, L"Slider") && obj::ReadFloat(w, L"Value", value)) out += std::format(L" value={:.3f}", value);
+        if (obj::IsA(w, L"CheckBox"))
+        {
+            int64_t state = 0;
+            if (obj::ReadInt(w, L"CheckedState", state)) out += std::format(L" state={}", state);
+        }
+        if (obj::IsA(w, L"ProgressBar") && obj::ReadFloat(w, L"Percent", value)) out += std::format(L" percent={:.3f}", value);
+        // The picture behind an image, and the text the game attached for its own narration.
+        if (obj::IsA(w, L"Image"))
+        {
+            auto* brush = obj::FindProperty(w, L"Brush");
+            UObject* resource = nullptr;
+            if (brush && obj::ReadObjectAt(obj::ValuePtr(w, brush), obj::StructMember(brush, L"ResourceObject"), resource) && resource && obj::IsLive(resource))
+            {
+                out += L" image=" + obj::ObjectName(resource);
+                // A material instance names its parents and the textures set as its parameters.
+                for (int depth = 0; resource && obj::IsLive(resource) && obj::IsA(resource, L"MaterialInstance") && depth < 4; ++depth)
+                {
+                    obj::ForEachArrayElement(resource, obj::FindProperty(resource, L"TextureParameterValues"),
+                                             [&](void* element, obj::FProperty* inner)
+                                             {
+                                                 UObject* texture = nullptr;
+                                                 if (obj::ReadObjectAt(element, obj::StructMember(inner, L"ParameterValue"), texture) && texture && obj::IsLive(texture))
+                                                     out += L" tex=" + obj::ObjectName(texture);
+                                             });
+                    UObject* parent = nullptr;
+                    if (!obj::ReadObject(resource, L"Parent", parent) || !parent) break;
+                    out += L" parent=" + obj::ObjectName(parent);
+                    resource = parent;
+                }
+            }
+        }
+        UObject* a11y = nullptr;
+        if (obj::ReadObject(w, L"AccessibleWidgetData", a11y) && a11y && obj::IsLive(a11y))
+        {
+            std::wstring text;
+            obj::ReadString(a11y, L"AccessibleText", text);
+            if (!text.empty()) out += L" a11y=\"" + str::StripMarkup(text) + L"\"";
+        }
+        return out;
+    }
+
     void DumpScreen()
     {
         std::vector<std::wstring> lines;
@@ -320,20 +378,22 @@ namespace da::diag
             ++shown;
             lines.push_back(std::format(L"[widget] {} {}{}", obj::ClassName(widget), obj::ObjectName(widget), Attachment(widget)));
             // Deep enough to reach what the mod itself reads: a dump that stops short shows
-            // no text where there is text, and a screen then looks as though it had none.
+            // no text where there is text, and a screen then looks as though it had none. The
+            // game's setting rows keep their label some thirty layouts down.
             obj::WalkWidgetTree(
-                widget, 24,
+                widget, 48,
                 [&](UObject* w, int depth)
                 {
                     // A widget that is not drawn hides everything below it with itself.
                     if (!obj::IsWidgetVisible(w)) return false;
                     std::wstring text = str::StripMarkup(obj::TextOf(w));
                     std::wstring pad(static_cast<size_t>(depth) * 2, L' ');
-                    if (!text.empty() || obj::IsA(w, L"UserWidget"))
+                    const std::wstring state = ControlState(w);
+                    if (!text.empty() || !state.empty() || obj::IsA(w, L"UserWidget") || obj::IsA(w, L"Image"))
                     {
                         const double opacity = obj::WidgetOpacity(w);
-                        lines.push_back(std::format(L"{}- {} {}{}{}", pad, obj::ClassName(w), obj::ObjectName(w), text.empty() ? L"" : L" = \"" + text + L"\"",
-                                                    (opacity < 0.999 ? std::format(L" opacity={:.2f}", opacity) : std::wstring()) + Attachment(w)));
+                        lines.push_back(std::format(L"{}- {} {}{}{}{}", pad, obj::ClassName(w), obj::ObjectName(w), text.empty() ? L"" : L" = \"" + text + L"\"",
+                                                    state, (opacity < 0.999 ? std::format(L" opacity={:.2f}", opacity) : std::wstring()) + Attachment(w)));
                     }
                     return true;
                 });
@@ -392,11 +452,14 @@ namespace da::diag
 
     namespace
     {
-        // The texts of the top-level widgets on screen, after whatever the features said.
+        // The texts of the top-level widgets on screen, after whatever the features said. The
+        // container that holds the screen being read is left out: its texts are the screen's.
         void AddScreenTexts(std::vector<std::wstring>& parts)
         {
+            UObject* screen = watch::CurrentScreen();
             for (const auto& [name, instance] : watch::LiveHudInstances())
             {
+                if (screen && obj::IsDescendantOf(screen, instance)) continue;
                 const auto texts = obj::DescendantTexts(instance, 6);
                 if (!texts.empty()) parts.push_back(str::Join(texts, L", "));
             }
@@ -421,7 +484,7 @@ namespace da::diag
         {
             if (UObject* focused = watch::CurrentFocused())
             {
-                const auto texts = obj::DescendantTexts(focused, 4);
+                const auto texts = obj::DescendantTexts(focused, 12);
                 std::wstring text = str::Join(texts, L", ");
                 if (text.empty()) text = obj::ObjectName(focused);
                 parts.push_back(locale::Mod(L"read.focused", text));

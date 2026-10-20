@@ -70,6 +70,7 @@ namespace da::watch
         std::map<obj::ObjectKey, obj::ObjectKey> g_displayed; // stack -> the page it displays
         std::map<obj::ObjectKey, bool> g_activated;           // page -> whether it is activated
         unsigned long long g_lastPageScan = 0;
+        unsigned long long g_displayGeneration = 0;
 
         void PollPagesImpl()
         {
@@ -95,6 +96,7 @@ namespace da::watch
                 auto& known = g_displayed[obj::KeyOf(stack)];
                 if (known == key) continue;
                 known = key;
+                ++g_displayGeneration;
                 log::Verbose(L"page: {} {} displays {} {}", obj::ClassName(stack), obj::ObjectName(stack), obj::ClassName(page), obj::ObjectName(page));
             }
             for (auto* page : g_pages)
@@ -106,6 +108,7 @@ namespace da::watch
                 const auto known = g_activated.find(key);
                 if (known != g_activated.end() && known->second == activated) continue;
                 g_activated[key] = activated;
+                if (known != g_activated.end() && activated) ++g_displayGeneration;
                 if (known != g_activated.end() || activated)
                     log::Verbose(L"page: {} {} {}", activated ? L"activated" : L"deactivated", obj::ClassName(page), obj::ObjectName(page));
             }
@@ -306,6 +309,11 @@ namespace da::watch
     UObject* CurrentFocused()
     {
         return obj::IsSame(g_focusedKey) ? g_focused : nullptr;
+    }
+
+    unsigned long long DisplayGeneration()
+    {
+        return g_displayGeneration;
     }
 
     void Install()
