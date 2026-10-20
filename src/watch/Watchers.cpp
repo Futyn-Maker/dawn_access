@@ -41,7 +41,9 @@ namespace da::watch
 
         void PollScreensImpl()
         {
-            if (gamethread::FrameCount() % 10 != 0) return;
+            // Every object is scanned for the user widgets on top, which costs a few
+            // milliseconds; twice a second is enough for a screen that appears or goes.
+            if (gamethread::FrameCount() % 30 != 0) return;
             std::map<obj::ObjectKey, std::wstring> current;
             for (auto* widget : obj::FindAllLive(L"UserWidget"))
             {
