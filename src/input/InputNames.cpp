@@ -4,6 +4,7 @@
 #include "core/Log.hpp"
 #include "core/ObjectUtil.hpp"
 #include "core/Strings.hpp"
+#include "core/Symbols.hpp"
 #include "locale/Locale.hpp"
 
 #include <Unreal/Core/Containers/Array.hpp>
@@ -252,6 +253,71 @@ namespace da::input
             }
             return cached;
         }
+
+        // The make of the gamepad the game draws its prompts for: the one the player chose in
+        // the controller settings ("Xbox" or "PS5"; the UI subsystem keeps it as the vendor
+        // whose icons are forced), else the pad connected as the subsystem reports it ("PS5",
+        // "Xbox", "SteamController"; "PS5" when none is). A DualSense is a PlayStation pad to
+        // the game whether it reads it itself or through Steam Input. Asked on the game
+        // thread, at most ten times a second.
+        enum class Vendor
+        {
+            Xbox,
+            PlayStation,
+        };
+
+        // The vendor the player's icon setting forces, or nothing for the pad connected: the
+        // subsystem's own copy, which its icon picker reads, where the build is known; else
+        // the setting it was filled from.
+        std::wstring ForcedVendor(UObject* ui)
+        {
+            if (void* member = sym::MemberOf(ui, L"UBMUISubsystem.ForceGamepadVendorIcons"))
+            {
+                struct RawString
+                {
+                    const wchar_t* data;
+                    int32_t num;
+                    int32_t max;
+                };
+                const auto* text = static_cast<const RawString*>(member);
+                if (text->data && text->num > 1 && text->num <= 64) return std::wstring(text->data, static_cast<size_t>(text->num - 1));
+                return {};
+            }
+            static UObject* settings = nullptr;
+            if (!settings || !obj::IsLive(settings)) settings = obj::FindFirstLive(L"BatesGameUserSettings");
+            std::wstring forced;
+            if (settings) obj::ReadString(settings, L"ForceGamepadIcons", forced);
+            return forced;
+        }
+
+        Vendor GameVendor()
+        {
+            static Vendor cached = Vendor::Xbox;
+            static long long askedAt = 0;
+            if (!gamethread::IsGameThread()) return cached;
+            const long long now = NowMs();
+            if (askedAt != 0 && now - askedAt < 100) return cached;
+            askedAt = now;
+            static UObject* ui = nullptr;
+            if (!ui || !obj::IsLive(ui)) ui = obj::FindFirstLive(L"BMUISubsystem");
+            if (!ui) return cached;
+            std::wstring vendor = ForcedVendor(ui);
+            const bool forced = !vendor.empty();
+            if (!forced)
+            {
+                obj::CallReturn(ui, L"GetCurrentGamepadVendor",
+                                [&](void* params, FProperty* returnValue)
+                                {
+                                    if (returnValue) obj::ReadStringAt(params, returnValue, vendor);
+                                });
+            }
+            const Vendor was = cached;
+            cached = str::StartsWith(str::ToLower(vendor), L"ps") ? Vendor::PlayStation : Vendor::Xbox;
+            if (cached != was)
+                log::Info(L"input: the game draws its prompts for a {} pad (\"{}\", {})", cached == Vendor::PlayStation ? L"PlayStation" : L"Xbox", vendor,
+                          forced ? L"chosen in its controller settings" : L"the pad connected");
+            return cached;
+        }
     }
 
     Scheme CurrentScheme()
@@ -280,21 +346,26 @@ namespace da::input
     {
         if (keyName.empty() || keyName == L"None") return {};
         const std::wstring name(keyName);
+        const Vendor vendor = GameVendor();
+        const std::wstring cacheKey = (vendor == Vendor::PlayStation ? L"ps\n" : L"xbox\n") + name;
         {
             std::lock_guard lock(g_mutex);
-            const auto it = g_keyNameCache.find(name);
+            const auto it = g_keyNameCache.find(cacheKey);
             if (it != g_keyNameCache.end()) return it->second;
         }
-        // 1. Mod table (localized, curated names).
-        const std::wstring localeKey = L"key." + str::ToLower(name);
+        // 1. The mod's table: in the pad's own words when the game draws its prompts for a
+        //    PlayStation pad (cross, L1, the touchpad's button), else the Xbox ones, which are
+        //    the engine's names too.
+        const std::wstring lower = str::ToLower(name);
         std::wstring result;
-        if (locale::Has(localeKey)) result = locale::Mod(localeKey);
+        if (vendor == Vendor::PlayStation && locale::Has(L"key.ps." + lower)) result = locale::Mod(L"key.ps." + lower);
+        if (result.empty() && locale::Has(L"key." + lower)) result = locale::Mod(L"key." + lower);
         // 2. Engine display name.
         if (result.empty()) result = EngineDisplayName(name);
         // 3. Humanized engine key name.
         if (result.empty()) result = Humanize(name);
         std::lock_guard lock(g_mutex);
-        g_keyNameCache[name] = result;
+        g_keyNameCache[cacheKey] = result;
         return result;
     }
 
@@ -323,7 +394,8 @@ namespace da::input
     {
         const Scheme scheme = CurrentScheme();
         const std::wstring action(actionName);
-        const auto cacheKey = std::make_pair(static_cast<int>(scheme), action);
+        // The words depend on the device and on the make of the pad the game draws for.
+        const auto cacheKey = std::make_pair(static_cast<int>(scheme) + (GameVendor() == Vendor::PlayStation ? 16 : 0), action);
         {
             std::lock_guard lock(g_mutex);
             const auto it = g_actionCache.find(cacheKey);
@@ -481,14 +553,119 @@ namespace da::input
             return false;
         }
 
+        // ---- Sony's pad library ------------------------------------------------------------
+        //
+        // A DualSense or a DualShock 4 is read by the game's WinDualShock plugin through Sony's
+        // libScePad.dll, which the game loads at run time from the PlayStation PC runtime: no
+        // import names it, and every call goes through a stub of the executable's own, which
+        // takes the library's function from a pointer the executable keeps, filled once the
+        // library is loaded (core/Symbols knows the stubs and their pointers). The plugin's
+        // reader, disassembled on 2026-10-20 (FSonyControllers::SendControllerEvents), asks
+        // scePadRead for the reports queued since its last frame, up to 64 of 120 bytes each,
+        // keeps the last as the pad's state, and asks scePadReadState instead when nothing was
+        // queued. In a report the buttons are the first word, the sticks bytes 4 to 7 with y
+        // counted down from the top, L2 and R2 bytes 8 and 9, and the connection byte 76. The
+        // plugin names the bits from bit 1: L3, R3, Options, up, right, down, left, L2, R2,
+        // L1, R1, triangle, circle, cross, square, and at bit 20 the click of the touchpad as
+        // Gamepad_Special_Left, the Back button of an Xbox pad; bits 0 and 16 to 19 have no
+        // key. The library the runtime ships (7.00.00.17) masks the Create and PS buttons out
+        // of every report before an application sees it and offers no call to ask for them, so
+        // on such a pad the chords hold on the touchpad's click alone. Such a pad is laid over
+        // XInput's layout here, so that everything above reads one pad, and a button is only
+        // ever taken away from the game's data, never added.
+        struct ScePadHead
+        {
+            uint32_t buttons;
+            uint8_t leftX;
+            uint8_t leftY;
+            uint8_t rightX;
+            uint8_t rightY;
+            uint8_t l2;
+            uint8_t r2;
+        };
+        constexpr size_t kScePadReportSize = 120;
+        constexpr size_t kScePadConnectedOffset = 76;
+        constexpr int32_t kScePadMaxReports = 64;
+        struct SceButton
+        {
+            uint32_t sce;
+            uint16_t xinput;
+        };
+        constexpr SceButton kSceButtons[] = {
+            {0x00000002, 0x0040}, // L3, the left stick's click
+            {0x00000004, 0x0080}, // R3
+            {0x00000008, 0x0010}, // Options, the Start button
+            {0x00000010, 0x0001}, // up
+            {0x00000020, 0x0008}, // right
+            {0x00000040, 0x0002}, // down
+            {0x00000080, 0x0004}, // left
+            {0x00000400, 0x0100}, // L1, the left bumper
+            {0x00000800, 0x0200}, // R1
+            {0x00001000, 0x8000}, // triangle, the Y button
+            {0x00002000, 0x2000}, // circle, the B button
+            {0x00004000, 0x1000}, // cross, the A button
+            {0x00008000, 0x4000}, // square, the X button
+            {0x00100000, 0x0020}, // the touchpad's click, the Back button
+        };
+        constexpr uint32_t kSceLeftTriggerBit = 0x00000100;  // L2 past its threshold, beside its analog byte
+        constexpr uint32_t kSceRightTriggerBit = 0x00000200; // R2 likewise
+
+        // ScePad's sticks run 0 to 255 about 128, y downward; XInput's -32768 to 32767, y upward.
+        int16_t SceToThumb(uint8_t value, bool invert)
+        {
+            int centred = static_cast<int>(value) - 128;
+            if (invert) centred = -centred;
+            return static_cast<int16_t>(std::clamp(centred * 256, -32768, 32767));
+        }
+
+        uint8_t ThumbToSce(int16_t thumb, bool invert)
+        {
+            int centred = thumb / 256;
+            if (invert) centred = -centred;
+            return static_cast<uint8_t>(std::clamp(128 + centred, 0, 255));
+        }
+
+        XInputGamepad SceToXInput(const ScePadHead& head)
+        {
+            XInputGamepad g{};
+            for (const auto& button : kSceButtons)
+            {
+                if (head.buttons & button.sce) g.buttons |= button.xinput;
+            }
+            g.leftTrigger = head.l2;
+            g.rightTrigger = head.r2;
+            g.thumbLX = SceToThumb(head.leftX, false);
+            g.thumbLY = SceToThumb(head.leftY, true);
+            g.thumbRX = SceToThumb(head.rightX, false);
+            g.thumbRY = SceToThumb(head.rightY, true);
+            return g;
+        }
+
+        // The Sony pad the game last read, as the player holds it, and when.
+        std::mutex g_sceMutex;
+        XInputGamepad g_sceLast{};
+        long long g_sceReadAt = 0;
+        bool g_sceConnected = false;
+
+        // The Sony pad the game read within the last half second, in XInput's layout.
+        bool SonyPad(XInputGamepad& out)
+        {
+            std::lock_guard lock(g_sceMutex);
+            if (!g_sceConnected || NowMs() - g_sceReadAt > 500) return false;
+            out = g_sceLast;
+            return true;
+        }
+
         bool AnyPadInput()
         {
+            bool active = false;
+            XInputGamepad sony{};
+            if (SonyPad(sony) && !Idle(sony)) active = true;
             auto* getState = XInput();
-            if (!getState) return false;
+            if (!getState) return active;
             const long long now = NowMs();
             const bool scanAll = now >= g_padScanAt;
             if (scanAll) g_padScanAt = now + 1000;
-            bool active = false;
             for (uint32_t pad = 0; pad < 4; ++pad)
             {
                 if (!g_padConnected[pad] && !scanAll) continue;
@@ -600,11 +777,11 @@ namespace da::input
         std::atomic<uint16_t> g_watchMask{0};
         PadWatcher g_padWatcher = nullptr;
         std::wstring g_watchNames[16]; // the engine key name of each watched bit
-        uint16_t g_watchLast[4] = {};  // what each pad showed the game last time
+        uint16_t g_watchLast[8] = {};  // what each pad showed the game last time: four of XInput's, four Sony handles
 
         void WatchButtons(uint32_t index, uint16_t buttons)
         {
-            if (index >= 4) return;
+            if (index >= 8) return;
             const uint16_t mask = g_watchMask.load(std::memory_order_relaxed);
             const uint16_t pressed = static_cast<uint16_t>(buttons & static_cast<uint16_t>(~g_watchLast[index]) & mask);
             g_watchLast[index] = buttons;
@@ -636,6 +813,237 @@ namespace da::input
                 WatchButtons(index, state->gamepad.buttons);
             }
             return result;
+        }
+
+        // ---- the Sony pad, in the same reading ---------------------------------------------
+        using ScePadReadStateFn = int32_t(__cdecl*)(int32_t handle, void* data);
+        using ScePadReadFn = int32_t(__cdecl*)(int32_t handle, void* data, int32_t count);
+        ScePadReadStateFn g_realScePadReadState = nullptr;
+        ScePadReadFn g_realScePadRead = nullptr;
+        void** g_sceReadStatePointer = nullptr; // the executable's pointers, while they lead here
+        void** g_sceReadPointer = nullptr;
+        int32_t g_sceHandles[4] = {-1, -1, -1, -1}; // the handles the game reads, one watch slot each
+        bool g_sceHandleConnected[4] = {false, false, false, false};
+
+        int SceSlot(int32_t handle)
+        {
+            for (int i = 0; i < 4; ++i)
+            {
+                if (g_sceHandles[i] == handle) return i;
+            }
+            for (int i = 0; i < 4; ++i)
+            {
+                if (g_sceHandles[i] == -1)
+                {
+                    g_sceHandles[i] = handle;
+                    return i;
+                }
+            }
+            return 0;
+        }
+
+        // One report the game is about to read. What the player holds goes to the mod; what
+        // the mod takes away leaves the data, and nothing is ever added to it. Of the reports
+        // queued since the last frame the game keeps the last as the pad's state, so that one
+        // alone stands for the pad here and is the one watched.
+        void ShareSceReport(int32_t handle, void* data, bool last)
+        {
+            const int slot = SceSlot(handle);
+            const bool connected = static_cast<const uint8_t*>(data)[kScePadConnectedOffset] != 0;
+            if (last && connected != g_sceHandleConnected[slot])
+            {
+                g_sceHandleConnected[slot] = connected;
+                log::Info(L"input: the PlayStation pad the game reads as {} is {}", handle, connected ? L"connected" : L"gone");
+            }
+            if (!connected)
+            {
+                if (!last) return;
+                bool any = false;
+                for (const bool c : g_sceHandleConnected)
+                    any = any || c;
+                std::lock_guard lock(g_sceMutex);
+                g_sceConnected = any;
+                return;
+            }
+            auto* head = static_cast<ScePadHead*>(data);
+            const XInputGamepad real = SceToXInput(*head);
+            if (last)
+            {
+                std::lock_guard lock(g_sceMutex);
+                g_sceLast = real;
+                g_sceReadAt = NowMs();
+                g_sceConnected = true;
+            }
+            // What the game is shown: the stick pushed for a walk, the chord hidden, the
+            // watched buttons answered; then only what changed goes back into its data.
+            XInputGamepad shown = real;
+            if (g_injecting.load(std::memory_order_relaxed))
+            {
+                shown.thumbLX = static_cast<int16_t>(g_injectX.load(std::memory_order_relaxed));
+                shown.thumbLY = static_cast<int16_t>(g_injectY.load(std::memory_order_relaxed));
+            }
+            HideChord(shown);
+            if (last) WatchButtons(4 + static_cast<uint32_t>(slot), shown.buttons);
+            if (shown.buttons != real.buttons)
+            {
+                uint32_t buttons = head->buttons;
+                for (const auto& button : kSceButtons)
+                {
+                    if (!(shown.buttons & button.xinput)) buttons &= ~button.sce;
+                }
+                head->buttons = buttons;
+            }
+            if (shown.leftTrigger != real.leftTrigger)
+            {
+                head->l2 = shown.leftTrigger;
+                if (shown.leftTrigger == 0) head->buttons &= ~kSceLeftTriggerBit;
+            }
+            if (shown.rightTrigger != real.rightTrigger)
+            {
+                head->r2 = shown.rightTrigger;
+                if (shown.rightTrigger == 0) head->buttons &= ~kSceRightTriggerBit;
+            }
+            if (shown.thumbLX != real.thumbLX || shown.thumbLY != real.thumbLY)
+            {
+                head->leftX = ThumbToSce(shown.thumbLX, false);
+                head->leftY = ThumbToSce(shown.thumbLY, true);
+            }
+            if (shown.thumbRX != real.thumbRX || shown.thumbRY != real.thumbRY)
+            {
+                head->rightX = ThumbToSce(shown.thumbRX, false);
+                head->rightY = ThumbToSce(shown.thumbRY, true);
+            }
+        }
+
+        int32_t __cdecl ScePadReadStateDetour(int32_t handle, void* data)
+        {
+            const int32_t result = g_realScePadReadState ? g_realScePadReadState(handle, data) : -1;
+            if (result == 0 && data) ShareSceReport(handle, data, true);
+            return result;
+        }
+
+        int32_t __cdecl ScePadReadDetour(int32_t handle, void* data, int32_t count)
+        {
+            const int32_t result = g_realScePadRead ? g_realScePadRead(handle, data, count) : -1;
+            if (result > 0 && data)
+            {
+                const int32_t reports = std::min(result, std::min(count, kScePadMaxReports));
+                for (int32_t i = 0; i < reports; ++i)
+                    ShareSceReport(handle, static_cast<uint8_t*>(data) + static_cast<size_t>(i) * kScePadReportSize, i == reports - 1);
+            }
+            return result;
+        }
+
+        bool InImage(const void* address, HMODULE module)
+        {
+            if (!module || !address) return false;
+            auto* base = reinterpret_cast<const uint8_t*>(module);
+            auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(base);
+            auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS64*>(base + dos->e_lfanew);
+            auto* p = static_cast<const uint8_t*>(address);
+            return p >= base && p < base + nt->OptionalHeader.SizeOfImage;
+        }
+
+        // The pointer the executable's stub of a library call reads, from the table of
+        // core/Symbols and trusted only when the stub's own bytes agree: within its first 128
+        // bytes it names the call in a string (lea rcx, [rip+rel32]) and loads that very pointer
+        // (mov rax, [rip+rel32]).
+        void** ScePointerOf(const wchar_t* call)
+        {
+            auto* stub = static_cast<const uint8_t*>(sym::Address(call));
+            auto* pointer = static_cast<void**>(sym::Address(std::wstring(call) + L".pointer"));
+            if (!stub || !pointer) return nullptr;
+            HMODULE game = GetModuleHandleW(nullptr);
+            const std::string name = str::WideToUtf8(call);
+            bool named = false;
+            bool read = false;
+            for (size_t i = 0; i + 7 <= 128; ++i)
+            {
+                if (stub[i] != 0x48) continue;
+                const bool lea = stub[i + 1] == 0x8D && stub[i + 2] == 0x0D;
+                const bool load = stub[i + 1] == 0x8B && stub[i + 2] == 0x05;
+                if (!lea && !load) continue;
+                int32_t rel = 0;
+                memcpy(&rel, stub + i + 3, sizeof(rel));
+                const uint8_t* target = stub + i + 7 + rel;
+                if (!InImage(target, game)) continue;
+                if (lea && strncmp(reinterpret_cast<const char*>(target), name.c_str(), name.size() + 1) == 0) named = true;
+                if (load && target == reinterpret_cast<const uint8_t*>(pointer)) read = true;
+            }
+            if (!named || !read) log::Error(L"input: the game's stub of {} is not as the mod knows it, so it is left alone", call);
+            return named && read ? pointer : nullptr;
+        }
+
+        void SwapPointer(void** slot, void* value)
+        {
+            DWORD old = 0;
+            const bool unlocked = VirtualProtect(slot, sizeof(void*), PAGE_READWRITE, &old);
+            InterlockedExchangePointer(slot, value);
+            if (unlocked) VirtualProtect(slot, sizeof(void*), old, &old);
+        }
+
+        // Points the game's two pad reads at the mod once the game has filled their pointers,
+        // which it does when it loads the library at start. Until then there is nothing to
+        // share, and a game that never loads it (the PlayStation PC runtime missing) is left
+        // alone after a minute. Called on the game thread, which is where the game reads.
+        bool InstallScePadShare()
+        {
+            static bool installed = false;
+            static bool abandoned = false;
+            static long long firstTryAt = 0;
+            static void** readStatePointer = nullptr;
+            static void** readPointer = nullptr;
+            if (installed) return true;
+            if (abandoned) return false;
+            if (!readStatePointer || !readPointer)
+            {
+                readStatePointer = ScePointerOf(L"scePadReadState");
+                readPointer = ScePointerOf(L"scePadRead");
+                if (!readStatePointer || !readPointer)
+                {
+                    abandoned = true;
+                    log::Info(L"input: a PlayStation pad the game reads itself is not shared with the mod on this build");
+                    return false;
+                }
+            }
+            void* readState = *readStatePointer;
+            void* read = *readPointer;
+            const long long now = NowMs();
+            if (firstTryAt == 0) firstTryAt = now;
+            if (!readState || !read)
+            {
+                if (now - firstTryAt > 60'000)
+                {
+                    abandoned = true;
+                    log::Info(L"input: the game has not loaded libScePad.dll in a minute, so no PlayStation pad is shared");
+                }
+                return false;
+            }
+            HMODULE library = GetModuleHandleA("libScePad.dll");
+            if (!InImage(readState, library) || !InImage(read, library))
+            {
+                abandoned = true;
+                log::Info(L"input: the game's pad reads lead elsewhere than libScePad.dll, so no PlayStation pad is shared");
+                return false;
+            }
+            g_realScePadReadState = reinterpret_cast<ScePadReadStateFn>(readState);
+            g_realScePadRead = reinterpret_cast<ScePadReadFn>(read);
+            g_sceReadStatePointer = readStatePointer;
+            g_sceReadPointer = readPointer;
+            SwapPointer(readStatePointer, reinterpret_cast<void*>(&ScePadReadStateDetour));
+            SwapPointer(readPointer, reinterpret_cast<void*>(&ScePadReadDetour));
+            installed = true;
+            log::Info(L"input: the PlayStation pad the game reads through libScePad.dll is shared with the mod");
+            return true;
+        }
+
+        // Gives the game its own reads back, for shutdown.
+        void RestoreScePadShare()
+        {
+            if (g_sceReadStatePointer && g_realScePadReadState) SwapPointer(g_sceReadStatePointer, reinterpret_cast<void*>(g_realScePadReadState));
+            if (g_sceReadPointer && g_realScePadRead) SwapPointer(g_sceReadPointer, reinterpret_cast<void*>(g_realScePadRead));
+            g_sceReadStatePointer = nullptr;
+            g_sceReadPointer = nullptr;
         }
 
         // Finds the game's own import of XInputGetState and points it here.
@@ -684,6 +1092,8 @@ namespace da::input
         // stick cannot be pushed on, and the walk falls back to the movement keys.
         bool PadLeadsTheWalk()
         {
+            XInputGamepad sony{};
+            if (InstallScePadShare() && SonyPad(sony)) return true;
             if (!InstallPadInjection()) return false;
             return g_padAnswered.load(std::memory_order_relaxed) && NowMs() - g_askedAt.load(std::memory_order_relaxed) < 500;
         }
@@ -691,6 +1101,8 @@ namespace da::input
         // How the walk stands with the gamepad, for the log.
         std::wstring WalkDevice()
         {
+            XInputGamepad sony{};
+            if (InstallScePadShare() && SonyPad(sony)) return L"the game reads a PlayStation pad through libScePad.dll, so a walk pushes its stick instead";
             if (!InstallPadInjection()) return L"the game's gamepad reading is not shared, so a walk uses those keys";
             const long long at = g_askedAt.load(std::memory_order_relaxed);
             if (at == 0) return L"the game never asks about a gamepad, so a walk uses those keys";
@@ -704,6 +1116,10 @@ namespace da::input
         // The left stick, which is what the character walks with.
         bool LeftStickPushed()
         {
+            XInputGamepad sony{};
+            if (SonyPad(sony) &&
+                (sony.thumbLX > kStickDeadZone || sony.thumbLX < -kStickDeadZone || sony.thumbLY > kStickDeadZone || sony.thumbLY < -kStickDeadZone))
+                return true;
             auto* getState = XInput();
             if (!getState) return false;
             for (uint32_t pad = 0; pad < 4; ++pad)
@@ -760,6 +1176,9 @@ namespace da::input
 
         void PollActivity(float)
         {
+            // The game fills its pad pointers once it has loaded the library, which may be
+            // after the mod started, so the share is tried until it is in.
+            InstallScePadShare();
             if (!GameWindowInForeground()) return;
             if (AnyKeyDown(0x8001) || CursorMoved()) NoteDevice(Scheme::MouseKeyboard);
             if (AnyPadInput()) NoteDevice(Scheme::Gamepad);
@@ -775,7 +1194,8 @@ namespace da::input
     {
         PadReading reading;
         XInputState state{};
-        if (!FirstPad(state)) return reading;
+        // A PlayStation pad the game is reading comes first: it is the pad in the player's hands.
+        if (!SonyPad(state.gamepad) && !FirstPad(state)) return reading;
         const XInputGamepad& g = state.gamepad;
         reading.valid = true;
         reading.buttons = g.buttons;
@@ -926,6 +1346,7 @@ namespace da::input
     void ShareGamepadReading()
     {
         InstallPadInjection();
+        InstallScePadShare();
     }
 
     std::wstring DescribeWalkKeys()
@@ -957,6 +1378,7 @@ namespace da::input
     {
         ReleaseWalkKeys();
         // The game must not be left calling into a module that is going away.
+        RestoreScePadShare();
         if (!g_importSlot || !g_realGetState) return;
         DWORD old = 0;
         if (VirtualProtect(g_importSlot, sizeof(void*), PAGE_READWRITE, &old))

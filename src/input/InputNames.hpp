@@ -33,7 +33,9 @@ namespace da::input
 
     // The keys of an action and what is spoken, for the log.
     std::wstring DescribeAction(std::wstring_view actionName);
-    // Spoken name of an engine key name ("SpaceBar" -> "Space", "Gamepad_FaceButton_Bottom" -> "A button").
+    // Spoken name of an engine key name ("SpaceBar" -> "Space", "Gamepad_FaceButton_Bottom" ->
+    // "A button"), in the words of the pad the game draws its prompts for: on a PlayStation pad
+    // the same key is the cross button.
     std::wstring KeyDisplayName(std::wstring_view keyName);
 
     // Localized name of the pointing device for the scheme ("mouse" / "right stick").
@@ -59,8 +61,9 @@ namespace da::input
     bool MovementHeld();
 
     // The gamepad as the game reads it: the buttons, triggers and sticks of the first pad
-    // that answers, taken through the same XInput the game reads, so it is read in the menus
-    // as well as in play.
+    // that answers, taken from the reading the game itself takes, through XInput or through
+    // Sony's pad library, so it is read in the menus as well as in play. A PlayStation pad is
+    // laid over XInput's layout: its touchpad click is the Back button, Options is Start.
     struct PadReading
     {
         bool valid = false;
@@ -96,9 +99,11 @@ namespace da::input
     // for: for a moment after the press the scheme reads as that device.
     void NoteHotkeyDevice(Scheme scheme);
 
-    // Points the game's own reading of the gamepad through the mod, so that a walk can push
-    // the stick the game already reads instead of pressing keys, which would make the game
-    // treat the keyboard as the device in hand and redraw every prompt for it.
+    // Points the game's own readings of the gamepad, XInput's and Sony's library's, through
+    // the mod, so that the chords and the watched buttons are seen before the game acts on
+    // them and a walk can push the stick the game already reads instead of pressing keys,
+    // which would make the game treat the keyboard as the device in hand and redraw every
+    // prompt for it.
     void ShareGamepadReading();
 
     // Holds down the game's own movement keys for a heading given in the camera's frame,
