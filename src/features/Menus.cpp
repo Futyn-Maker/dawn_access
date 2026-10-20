@@ -26,13 +26,13 @@ namespace da::features
         obj::ObjectKey g_screen;
         unsigned long long g_screenGeneration = 0; // the display generation the screen was read at
         obj::ObjectKey g_control;
-        std::wstring g_title;                   // the page's title as read, so that a page refilled under the same widget is read again
-        std::wstring g_controlLabel;            // the focused control's label as read, for the same reason
-        std::wstring g_group;                   // the heading last said
-        std::wstring g_value;                   // the value last said of the focused control
-        std::vector<ui::Prompt> g_prompts;      // the prompts last seen
-        std::set<std::wstring> g_promptsSaid;   // the prompts said on this screen, as label and key
-        std::set<std::wstring> g_bodySaid;      // the body texts said on this screen, digits aside
+        std::wstring g_title;                           // the page's title as read, so that a page refilled under the same widget is read again
+        std::wstring g_controlLabel;                    // the focused control's label as read, for the same reason
+        std::wstring g_group;                           // the heading last said
+        std::wstring g_value;                           // the value last said of the focused control
+        std::vector<ui::Prompt> g_prompts;              // the prompts last seen
+        std::set<std::wstring> g_promptsSaid;           // the prompts said on this screen, as label and key
+        std::set<std::wstring> g_bodySaid;              // the body texts said on this screen, digits aside
         std::map<obj::ObjectKey, double> g_opacitySeen; // the highest opacity seen of each text of the screen
         double g_promptsChangedAt = -1.0;
         // An arrival waits for the page to settle: the focus and the texts land a few frames
@@ -148,7 +148,8 @@ namespace da::features
             ui::Description d;
             if (control) d = ui::Describe(control);
             const auto text = ScreenText(page, control, true);
-            log::Verbose(L"menus: arrival on {} {} focus {} {}", obj::ClassName(page), obj::ObjectName(page), obj::ClassName(control), obj::ObjectName(control));
+            log::Verbose(L"menus: arrival on {} {} focus {} {}", obj::ClassName(page), obj::ObjectName(page), obj::ClassName(control),
+                         obj::ObjectName(control));
             if (!text.empty()) speech::Focus(text);
             g_screen = obj::KeyOf(page);
             g_screenGeneration = watch::DisplayGeneration();
@@ -214,8 +215,8 @@ namespace da::features
             const obj::ObjectKey pageKey = obj::KeyOf(page);
             // A page shown anew in the same widget, after another took its place, is an arrival
             // too; so is a page refilled under the same widget, which shows as its title changing.
-            const bool shownAnew = pageKey == g_screen && !g_arrivalPending &&
-                                   (watch::DisplayGeneration() != g_screenGeneration || ui::ScreenTitle(page) != g_title);
+            const bool shownAnew =
+                pageKey == g_screen && !g_arrivalPending && (watch::DisplayGeneration() != g_screenGeneration || ui::ScreenTitle(page) != g_title);
             if (pageKey != g_screen || shownAnew)
             {
                 if (!g_arrivalPending)

@@ -341,7 +341,8 @@ namespace da::diag
                                              [&](void* element, obj::FProperty* inner)
                                              {
                                                  UObject* texture = nullptr;
-                                                 if (obj::ReadObjectAt(element, obj::StructMember(inner, L"ParameterValue"), texture) && texture && obj::IsLive(texture))
+                                                 if (obj::ReadObjectAt(element, obj::StructMember(inner, L"ParameterValue"), texture) && texture &&
+                                                     obj::IsLive(texture))
                                                      out += L" tex=" + obj::ObjectName(texture);
                                              });
                     UObject* parent = nullptr;
@@ -380,23 +381,23 @@ namespace da::diag
             // Deep enough to reach what the mod itself reads: a dump that stops short shows
             // no text where there is text, and a screen then looks as though it had none. The
             // game's setting rows keep their label some thirty layouts down.
-            obj::WalkWidgetTree(
-                widget, 48,
-                [&](UObject* w, int depth)
-                {
-                    // A widget that is not drawn hides everything below it with itself.
-                    if (!obj::IsWidgetVisible(w)) return false;
-                    std::wstring text = str::StripMarkup(obj::TextOf(w));
-                    std::wstring pad(static_cast<size_t>(depth) * 2, L' ');
-                    const std::wstring state = ControlState(w);
-                    if (!text.empty() || !state.empty() || obj::IsA(w, L"UserWidget") || obj::IsA(w, L"Image"))
-                    {
-                        const double opacity = obj::WidgetOpacity(w);
-                        lines.push_back(std::format(L"{}- {} {}{}{}{}", pad, obj::ClassName(w), obj::ObjectName(w), text.empty() ? L"" : L" = \"" + text + L"\"",
-                                                    state, (opacity < 0.999 ? std::format(L" opacity={:.2f}", opacity) : std::wstring()) + Attachment(w)));
-                    }
-                    return true;
-                });
+            obj::WalkWidgetTree(widget, 48,
+                                [&](UObject* w, int depth)
+                                {
+                                    // A widget that is not drawn hides everything below it with itself.
+                                    if (!obj::IsWidgetVisible(w)) return false;
+                                    std::wstring text = str::StripMarkup(obj::TextOf(w));
+                                    std::wstring pad(static_cast<size_t>(depth) * 2, L' ');
+                                    const std::wstring state = ControlState(w);
+                                    if (!text.empty() || !state.empty() || obj::IsA(w, L"UserWidget") || obj::IsA(w, L"Image"))
+                                    {
+                                        const double opacity = obj::WidgetOpacity(w);
+                                        lines.push_back(std::format(
+                                            L"{}- {} {}{}{}{}", pad, obj::ClassName(w), obj::ObjectName(w), text.empty() ? L"" : L" = \"" + text + L"\"", state,
+                                            (opacity < 0.999 ? std::format(L" opacity={:.2f}", opacity) : std::wstring()) + Attachment(w)));
+                                    }
+                                    return true;
+                                });
         }
         lines.push_back(std::format(L"shown top-level user widgets: {} (of {} live)", shown, widgets.size()));
         for (const auto& [name, instance] : watch::LiveHudInstances())

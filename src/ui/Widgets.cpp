@@ -200,7 +200,8 @@ namespace da::ui
                                          [&](void* element, obj::FProperty* inner)
                                          {
                                              UObject* texture = nullptr;
-                                             if (obj::ReadObjectAt(element, obj::StructMember(inner, L"ParameterValue"), texture) && texture && obj::IsLive(texture))
+                                             if (obj::ReadObjectAt(element, obj::StructMember(inner, L"ParameterValue"), texture) && texture &&
+                                                 obj::IsLive(texture))
                                                  names.push_back(obj::ObjectName(texture));
                                          });
                 UObject* parent = nullptr;
@@ -474,7 +475,8 @@ namespace da::ui
         // shows beside its rows.
         bool hasFooter = false;
         std::wstring footer;
-        if (obj::ReadBool(control, L"bHasFooterText", hasFooter) && hasFooter && obj::ReadString(control, L"FooterText", footer)) d.tip = str::StripMarkup(footer);
+        if (obj::ReadBool(control, L"bHasFooterText", hasFooter) && hasFooter && obj::ReadString(control, L"FooterText", footer))
+            d.tip = str::StripMarkup(footer);
         if (d.tip.empty())
         {
             if (UObject* page = obj::NearestAncestorOfClass(control, L"BMUIPage"))
