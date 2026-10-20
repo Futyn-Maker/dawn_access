@@ -979,7 +979,24 @@ namespace da::obj
         std::vector<UObject*> ChildWidgets(UObject* widget)
         {
             std::vector<UObject*> children;
-            if (IsA(widget, L"PanelWidget"))
+            if (IsA(widget, L"WidgetSwitcher"))
+            {
+                // A switcher draws only its active page; the others keep their flags and
+                // their texts (a key-rebind row keeps "Awaiting input" on the page it shows
+                // while it captures a key).
+                int64_t active = -1;
+                std::vector<UObject*> slots;
+                ReadInt(widget, L"ActiveWidgetIndex", active);
+                ReadObjectArray(widget, L"Slots", slots);
+                UObject* content = nullptr;
+                if (active >= 0 && active < static_cast<int64_t>(slots.size()) && slots[static_cast<size_t>(active)] &&
+                    IsLive(slots[static_cast<size_t>(active)]) && ReadObject(slots[static_cast<size_t>(active)], L"Content", content) && content &&
+                    IsLive(content))
+                {
+                    children.push_back(content);
+                }
+            }
+            else if (IsA(widget, L"PanelWidget"))
             {
                 children = PanelChildren(widget);
             }
