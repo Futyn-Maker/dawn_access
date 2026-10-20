@@ -30,6 +30,8 @@ namespace da::ui
     // Everything said of a control: label, kind, value, state, place among the controls
     // beside it, the heading above it and its description line.
     Description Describe(UObject* control);
+    // The label alone, as Describe would find it: cheap enough to ask every few frames.
+    std::wstring LabelOf(UObject* control);
 
     // The value a control shows right now, as a string: the selected entry, the slider's
     // text, the checkbox's state. Empty for a plain button.

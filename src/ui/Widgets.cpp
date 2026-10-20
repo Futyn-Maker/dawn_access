@@ -1,11 +1,13 @@
 #include "ui/Widgets.hpp"
 
+#include "core/GameThread.hpp"
 #include "core/Log.hpp"
 #include "core/ObjectUtil.hpp"
 #include "core/Strings.hpp"
 #include "input/InputNames.hpp"
 #include "locale/GameText.hpp"
 #include "locale/Locale.hpp"
+#include "watch/Narration.hpp"
 
 #include <algorithm>
 #include <set>
@@ -127,6 +129,7 @@ namespace da::ui
             bool skipControls = false;
             bool skipFaded = false;
             bool includeHidden = false;
+            std::wstring_view skipNamed; // a text block left out by its name
         };
 
         std::vector<std::wstring> Texts(UObject* root, const TextWalk& walk)
@@ -140,6 +143,7 @@ namespace da::ui
                                     if (IsKeyIcon(w)) return false;
                                     if (IsTextWidget(w))
                                     {
+                                        if (!walk.skipNamed.empty() && obj::ObjectName(w) == walk.skipNamed) return false;
                                         if (walk.skipFaded && obj::WidgetOpacity(w) < kFadedOpacity) return false;
                                         const auto text = str::StripMarkup(obj::TextOf(w));
                                         if (!text.empty() && !IsTemplate(text)) texts.push_back(text);
@@ -157,6 +161,12 @@ namespace da::ui
         bool HasVisibleText(UObject* widget)
         {
             return !OwnTexts(widget, false, false).empty();
+        }
+
+        // The game's own word for a locked item, the one its padlock and its clue rows show.
+        std::wstring LockedWord()
+        {
+            return gametext::ResolveWithFallback(L"SMG013_64519", locale::Mod(L"ui.state.locked"));
         }
 
         // The text found in a widget's own text block of the given name, drawn or not.
@@ -279,6 +289,72 @@ namespace da::ui
             return siblings;
         }
 
+        // The census of the widgets beside a control: which are controls, which of those carry
+        // words of their own, and the headings among the rest. A long settings page has rows
+        // thirty layouts deep, and walking every row's words costs more than a frame, so the
+        // census of a panel is kept for a second and shared by its rows.
+        std::wstring Label(UObject* control);
+
+        struct CensusEntry
+        {
+            obj::ObjectKey key;
+            std::wstring name; // class and instance, for the log
+            bool shown = false;
+            bool control = false;
+            bool labelled = false; // a control with words of its own
+            std::wstring heading;  // the words of a sibling that is no control
+        };
+        struct Census
+        {
+            double at = -1.0;
+            UObject* panel = nullptr;
+            UObject* grid = nullptr;
+            std::vector<CensusEntry> entries;
+        };
+        std::map<obj::ObjectKey, Census> g_census;
+
+        const Census& CensusOf(UObject* control)
+        {
+            UObject* parent = obj::ParentWidget(control);
+            const double now = gamethread::NowSeconds();
+            Census& census = g_census[obj::KeyOf(parent)];
+            if (census.at >= 0.0 && now - census.at < 1.0 && (!parent || obj::IsLive(parent))) return census;
+            if (g_census.size() > 64)
+            {
+                for (auto it = g_census.begin(); it != g_census.end();)
+                    it = (now - it->second.at > 5.0 && &it->second != &census) ? g_census.erase(it) : std::next(it);
+            }
+            UObject* panel = nullptr;
+            UObject* grid = nullptr;
+            const auto siblings = Siblings(control, panel, grid);
+            census.at = now;
+            census.panel = panel;
+            census.grid = grid;
+            census.entries.clear();
+            for (auto* sibling : siblings)
+            {
+                CensusEntry entry;
+                entry.key = obj::KeyOf(sibling);
+                entry.shown = obj::IsWidgetShown(sibling);
+                if (log::IsVerbose()) entry.name = obj::ClassName(sibling) + L" " + obj::ObjectName(sibling);
+                if (entry.shown)
+                {
+                    entry.control = IsInteractable(sibling);
+                    if (entry.control)
+                    {
+                        entry.labelled = !Label(sibling).empty();
+                    }
+                    else
+                    {
+                        const auto texts = OwnTexts(sibling, true, false);
+                        if (!texts.empty()) entry.heading = str::Join(texts, L", ");
+                    }
+                }
+                census.entries.push_back(std::move(entry));
+            }
+            return census;
+        }
+
         // The text that names a row of pictures, which sits one level above them: the last text
         // before the row among the children of the panel above it, else the first text after
         // it, a caption under the row.
@@ -322,13 +398,31 @@ namespace da::ui
             std::wstring label;
             if (obj::IsA(control, L"BMUISettingButton") && obj::ReadString(control, L"SettingName", label) && !str::Trim(label).empty())
                 return str::StripMarkup(label);
+            if (obj::IsA(control, L"BMUISettingSlider"))
+            {
+                // A slider's own texts are its name and its number; the number moves under the
+                // player's hand and is its value, never its name (the brightness slider draws
+                // nothing but the number).
+                const auto named = Texts(control, TextWalk{false, false, false, L"Text_SliderValue"});
+                return named.empty() ? std::wstring() : named.front();
+            }
             const auto texts = OwnTexts(control, false, false);
-            if (obj::IsA(control, L"BMUISettingCarousel") || obj::IsA(control, L"BMUISettingSlider"))
+            if (obj::IsA(control, L"BMUISettingCarousel"))
             {
                 // The row's own texts are its name and its value; the name comes first.
                 return texts.empty() ? std::wstring() : texts.front();
             }
             if (!texts.empty()) return str::Join(texts, L", ");
+            // A carousel item whose content is locked (its data says so) draws a padlock and
+            // no name, so it is the locked word and nothing more; unlocked, it draws its name
+            // as text, which is read above.
+            if (obj::IsA(control, L"BatesCarouselMenuItemWidget"))
+            {
+                UObject* data = nullptr;
+                bool unlocked = true;
+                if (obj::ReadObject(control, L"ItemData", data) && data && obj::IsLive(data) && obj::ReadBool(data, L"bIsUnlocked", unlocked) && !unlocked)
+                    return LockedWord();
+            }
             label = AccessibleText(control);
             if (!label.empty()) return label;
             for (const auto& picture : PictureNames(control))
@@ -336,7 +430,10 @@ namespace da::ui
                 label = PictureText(picture);
                 if (!label.empty()) return label;
             }
-            return {};
+            // What the game's own narration says of the control once it is focused: the
+            // game's evaluation of its data, such as the locked word for a butterfly not yet
+            // earned, which it draws as a dimmed picture.
+            return narration::LabelFor(control, 30.0);
         }
 
         double SliderValue(UObject* control)
@@ -401,6 +498,11 @@ namespace da::ui
         return Kind::Other;
     }
 
+    std::wstring LabelOf(UObject* control)
+    {
+        return control ? Label(control) : std::wstring();
+    }
+
     std::wstring ValueOf(UObject* control)
     {
         switch (KindOf(control))
@@ -425,7 +527,11 @@ namespace da::ui
             text = str::StripMarkup(text);
             return text.empty() ? locale::Mod(on ? L"ui.checked" : L"ui.unchecked") : text;
         }
-        default: return {};
+        default:
+            // A key-rebind row's value is the key the player has under each of its mappings,
+            // which the row draws as key caps.
+            if (obj::IsA(control, L"BatesKeyRebindSettingWidget")) return input::KeysOfRebindRow(control);
+            return {};
         }
     }
 
@@ -443,19 +549,20 @@ namespace da::ui
         int index = 0;
         int count = 0;
         std::wstring heading;
-        UObject* panel = nullptr;
-        UObject* grid = nullptr;
         const bool wordless = !HasVisibleText(control);
+        const obj::ObjectKey controlKey = obj::KeyOf(control);
         std::vector<std::wstring> counted;
-        for (auto* sibling : Siblings(control, panel, grid))
+        const Census& census = CensusOf(control);
+        for (const CensusEntry& entry : census.entries)
         {
-            if (!obj::IsWidgetShown(sibling)) continue;
-            if (IsInteractable(sibling) || sibling == control)
+            const bool self = entry.key == controlKey;
+            if (!entry.shown && !self) continue;
+            if (entry.control || self)
             {
-                if (sibling != control && !wordless && Label(sibling).empty()) continue;
+                if (!self && !wordless && !entry.labelled) continue;
                 ++count;
-                if (log::IsVerbose()) counted.push_back(obj::ClassName(sibling) + L" " + obj::ObjectName(sibling));
-                if (sibling == control)
+                if (log::IsVerbose()) counted.push_back(entry.name);
+                if (self)
                 {
                     index = count;
                     d.group = heading;
@@ -463,9 +570,10 @@ namespace da::ui
                 continue;
             }
             // A sibling with text that is no control is the heading of what follows.
-            const auto texts = OwnTexts(sibling, true, false);
-            if (!texts.empty()) heading = str::Join(texts, L", ");
+            if (!entry.heading.empty()) heading = entry.heading;
         }
+        UObject* panel = census.panel;
+        UObject* grid = census.grid;
         if (d.group.empty() && wordless && panel) d.group = HeadingAbove(grid ? grid : panel);
         d.index = index;
         d.count = count;
@@ -481,9 +589,15 @@ namespace da::ui
         {
             if (UObject* page = obj::NearestAncestorOfClass(control, L"BMUIPage"))
             {
+                // The page's description panel names the row it describes; a panel the game
+                // has not refreshed yet, as after a return from a sub-page, describes another
+                // row and is not this control's.
+                const auto described = str::ToLower(str::Trim(NamedText(page, L"Text_SettingName")));
+                const bool describesThis = described.empty() || IsTemplate(described) || described == str::ToLower(str::Trim(d.label));
                 std::vector<std::wstring> lines;
                 for (const wchar_t* name : {L"Text_SettingBlurb", L"Text_DefaultValue"})
                 {
+                    if (!describesThis) break;
                     const auto text = NamedText(page, name);
                     if (!text.empty() && !IsTemplate(text)) lines.push_back(text);
                 }

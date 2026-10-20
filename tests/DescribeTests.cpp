@@ -49,6 +49,9 @@ TEST_CASE("A button has no kind word, and an unknown place is left out")
     d.tip = L"Start a new story";
     CHECK(U8(ui::Speak(d, true, false)) == "New Game, 1 of 5. Start a new story");
     CHECK(U8(ui::Speak(d, false, false)) == "New Game. Start a new story");
+    // The only control of its kind has no place worth telling.
+    d.count = 1;
+    CHECK(U8(ui::Speak(d, true, false)) == "New Game. Start a new story");
 }
 
 TEST_CASE("SpeakPrompts pairs each label with its key and skips a prompt without a label")

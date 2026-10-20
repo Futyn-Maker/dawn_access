@@ -11,6 +11,8 @@
 #include <Unreal/NameTypes.hpp>
 
 #include <cstdint>
+#include <map>
+#include <mutex>
 #include <string>
 
 namespace da::narration
@@ -29,6 +31,34 @@ namespace da::narration
             return name == L"None" ? std::wstring() : name;
         }
 
+        // What the game queued for each owner: the last button-priority line, and the name it
+        // announced the owner's page with.
+        struct Queued
+        {
+            std::wstring label;
+            double labelAt = -1.0;
+            std::wstring pageName;
+        };
+        std::mutex g_queuedMutex;
+        std::map<UObject*, Queued> g_queued;
+
+        void Remember(UObject* owner, const std::wstring& line, const std::wstring& priority, const std::wstring& format)
+        {
+            if (!owner || line.empty()) return;
+            std::lock_guard lock(g_queuedMutex);
+            if (g_queued.size() > 512) g_queued.clear();
+            Queued& queued = g_queued[owner];
+            if (priority == L"UI.TTS.Button")
+            {
+                queued.label = line;
+                queued.labelAt = gamethread::NowSeconds();
+            }
+            else if (priority == L"UI.TTS.Page" && format == L"UI.TTSFormat.Menu")
+            {
+                queued.pageName = line;
+            }
+        }
+
         // The game asked for a line to be narrated, in the words it composed.
         void OnQueueLine(UObject*, FFrame& stack)
         {
@@ -36,8 +66,11 @@ namespace da::narration
             params::String(stack, L"InTTSLine", line);
             UObject* owner = nullptr;
             params::Object(stack, L"InOwner", owner);
-            log::Info(L"NARRATION queued \"{}\" by {} priority {} format {}", str::StripMarkup(line), obj::ClassName(owner),
-                      TagName(params::StructPtr(stack, L"InPriorityTag")), TagName(params::StructPtr(stack, L"InFormatTag")));
+            const auto priority = TagName(params::StructPtr(stack, L"InPriorityTag"));
+            const auto format = TagName(params::StructPtr(stack, L"InFormatTag"));
+            const auto text = str::StripMarkup(line);
+            log::Info(L"NARRATION queued \"{}\" by {} priority {} format {}", text, obj::ClassName(owner), priority, format);
+            Remember(owner, text, priority, format);
         }
 
         // The same from a text block of a widget, with a prefix the game puts before it.
@@ -47,9 +80,11 @@ namespace da::narration
             params::Object(stack, L"InTextBlock", block);
             UObject* owner = nullptr;
             params::Object(stack, L"InOwner", owner);
-            log::Info(L"NARRATION queued text \"{}\" of {} by {} priority {} prefix {}", block ? str::StripMarkup(obj::TextOf(block)) : std::wstring(),
-                      obj::ObjectName(block), obj::ClassName(owner), TagName(params::StructPtr(stack, L"InPriorityTag")),
+            const auto priority = TagName(params::StructPtr(stack, L"InPriorityTag"));
+            const auto text = block ? str::StripMarkup(obj::TextOf(block)) : std::wstring();
+            log::Info(L"NARRATION queued text \"{}\" of {} by {} priority {} prefix {}", text, obj::ObjectName(block), obj::ClassName(owner), priority,
                       TagName(params::StructPtr(stack, L"InPrefix")));
+            Remember(owner, text, priority, std::wstring());
         }
 
         // What the game speaks, from its queue's active item: this catches the lines its own
@@ -93,6 +128,23 @@ namespace da::narration
             log::Info(L"NARRATION speaks \"{}\" priority {} {}", str::StripMarkup(line), priority,
                       TagName(sym::MemberOf(item, L"UBMTTSQueueItem.PriorityTag")));
         }
+    }
+
+    std::wstring LabelFor(UObject* owner, double maxAgeSeconds)
+    {
+        if (!owner) return {};
+        std::lock_guard lock(g_queuedMutex);
+        const auto it = g_queued.find(owner);
+        if (it == g_queued.end() || it->second.labelAt < 0.0 || gamethread::NowSeconds() - it->second.labelAt > maxAgeSeconds) return {};
+        return it->second.label;
+    }
+
+    std::wstring PageNameFor(UObject* page)
+    {
+        if (!page) return {};
+        std::lock_guard lock(g_queuedMutex);
+        const auto it = g_queued.find(page);
+        return it == g_queued.end() ? std::wstring() : it->second.pageName;
     }
 
     void Install()

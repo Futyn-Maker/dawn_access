@@ -37,7 +37,8 @@ namespace da::ui
         // The place is a detail, except for a control with no words of its own, which has
         // nothing else to be told apart by.
         const bool nameless = d.label.empty() && d.value.empty();
-        if ((detailed || nameless) && d.index > 0 && d.count > 0) words.push_back(locale::Mod(L"ui.pos", std::to_wstring(d.index), std::to_wstring(d.count)));
+        // A place is worth a word only among several.
+        if ((detailed || nameless) && d.index > 0 && d.count > 1) words.push_back(locale::Mod(L"ui.pos", std::to_wstring(d.index), std::to_wstring(d.count)));
         parts.push_back(str::Join(words, L", "));
         if (!d.tip.empty()) parts.push_back(d.tip);
         return str::JoinSentences(parts);

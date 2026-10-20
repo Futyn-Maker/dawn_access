@@ -10,9 +10,11 @@
 #include "speech/Speech.hpp"
 #include "ui/Describe.hpp"
 #include "ui/Widgets.hpp"
+#include "watch/Narration.hpp"
 #include "watch/Watchers.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <map>
 #include <set>
 
@@ -26,11 +28,14 @@ namespace da::features
         obj::ObjectKey g_screen;
         unsigned long long g_screenGeneration = 0; // the display generation the screen was read at
         obj::ObjectKey g_control;
-        std::wstring g_title;                           // the page's title as read, so that a page refilled under the same widget is read again
-        std::wstring g_arrivalText;                     // what the page's arrival said, so that the same page shown anew with the same words is not read again
-        std::wstring g_controlLabel;                    // the focused control's label as read, for the same reason
-        std::wstring g_group;                           // the heading last said
-        std::wstring g_value;                           // the value last said of the focused control
+        std::wstring g_title;        // the page's title as read, so that a page refilled under the same widget is read again
+        std::wstring g_arrivalText;  // what the page's arrival said, so that the same page shown anew with the same words is not read again
+        std::wstring g_controlLabel; // the focused control's label as read, for the same reason
+        std::wstring g_group;        // the heading last said
+        std::wstring g_value;        // the value last seen of the focused control
+        bool g_valueDue = false;     // the value seen has not been said yet
+        double g_valueChangedAt = 0.0;
+        double g_valueSpokenAt = 0.0;
         std::vector<ui::Prompt> g_prompts;              // the prompts last seen
         std::set<std::wstring> g_promptsSaid;           // the prompts said on this screen, as label and key
         std::set<std::wstring> g_bodySaid;              // the body texts said on this screen, digits aside
@@ -98,7 +103,9 @@ namespace da::features
             std::vector<std::wstring> parts;
             const auto tab = TabLine(page);
             if (!tab.empty()) parts.push_back(tab);
-            const auto title = ui::ScreenTitle(page);
+            // A page that draws no title of its own is named as the game's narration names it.
+            auto title = ui::ScreenTitle(page);
+            if (title.empty()) title = narration::PageNameFor(page);
             if (!title.empty()) parts.push_back(title);
             const auto body = ui::ScreenBody(page, &OpacitySeen);
             if (!body.empty()) parts.push_back(body);
@@ -142,6 +149,7 @@ namespace da::features
             g_controlLabel = d ? d->label : std::wstring();
             g_group = d ? d->group : std::wstring();
             g_value = d ? d->value : std::wstring();
+            g_valueDue = false;
         }
 
         void SpeakArrival(UObject* page, bool anew)
@@ -263,25 +271,34 @@ namespace da::features
                 return;
             }
 
-            // Every fourth frame: the control's value, the page's texts and the prompts.
-            if (gamethread::FrameCount() % 4 != 0) return;
+            // Every eighth frame: the control's value, the page's texts and the prompts.
+            if (gamethread::FrameCount() % 8 != 0) return;
             if (control)
             {
+                // A value that moves under a held key is said at most three times a second,
+                // and once more as it comes to rest; each saying interrupts the one before.
                 const auto value = ui::ValueOf(control);
                 if (value != g_value)
                 {
                     g_value = value;
-                    if (!value.empty()) speech::Focus(value);
+                    g_valueChangedAt = now;
+                    g_valueDue = !value.empty();
+                }
+                if (g_valueDue && (now - g_valueSpokenAt >= 0.35 || now - g_valueChangedAt >= 0.15))
+                {
+                    g_valueDue = false;
+                    g_valueSpokenAt = now;
+                    speech::Focus(g_value);
                 }
             }
-            if (gamethread::FrameCount() % 12 == 0)
+            if (gamethread::FrameCount() % 24 == 0)
             {
                 // The same widget given another control's words, as a pooled row is when the
                 // game refills it, is a control the player has not heard.
                 if (control && !g_controlLabel.empty())
                 {
-                    const auto d = ui::Describe(control);
-                    if (d.label != g_controlLabel)
+                    const auto label = ui::LabelOf(control);
+                    if (!label.empty() && label != g_controlLabel)
                     {
                         SpeakControl(page, control);
                         RememberBody(page);
@@ -322,7 +339,10 @@ namespace da::features
             {
                 float dt;
             } context{dt};
+            const auto started = std::chrono::steady_clock::now();
             obj::SafeInvokeLogged(L"menus.Poll", [](void* c) { Poll(static_cast<Context*>(c)->dt); }, &context);
+            const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();
+            if (ms > 8.0) log::Verbose(L"menus: a poll took {:.1f} ms on frame {}", ms, gamethread::FrameCount());
         }
     }
 
