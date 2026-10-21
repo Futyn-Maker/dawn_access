@@ -4,12 +4,15 @@
 #include "core/Log.hpp"
 #include "core/ObjectUtil.hpp"
 #include "core/Strings.hpp"
+#include "core/Symbols.hpp"
 #include "input/InputNames.hpp"
 #include "locale/GameText.hpp"
 #include "locale/Locale.hpp"
 #include "watch/Narration.hpp"
 
 #include <algorithm>
+#include <cmath>
+#include <map>
 #include <set>
 
 namespace da::ui
@@ -129,8 +132,11 @@ namespace da::ui
             bool skipControls = false;
             bool skipFaded = false;
             bool includeHidden = false;
+            bool skipPages = false;      // the pages of the menus and everything in them
             std::wstring_view skipNamed; // a text block left out by its name
         };
+
+        std::wstring StatusBarText(UObject* bar);
 
         std::vector<std::wstring> Texts(UObject* root, const TextWalk& walk)
         {
@@ -139,8 +145,15 @@ namespace da::ui
                                 [&](UObject* w, int depth)
                                 {
                                     if (!walk.includeHidden && !obj::IsWidgetVisible(w)) return false;
+                                    if (walk.skipPages && (obj::IsA(w, L"BMUIPage") || obj::IsA(w, L"BatesSubtitlesWidget"))) return false;
                                     if (depth > 0 && walk.skipControls && IsButton(w)) return false;
                                     if (IsKeyIcon(w)) return false;
+                                    if (obj::IsA(w, L"BatesStatusBarWidget"))
+                                    {
+                                        const auto bar = StatusBarText(w);
+                                        if (!bar.empty()) texts.push_back(bar);
+                                        return false;
+                                    }
                                     if (IsTextWidget(w))
                                     {
                                         if (!walk.skipNamed.empty() && obj::ObjectName(w) == walk.skipNamed) return false;
@@ -186,6 +199,51 @@ namespace da::ui
                                     return true;
                                 });
             return found;
+        }
+
+        // A bar of the status page: its name with the level the game fills it to, as a
+        // percentage of the bar, and the game's own mark of a recent rise or fall. The level
+        // is the value the game animates the bar towards, read from the bar itself.
+        std::wstring StatusBarText(UObject* bar)
+        {
+            const auto name = NamedText(bar, L"Text_Name");
+            if (name.empty()) return {};
+            // The value the game animates the bar towards and the bar's maximum are members
+            // reflection does not list; the fill the bar draws now is the weight of its left
+            // half against its right (the game's own way of drawing the level).
+            double level = -1.0;
+            float target = 0.0f;
+            float max = 0.0f;
+            if (auto* t = static_cast<const float*>(sym::MemberOf(bar, L"UBatesStatusBarWidget.TargetAnimValue"))) target = *t;
+            if (auto* m = static_cast<const float*>(sym::MemberOf(bar, L"UBatesStatusBarWidget.MaxValue"))) max = *m;
+            if (max > 0.0f) level = std::clamp(static_cast<double>(target) / max, 0.0, 1.0);
+            double drawn = -1.0;
+            UObject* fill = nullptr;
+            UObject* slot = nullptr;
+            if (obj::ReadObject(bar, L"Fill_L", fill) && fill && obj::IsLive(fill) && obj::ReadObject(fill, L"Slot", slot) && slot && obj::IsLive(slot))
+            {
+                if (auto* size = obj::FindProperty(slot, L"Size"))
+                {
+                    double value = 0.0;
+                    if (obj::ReadFloatAt(obj::ValuePtr(slot, size), obj::StructMember(size, L"Value"), value)) drawn = std::clamp(value, 0.0, 1.0);
+                }
+            }
+            if (level < 0.0) level = drawn;
+            if (level < 0.0) return name;
+            const int percent = static_cast<int>(std::lround(level * 100.0));
+            std::wstring text = locale::Mod(L"status.bar", name, std::to_wstring(percent));
+            int64_t state = 0;
+            obj::ReadInt(bar, L"In State", state);
+            if (state == 1) text += L", " + locale::Mod(L"status.up");
+            if (state == 2) text += L", " + locale::Mod(L"status.down");
+            static std::map<obj::ObjectKey, std::wstring> logged;
+            auto& last = logged[obj::KeyOf(bar)];
+            if (last != text)
+            {
+                last = text;
+                log::Info(L"status: {} target {:.2f} of {:.2f}, drawn {:.2f}, state {}: \"{}\"", obj::ObjectName(bar), target, max, drawn, state, text);
+            }
+            return text;
         }
 
         // The text the game attaches to a widget for its own narration, when it attached one.
@@ -403,7 +461,7 @@ namespace da::ui
                 // A slider's own texts are its name and its number; the number moves under the
                 // player's hand and is its value, never its name (the brightness slider draws
                 // nothing but the number).
-                const auto named = Texts(control, TextWalk{false, false, false, L"Text_SliderValue"});
+                const auto named = Texts(control, TextWalk{false, false, false, false, L"Text_SliderValue"});
                 return named.empty() ? std::wstring() : named.front();
             }
             const auto texts = OwnTexts(control, false, false);
@@ -627,6 +685,12 @@ namespace da::ui
                                 if (depth > 0 && IsButton(w)) return false;
                                 if (depth > 0 && IsListPanel(w)) return false;
                                 if (w == blurb || IsBlurbWidget(w) || IsKeyIcon(w)) return false;
+                                if (obj::IsA(w, L"BatesStatusBarWidget"))
+                                {
+                                    const auto bar = StatusBarText(w);
+                                    if (!bar.empty() && seen.insert(bar).second) texts.push_back(bar);
+                                    return false;
+                                }
                                 if (IsTextWidget(w))
                                 {
                                     const double opacity = opacityOf ? opacityOf(w) : obj::WidgetOpacity(w);
@@ -697,7 +761,10 @@ namespace da::ui
                                         auto* setup = obj::FindProperty(icon, L"CachedSetupData");
                                         UObject* action = nullptr;
                                         if (setup && obj::ReadObjectAt(obj::ValuePtr(icon, setup), obj::StructMember(setup, L"InputAction"), action) && action)
-                                            prompt.key = PromptKeys(icon, obj::ObjectName(action));
+                                        {
+                                            prompt.action = obj::ObjectName(action);
+                                            prompt.key = PromptKeys(icon, prompt.action);
+                                        }
                                     }
                                     if (!prompt.label.empty()) prompts.push_back(prompt);
                                     return false;
@@ -712,5 +779,117 @@ namespace da::ui
             prompts.push_back(turn);
         }
         return prompts;
+    }
+
+    std::vector<std::wstring> VisibleTexts(UObject* root)
+    {
+        return root ? OwnTexts(root, false, false) : std::vector<std::wstring>{};
+    }
+
+    std::vector<std::wstring> DrawnTexts(UObject* root)
+    {
+        return root ? OwnTexts(root, false, true) : std::vector<std::wstring>{};
+    }
+
+    std::vector<std::wstring> AuditTexts(UObject* root)
+    {
+        if (!root) return {};
+        TextWalk walk;
+        walk.skipFaded = true;
+        walk.skipPages = true;
+        return Texts(root, walk);
+    }
+
+    std::wstring TextNamed(UObject* root, std::wstring_view name)
+    {
+        return root ? NamedText(root, name) : std::wstring();
+    }
+
+    bool InsideMenuPage(UObject* widget)
+    {
+        return widget && obj::NearestAncestorOfClass(widget, L"BMUIPage") != nullptr;
+    }
+
+    bool IsVideoText(UObject* widget)
+    {
+        return widget && obj::IsA(widget, L"WBP_VideoTextBase_C");
+    }
+
+    bool InsideMenuHost(UObject* widget)
+    {
+        UObject* cur = widget;
+        for (int depth = 0; cur && depth < 12; ++depth)
+        {
+            cur = obj::FindOuterUserWidget(cur);
+            if (!cur) return false;
+            if (!str::StartsWith(obj::ClassName(cur), L"WBP_HUDContainer") && !obj::IsA(cur, L"BatesHUDContainer")) continue;
+            // A container that holds a page background hosts pages; the game's own HUD
+            // container holds none.
+            UObject* background = nullptr;
+            return obj::ReadObject(cur, L"PageBackgroundContainer", background) && background && obj::IsLive(background);
+        }
+        return false;
+    }
+
+    bool PromptOfCap(UObject* cap, Prompt& out)
+    {
+        out = Prompt{};
+        if (!cap || !obj::IsLive(cap) || !obj::IsA(cap, L"BMUIInputActionWidget") || !obj::IsWidgetShown(cap)) return false;
+        std::wstring label;
+        obj::ReadString(cap, L"ContextText", label);
+        label = str::Trim(str::StripMarkup(label));
+        if (label.empty() || IsTemplate(label)) label = NamedText(cap, L"Text_ContextText");
+        if (IsTemplate(label)) label.clear();
+        std::wstring actionName;
+        if (auto* setup = obj::FindProperty(cap, L"CachedSetupData"))
+        {
+            UObject* action = nullptr;
+            if (obj::ReadObjectAt(obj::ValuePtr(cap, setup), obj::StructMember(setup, L"InputAction"), action) && action) actionName = obj::ObjectName(action);
+        }
+        out.label = label;
+        out.action = actionName;
+        if (!actionName.empty())
+        {
+            out.key = PromptKeys(cap, actionName);
+        }
+        else
+        {
+            // A cap set up with a key rather than an action prints the key's letter.
+            const auto printed = NamedText(cap, L"Text_Key");
+            if (!printed.empty()) out.key = input::KeyDisplayName(printed);
+        }
+        return !out.label.empty() || !out.key.empty();
+    }
+
+    std::vector<Prompt> PromptsIn(UObject* root)
+    {
+        std::vector<Prompt> prompts;
+        if (!root) return prompts;
+        obj::WalkWidgetTree(root, 48,
+                            [&](UObject* w, int)
+                            {
+                                if (!obj::IsWidgetVisible(w)) return false;
+                                if (!obj::IsA(w, L"BMUIInputActionWidget")) return true;
+                                Prompt prompt;
+                                if (PromptOfCap(w, prompt)) prompts.push_back(prompt);
+                                return false;
+                            });
+        return prompts;
+    }
+
+    std::wstring PromptLines(const std::vector<Prompt>& prompts)
+    {
+        std::vector<std::wstring> lines;
+        for (const auto& prompt : prompts)
+        {
+            if (prompt.label.empty() && prompt.key.empty()) continue;
+            if (prompt.label.empty())
+                lines.push_back(prompt.key);
+            else if (prompt.key.empty())
+                lines.push_back(prompt.label);
+            else
+                lines.push_back(prompt.label + L": " + prompt.key);
+        }
+        return str::Join(lines, L", ");
     }
 }

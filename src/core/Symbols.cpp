@@ -54,6 +54,10 @@ namespace da::sym
             {L"UBMTTSQueueItem.TTSLine", 0x40},                 // FString
             // A key-rebind slot of the settings keeps the key it draws its cap from.
             {L"UBatesKeyRebindSlotWidget.CurrentKey", 0x330}, // FKey, whose first member is the key's name
+            // A bar of the status page animates towards the value the game gave it, out of its maximum.
+            {L"UBatesStatusBarWidget.CurrentAnimValue", 0x2cc}, // float
+            {L"UBatesStatusBarWidget.TargetAnimValue", 0x2d0},  // float
+            {L"UBatesStatusBarWidget.MaxValue", 0x2d4},         // float
         };
 
         struct CodeViewRecord

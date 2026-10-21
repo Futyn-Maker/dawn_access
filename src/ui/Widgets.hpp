@@ -63,4 +63,30 @@ namespace da::ui
     // The prompts of the action bar, in their order, each with the spoken keys of its action,
     // and, for a page among tabs, the keys that turn the tabs.
     std::vector<Prompt> Prompts(UObject* page);
+
+    // The visible texts under a widget, in tree order, key caps and template texts left out.
+    std::vector<std::wstring> VisibleTexts(UObject* root);
+    // The same, with the texts still faded in or out left out: what is drawn now.
+    std::vector<std::wstring> DrawnTexts(UObject* root);
+    // The drawn texts outside the pages of the menus (the pages have their own rules): what
+    // the unread-text audit checks against what was said.
+    std::vector<std::wstring> AuditTexts(UObject* root);
+    // The text of the named text block under a widget, drawn or not; empty when there is none.
+    std::wstring TextNamed(UObject* root, std::wstring_view name);
+    // True for a widget shown inside a page of the menus: the pages belong to the menus,
+    // whatever else they hold.
+    bool InsideMenuPage(UObject* widget);
+    // True for a widget whose HUD container hosts the pages of a menu (the front end, the
+    // pause menu): what it draws is a menu's, not the game's HUD.
+    bool InsideMenuHost(UObject* widget);
+    // True for the words the game lays over one of its films (the opening's lines about the
+    // butterfly effect): shown while the game is still loading, read all the same.
+    bool IsVideoText(UObject* widget);
+    // The prompt a key cap of the game's shows: its context words and the key of the action
+    // it was set up with; false for a cap that is hidden or says nothing.
+    bool PromptOfCap(UObject* cap, Prompt& out);
+    // Every prompt the key caps under a widget show, in tree order.
+    std::vector<Prompt> PromptsIn(UObject* root);
+    // The prompts as one line, a prompt without words said by its key alone.
+    std::wstring PromptLines(const std::vector<Prompt>& prompts);
 }

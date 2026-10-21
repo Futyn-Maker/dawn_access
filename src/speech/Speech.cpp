@@ -26,8 +26,10 @@ namespace da::speech
         std::wstring g_lastSpoken;
         std::wstring g_lastMessage; // the last thing said that was not itself a readout
         Clock::time_point g_lastSpokenAt{};
-        Clock::time_point g_lastOutputAt{}; // when the reader was last given something to say
-        std::deque<std::wstring> g_history; // for Repeat()
+        Clock::time_point g_lastOutputAt{};                              // when the reader was last given something to say
+        std::deque<std::wstring> g_history;                              // for Repeat()
+        std::deque<std::pair<Clock::time_point, std::wstring>> g_recent; // what was said lately, for the audit
+        constexpr long long kRecentMs = 120'000;
         bool g_preferSapi = false;
 
         // SAPI speaks when no screen reader runs, and when the player prefers it to theirs.
@@ -65,6 +67,9 @@ namespace da::speech
             Emit(std::wstring(text), interrupt);
             g_lastOutputAt = Clock::now();
             Remember(text);
+            g_recent.emplace_back(Clock::now(), str::CollapseWhitespace(text));
+            while (!g_recent.empty() && MsSince(g_recent.front().first) > kRecentMs)
+                g_recent.pop_front();
             if (std::wstring_view(policy) != L"now") g_lastMessage = std::wstring(text);
         }
 
@@ -165,6 +170,19 @@ namespace da::speech
     {
         std::lock_guard lock(g_mutex);
         return g_lastMessage;
+    }
+
+    bool SaidRecently(std::wstring_view raw, double seconds)
+    {
+        const std::wstring text = str::CollapseWhitespace(Clean(raw));
+        if (text.empty()) return true;
+        std::lock_guard lock(g_mutex);
+        for (auto it = g_recent.rbegin(); it != g_recent.rend(); ++it)
+        {
+            if (MsSince(it->first) > static_cast<long long>(seconds * 1000.0)) break;
+            if (it->second.find(text) != std::wstring::npos || text.find(it->second) != std::wstring::npos) return true;
+        }
+        return false;
     }
 
     void ToggleOutput()

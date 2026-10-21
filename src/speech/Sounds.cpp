@@ -230,6 +230,56 @@ namespace da::sounds
         PlayWav(wav);
     }
 
+    void Steer(double right, double up, bool beyond)
+    {
+        if (!g_enabled || CueSounding()) return;
+        // The runs are made once per way, five steps each side, with and without the thud.
+        static std::array<Wav, 50> runs;
+        const int r = static_cast<int>(std::lround(std::clamp(right, -1.0, 1.0) * 2.0));
+        const int u = static_cast<int>(std::lround(std::clamp(up, -1.0, 1.0) * 2.0));
+        Wav& wav = runs[static_cast<size_t>((beyond ? 25 : 0) + (r + 2) * 5 + (u + 2))];
+        if (wav.empty())
+        {
+            const double pan = r == 0 ? 1e-6 : r / 2.0;
+            std::vector<Note> notes;
+            if (beyond) notes.push_back({.frequency = 110.0, .seconds = 0.035, .attack = 0.002, .release = 0.01});
+            if (u > 0)
+                notes.insert(notes.end(), {{440.0, 0.04}, {554.0, 0.04}, {659.0, 0.06}});
+            else if (u < 0)
+                notes.insert(notes.end(), {{659.0, 0.04}, {554.0, 0.04}, {440.0, 0.06}});
+            else
+                notes.insert(notes.end(), {{523.0, 0.05}, {523.0, 0.08}});
+            wav = Wave(notes, g_amplitude, pan);
+        }
+        PlayWav(wav);
+    }
+
+    void Ping()
+    {
+        if (!g_enabled) return;
+        PlayWav(g_locked);
+    }
+
+    void Marker(double pan, double level, bool centred, bool beyond)
+    {
+        if (!g_enabled || CueSounding()) return;
+        const double placed = std::clamp(pan, -1.0, 1.0);
+        Wav& wav = g_beacons[g_beaconIndex++ % g_beacons.size()];
+        if (centred)
+        {
+            wav = Wave({{1047.0, 0.035}, {1568.0, 0.05}}, g_amplitude * 0.7, placed == 0.0 ? 1e-6 : placed);
+            PlayWav(wav);
+            return;
+        }
+        // Two octaves from low to high; a low thud first when the marker is past its edge.
+        const double frequency = 330.0 * std::pow(4.0, std::clamp(level, 0.0, 1.0));
+        std::vector<Note> notes;
+        if (beyond) notes.push_back({.frequency = 110.0, .seconds = 0.03, .attack = 0.002, .release = 0.01});
+        notes.push_back({frequency, 0.05});
+        wav = Wave(notes, g_amplitude * 0.7, placed == 0.0 ? 1e-6 : placed);
+        PlayWav(wav);
+    }
+
     void Aim(double pan, double level, bool locked, bool muffled)
     {
         if (!g_enabled || CueSounding()) return;

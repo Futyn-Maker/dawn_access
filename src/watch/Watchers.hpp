@@ -11,6 +11,7 @@
 
 #include <functional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace da::watch
@@ -41,6 +42,15 @@ namespace da::watch
     // Counts up every time a page stack starts displaying another page, or the same page anew:
     // a screen the game shows again in the same widget is told apart from one left on display.
     unsigned long long DisplayGeneration();
+
+    // Widgets of a native class the game shows, as they come and go: with each scan of the
+    // screen (twice a second) the user widgets on show are sorted by the classes asked for;
+    // `appeared` false means gone. The name "HudElement" stands for a user widget drawn
+    // directly in one of the game's HUD containers or on its own in the viewport.
+    using ClassListener = std::function<void(UObject* widget, bool appeared)>;
+    void OnWidgetClass(std::wstring nativeClass, ClassListener listener);
+    // The shown widgets of a watched class at the last scan.
+    std::vector<UObject*> ShownWidgetsOf(std::wstring_view nativeClass);
 
     void Install();
     void Reset(); // after map load

@@ -34,6 +34,9 @@ namespace da::speech
 
     // Text of the last thing spoken (for the read-screen readout).
     std::wstring Last();
+    // Whether the text, or an utterance containing it, was said within the given seconds:
+    // the unread-text audit asks this of every text the game draws.
+    bool SaidRecently(std::wstring_view text, double seconds);
 
     // SAPI speaks even while a screen reader runs, when so asked (the ini at the start, the
     // Speech hotkey during play).

@@ -34,6 +34,7 @@ namespace da::ui
     {
         std::wstring label;
         std::wstring key;
+        std::wstring action; // the game's input action behind the key, for the log
     };
 
     // The spoken form of a control. At the detailed level the kind, the position and the

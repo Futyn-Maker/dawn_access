@@ -19,6 +19,45 @@ namespace da::watch
         std::vector<HudListener> g_hudListeners;
         std::map<obj::ObjectKey, std::wstring> g_shownTop;
 
+        // ---- class watcher ----
+        // The widgets of the native classes the features asked for, shown at the last scan.
+        struct WatchedClass
+        {
+            std::wstring name;
+            std::vector<ClassListener> listeners;
+            std::map<obj::ObjectKey, UObject*> shown;
+        };
+        std::vector<WatchedClass> g_classes;
+        constexpr std::wstring_view kHudElement = L"HudElement";
+
+        // A user widget drawn directly in one of the game's HUD containers, or on its own.
+        bool IsHudElement(UObject* widget)
+        {
+            UObject* outer = obj::FindOuterUserWidget(widget);
+            if (!outer) return true;
+            return str::StartsWith(obj::ClassName(outer), L"WBP_HUDContainer") || obj::IsA(outer, L"BatesHUDContainer");
+        }
+
+        bool Matches(const WatchedClass& watched, UObject* widget)
+        {
+            return watched.name == kHudElement ? IsHudElement(widget) : obj::IsA(widget, watched.name);
+        }
+
+        void Notify(WatchedClass& watched, UObject* widget, bool appeared)
+        {
+            for (auto& listener : watched.listeners)
+            {
+                try
+                {
+                    listener(widget, appeared);
+                }
+                catch (...)
+                {
+                    log::Error(L"class listener failed for {}", watched.name);
+                }
+            }
+        }
+
         void Emit(UObject* instance, const std::wstring& cls, bool appeared)
         {
             HudEvent ev;
@@ -45,10 +84,26 @@ namespace da::watch
             // milliseconds; twice a second is enough for a screen that appears or goes.
             if (gamethread::FrameCount() % 30 != 0) return;
             std::map<obj::ObjectKey, std::wstring> current;
+            std::vector<std::map<obj::ObjectKey, UObject*>> classCurrent(g_classes.size());
             for (auto* widget : obj::FindAllLive(L"UserWidget"))
             {
+                // Whether the widget is drawn is asked once, and only of the widgets that
+                // matter: a watched class, or the top of the hierarchy.
+                bool shownKnown = false;
+                bool shown = false;
+                for (size_t i = 0; i < g_classes.size(); ++i)
+                {
+                    if (!Matches(g_classes[i], widget)) continue;
+                    if (!shownKnown)
+                    {
+                        shown = obj::IsWidgetShown(widget);
+                        shownKnown = true;
+                    }
+                    if (shown) classCurrent[i].emplace(obj::KeyOf(widget), widget);
+                }
                 if (obj::FindOuterUserWidget(widget)) continue;
-                if (!obj::IsWidgetShown(widget)) continue;
+                if (!shownKnown) shown = obj::IsWidgetShown(widget);
+                if (!shown) continue;
                 current.emplace(obj::KeyOf(widget), obj::ClassName(widget));
             }
             for (const auto& [key, cls] : g_shownTop)
@@ -60,6 +115,19 @@ namespace da::watch
                 if (!g_shownTop.contains(key)) Emit(key.object, cls, true);
             }
             g_shownTop = std::move(current);
+            for (size_t i = 0; i < g_classes.size(); ++i)
+            {
+                WatchedClass& watched = g_classes[i];
+                for (const auto& [key, widget] : watched.shown)
+                {
+                    if (!classCurrent[i].contains(key)) Notify(watched, key.object, false);
+                }
+                for (const auto& [key, widget] : classCurrent[i])
+                {
+                    if (!watched.shown.contains(key)) Notify(watched, widget, true);
+                }
+                watched.shown = std::move(classCurrent[i]);
+            }
         }
 
         // ---- page watcher ----
@@ -311,6 +379,36 @@ namespace da::watch
     UObject* CurrentFocused()
     {
         return obj::IsSame(g_focusedKey) ? g_focused : nullptr;
+    }
+
+    void OnWidgetClass(std::wstring nativeClass, ClassListener listener)
+    {
+        for (auto& watched : g_classes)
+        {
+            if (watched.name == nativeClass)
+            {
+                watched.listeners.push_back(std::move(listener));
+                return;
+            }
+        }
+        WatchedClass watched;
+        watched.name = std::move(nativeClass);
+        watched.listeners.push_back(std::move(listener));
+        g_classes.push_back(std::move(watched));
+    }
+
+    std::vector<UObject*> ShownWidgetsOf(std::wstring_view nativeClass)
+    {
+        std::vector<UObject*> widgets;
+        for (const auto& watched : g_classes)
+        {
+            if (watched.name != nativeClass) continue;
+            for (const auto& [key, widget] : watched.shown)
+            {
+                if (obj::IsLive(widget)) widgets.push_back(widget);
+            }
+        }
+        return widgets;
     }
 
     unsigned long long DisplayGeneration()

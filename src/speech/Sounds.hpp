@@ -44,4 +44,17 @@ namespace da::sounds
     // shot that would land instead, and `muffled` drops the blip an octave for a target
     // behind the player.
     void Aim(double pan, double level, bool locked, bool muffled);
+
+    // Plays a short run that says which way to steer: rising for up, falling for down, two
+    // equal notes for a pure side; `right` and `up` (-1 to 1) give the way and place it.
+    // `beyond` puts a low thud before it, for a marker past its edge.
+    void Steer(double right, double up, bool beyond);
+
+    // Plays the double ping of a marker back in its place, at once, whatever else sounds.
+    void Ping();
+
+    // Plays the blip of a marker: `pan` its side, `level` its height (0 low, 1 high),
+    // `centred` the double ping of a marker in the middle, `beyond` a low thud before the
+    // blip for a marker past its edge.
+    void Marker(double pan, double level, bool centred, bool beyond);
 }
