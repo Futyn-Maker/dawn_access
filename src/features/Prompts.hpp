@@ -1,0 +1,25 @@
+#pragma once
+// Prompts in play: the key caps the game floats over the world or pins to the screen while
+// the character can do something (take, open, continue, back out), the prompt a glint
+// shows once the character is close enough, and the action bar at the foot of the screen
+// while no menu page is up (continue a lesson, hide a transcript). Each is read as its
+// words and key, once it has settled, and again whenever the game changes it.
+
+#include "features/Feature.hpp"
+
+#include <string>
+#include <vector>
+
+namespace da::features
+{
+    class PromptsFeature : public Feature
+    {
+    public:
+        const wchar_t* Name() const override
+        {
+            return L"Prompts";
+        }
+        void Install() override;
+        void Describe(std::vector<std::wstring>& out) override;
+    };
+}

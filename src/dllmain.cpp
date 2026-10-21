@@ -6,9 +6,16 @@
 #include "core/Log.hpp"
 #include "core/ObjectUtil.hpp"
 #include "core/Strings.hpp"
+#include "diag/Audit.hpp"
 #include "diag/Diagnostics.hpp"
+#include "features/Choices.hpp"
+#include "features/DontMove.hpp"
 #include "features/Feature.hpp"
+#include "features/Hud.hpp"
 #include "features/Menus.hpp"
+#include "features/Prompts.hpp"
+#include "features/Qte.hpp"
+#include "features/Subtitles.hpp"
 #include "hooks/HookDispatcher.hpp"
 #include "hotkeys/Hotkeys.hpp"
 #include "input/InputNames.hpp"
@@ -17,6 +24,7 @@
 #include "speech/Outputs.hpp"
 #include "speech/Sounds.hpp"
 #include "speech/Speech.hpp"
+#include "watch/GameState.hpp"
 #include "watch/Narration.hpp"
 #include "watch/Watchers.hpp"
 
@@ -132,13 +140,21 @@ public:
         da::hooks::Install();
         da::watch::Install();
         da::narration::Install();
+        da::gamestate::Install();
         da::hotkeys::Install();
         da::diag::InstallCommandFile();
         da::diag::InstallFrameTimer();
         da::diag::InstallFirstLaunch();
+        da::diag::InstallUnreadAudit();
         // The features are registered now and installed once the greeting has been said, so
         // that nothing of the screen is read before it.
         da::features::Register(std::make_unique<da::features::MenusFeature>());
+        da::features::Register(std::make_unique<da::features::SubtitlesFeature>());
+        da::features::Register(std::make_unique<da::features::HudFeature>());
+        da::features::Register(std::make_unique<da::features::PromptsFeature>());
+        da::features::Register(std::make_unique<da::features::ChoicesFeature>());
+        da::features::Register(std::make_unique<da::features::QteFeature>());
+        da::features::Register(std::make_unique<da::features::DontMoveFeature>());
 
         Unreal::Hook::FCallbackOptions options{};
         options.bReadonly = true;
@@ -156,6 +172,8 @@ public:
                         da::obj::ResetCaches();
                         da::watch::Reset();
                         da::features::ResetMenus();
+                        da::features::ResetSubtitles();
+                        da::gamestate::Reset();
                         da::input::InvalidateCache();
                     });
             },
