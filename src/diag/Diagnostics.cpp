@@ -218,11 +218,23 @@ namespace da::diag
             RunCommandImpl(*static_cast<const std::wstring*>(context));
         }
 
-        // A command must never take the game down: a fault abandons it and is logged.
+        // A command must never take the game down, nor the commands after it in the file: a
+        // fault or a C++ exception abandons it and is logged.
         void RunCommand(const std::wstring& line)
         {
-            if (!obj::SafeInvoke(&RunCommandGuarded, const_cast<std::wstring*>(&line)))
-                log::Error(L"command ran into a memory fault and was abandoned: {}", line);
+            try
+            {
+                if (!obj::SafeInvoke(&RunCommandGuarded, const_cast<std::wstring*>(&line)))
+                    log::Error(L"command ran into a memory fault and was abandoned: {}", line);
+            }
+            catch (const std::exception& e)
+            {
+                log::Error(L"command failed: {}: {}", line, str::Utf8ToWide(e.what()));
+            }
+            catch (...)
+            {
+                log::Error(L"command failed (unknown exception): {}", line);
+            }
         }
 
         void PollCommandFile(float)

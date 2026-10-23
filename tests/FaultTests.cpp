@@ -7,9 +7,11 @@
 #include <doctest/doctest.h>
 
 #include <cstdint>
+#include <memory>
 #include <mutex>
 #include <stdexcept>
 #include <thread>
+#include <vector>
 
 namespace
 {
@@ -102,6 +104,36 @@ TEST_CASE("an inner boundary releases only what was taken beneath it")
     CHECK(Free(g_outer));
     CHECK(Free(g_inner));
     CHECK(da::fault::Last().released == 1);
+}
+
+namespace
+{
+    // More locks held at once than the record has room for, then a fault.
+    std::mutex g_many[70];
+    void FaultHoldingMany(void*)
+    {
+        std::vector<std::unique_ptr<da::fault::Guard>> guards;
+        for (auto& m : g_many)
+            guards.push_back(std::make_unique<da::fault::Guard>(m, L"many"));
+        Fault(nullptr);
+    }
+}
+
+TEST_CASE("locks past the record's room are counted as left locked, the recorded ones released")
+{
+    CHECK_FALSE(da::fault::Invoke(&FaultHoldingMany, nullptr));
+    CHECK(da::fault::Held() == 0);
+    const auto last = da::fault::Last();
+    CHECK(last.released == 64);
+    CHECK(last.unrecorded == 6);
+    CHECK(Free(g_many[0]));
+    CHECK(Free(g_many[63]));
+    // The six past the record stay locked by this thread; they are let go here by hand.
+    for (int i = 64; i < 70; ++i)
+    {
+        CHECK_FALSE(Free(g_many[i]));
+        g_many[i].unlock();
+    }
 }
 
 TEST_CASE("a C++ exception passes through the boundary and unwinds its locks")

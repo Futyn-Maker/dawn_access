@@ -38,6 +38,7 @@ namespace da::fault
         std::uintptr_t accessed = 0;       // the address it touched, when known
         int kind = -1;                     // 0 a read, 1 a write, 8 an execution, -1 unknown
         unsigned released = 0;             // how many stranded locks the boundary released
+        unsigned unrecorded = 0;           // stranded locks taken past the record's room, left locked
         const wchar_t* names[kNames] = {}; // the first of them, innermost first
     };
 

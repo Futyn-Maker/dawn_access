@@ -323,8 +323,20 @@ namespace da::hotkeys
         // The answer is worded for the device the command came from.
         if (source == Source::Keyboard) input::NoteHotkeyDevice(input::Scheme::MouseKeyboard);
         if (source == Source::Gamepad) input::NoteHotkeyDevice(input::Scheme::Gamepad);
-        // A hotkey must never take the game down: a fault abandons the command and is logged.
-        if (!obj::SafeInvoke(&RunGuarded, &command)) log::Error(L"hotkey {} ran into a memory fault and was abandoned", CommandName(command));
+        // A hotkey must never take the game down, nor the presses after it: a fault or a C++
+        // exception abandons the command and is logged.
+        try
+        {
+            if (!obj::SafeInvoke(&RunGuarded, &command)) log::Error(L"hotkey {} ran into a memory fault and was abandoned", CommandName(command));
+        }
+        catch (const std::exception& e)
+        {
+            log::Error(L"hotkey {} failed: {}", CommandName(command), str::Utf8ToWide(e.what()));
+        }
+        catch (...)
+        {
+            log::Error(L"hotkey {} failed (unknown exception)", CommandName(command));
+        }
     }
 
     namespace

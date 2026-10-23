@@ -27,9 +27,13 @@ namespace da::gamethread
             std::wstring label; // "poller 'name'", the site of its faults and failures in the log
             Poller poller;
         };
-        // A deque: a poller registered while the pollers run (the features register theirs
-        // from the startup poller) moves none of the others while one of them is running.
-        std::deque<Registered> g_pollers;
+        // The pollers are the game thread's alone. A registration, whichever thread makes it
+        // (the mod's start runs on UE4SS's own thread while the engine may already tick; the
+        // features register theirs from the startup poller), waits in the pending list and
+        // joins at the start of the next tick, so the list is never changed while it is read.
+        std::vector<Registered> g_pollers;
+        std::mutex g_pendingMutex;
+        std::vector<Registered> g_pending;
         std::vector<float> g_pollerFrameMs; // the pollers' total per frame since the last take
         std::vector<float> g_pollerWorst;   // each poller's longest run since the last take
         std::atomic<std::thread::id> g_gameThreadId{};
@@ -93,9 +97,15 @@ namespace da::gamethread
                 Guarded(L"game thread task", &RunTask, &run);
             }
 
-            // Each poller is timed, so that the mod's share of a slow frame is known. The count
-            // is read again on every round: a poller registered by the one running runs in the
-            // same frame, behind it, and gets its own slot in the record.
+            {
+                fault::Guard lock(g_pendingMutex, L"gamethread.pending");
+                for (auto& entry : g_pending)
+                    g_pollers.push_back(std::move(entry));
+                g_pending.clear();
+            }
+            if (g_pollerWorst.size() != g_pollers.size()) g_pollerWorst.resize(g_pollers.size(), 0.0f);
+
+            // Each poller is timed, so that the mod's share of a slow frame is known.
             float frameMs = 0.0f;
             for (size_t i = 0; i < g_pollers.size(); ++i)
             {
@@ -105,7 +115,6 @@ namespace da::gamethread
                 Guarded(entry.label, &RunPoller, &run);
                 const float ms = std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - started).count();
                 frameMs += ms;
-                if (g_pollerWorst.size() <= i) g_pollerWorst.resize(g_pollers.size(), 0.0f);
                 g_pollerWorst[i] = std::max(g_pollerWorst[i], ms);
             }
             g_pollerFrameMs.push_back(frameMs);
@@ -134,7 +143,8 @@ namespace da::gamethread
     void AddPoller(std::wstring name, Poller poller)
     {
         std::wstring label = L"poller '" + name + L"'";
-        g_pollers.push_back(Registered{std::move(name), std::move(label), std::move(poller)});
+        fault::Guard lock(g_pendingMutex, L"gamethread.pending");
+        g_pending.push_back(Registered{std::move(name), std::move(label), std::move(poller)});
     }
 
     bool IsGameThread()

@@ -10,6 +10,8 @@
 #endif
 #include <windows.h>
 
+#include <malloc.h>
+
 #include <chrono>
 #include <format>
 #include <map>
@@ -57,26 +59,35 @@ namespace da::fault
         // keeps their names for the report. The thread that locked them is this one, so the
         // unlock is its own to make; the guards that would have made it are gone with their
         // frames.
+        // A lock taken past the record's room (more than kMaxHeld held at once on a thread,
+        // which the mod never does) has no record to unlock it by; it is counted and named in
+        // the report as left locked.
         void Release(unsigned depth)
         {
             unsigned released = 0;
+            unsigned unrecorded = 0;
             while (t_depth > depth)
             {
                 --t_depth;
-                if (t_depth < kMaxHeld)
+                if (t_depth >= kMaxHeld)
                 {
-                    HeldLock& held = t_held[t_depth];
-                    if (released < Record::kNames) t_last.names[released] = held.name;
-                    if (held.mutex) held.mutex->unlock();
-                    held = {};
+                    ++unrecorded;
+                    continue;
                 }
+                HeldLock& held = t_held[t_depth];
+                if (released < Record::kNames) t_last.names[released] = held.name;
+                if (held.mutex) held.mutex->unlock();
+                held = {};
                 ++released;
             }
             t_last.released = released;
+            t_last.unrecorded = unrecorded;
         }
 
         // The structured-exception frame lives in a function of its own, with no C++ object
-        // in it, as the compiler requires.
+        // in it, as the compiler requires. A stack overflow leaves the thread without its
+        // guard page once the stack has unwound; it is put back, or the next one would end
+        // the process.
         bool Run(void (*fn)(void*), void* context, unsigned depth)
         {
             __try
@@ -87,6 +98,7 @@ namespace da::fault
             __except (Filter(GetExceptionCode(), GetExceptionInformation()))
             {
                 Release(depth);
+                if (GetExceptionCode() == EXCEPTION_STACK_OVERFLOW) _resetstkoflw();
                 return false;
             }
         }
@@ -124,12 +136,17 @@ namespace da::fault
 
         std::wstring Stranded(const Record& r)
         {
-            if (r.released == 0) return {};
-            std::wstring text = r.released == 1 ? L"; released the lock" : L"; released the locks";
-            for (unsigned i = 0; i < r.released && i < Record::kNames; ++i)
-                text += std::format(L" '{}'", r.names[i] ? r.names[i] : L"?");
-            if (r.released > Record::kNames) text += L" ...";
-            return text + L" the fault had stranded";
+            std::wstring text;
+            if (r.released > 0)
+            {
+                text = r.released == 1 ? L"; released the lock" : L"; released the locks";
+                for (unsigned i = 0; i < r.released && i < Record::kNames; ++i)
+                    text += std::format(L" '{}'", r.names[i] ? r.names[i] : L"?");
+                if (r.released > Record::kNames) text += L" ...";
+                text += L" the fault had stranded";
+            }
+            if (r.unrecorded > 0) text += std::format(L"; {} more stranded beyond the record stay locked", r.unrecorded);
+            return text;
         }
     }
 

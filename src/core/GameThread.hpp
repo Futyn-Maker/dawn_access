@@ -21,7 +21,7 @@ namespace da::gamethread
     // Enqueue work for the next engine tick (thread-safe).
     void Post(Task task);
 
-    // Register a per-frame poller (call during initialization).
+    // Register a per-frame poller, from any thread; it runs from the next tick on.
     void AddPoller(std::wstring name, Poller poller);
 
     bool IsGameThread();
