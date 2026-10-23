@@ -1,5 +1,6 @@
 #include "hotkeys/KeyHook.hpp"
 
+#include "core/Fault.hpp"
 #include "core/Log.hpp"
 #include "input/InputNames.hpp"
 
@@ -91,7 +92,7 @@ namespace da::keyhook
                             // The key repeats while held; only the press counts.
                             if (!g_down[static_cast<size_t>(vk)])
                             {
-                                std::lock_guard lock(g_mutex);
+                                fault::Guard lock(g_mutex, L"keyhook");
                                 if (g_presses.size() >= kMaxPresses) g_presses.erase(g_presses.begin());
                                 g_presses.push_back(binding.id);
                             }
@@ -197,7 +198,7 @@ namespace da::keyhook
 
     std::vector<int> TakePresses()
     {
-        std::lock_guard lock(g_mutex);
+        fault::Guard lock(g_mutex, L"keyhook");
         std::vector<int> presses = std::move(g_presses);
         g_presses.clear();
         return presses;

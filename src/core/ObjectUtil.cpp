@@ -1,5 +1,6 @@
 #include "core/ObjectUtil.hpp"
 
+#include "core/Fault.hpp"
 #include "core/Log.hpp"
 #include "core/Strings.hpp"
 
@@ -169,12 +170,12 @@ namespace da::obj
     {
         if (!cls) return L"<null>";
         {
-            std::lock_guard lock(g_mutex);
+            fault::Guard lock(g_mutex, L"obj");
             const auto it = g_classNames.find(cls);
             if (it != g_classNames.end()) return it->second;
         }
         std::wstring name = cls->GetName();
-        std::lock_guard lock(g_mutex);
+        fault::Guard lock(g_mutex, L"obj");
         g_classNames[cls] = name;
         return name;
     }
@@ -246,7 +247,7 @@ namespace da::obj
         if (!cls) return nullptr;
         const std::wstring key(name);
         {
-            std::lock_guard lock(g_mutex);
+            fault::Guard lock(g_mutex, L"obj");
             const auto c = g_propertyCache.find(cls);
             if (c != g_propertyCache.end())
             {
@@ -264,7 +265,7 @@ namespace da::obj
                 break;
             }
         }
-        std::lock_guard lock(g_mutex);
+        fault::Guard lock(g_mutex, L"obj");
         g_propertyCache[cls][key] = found;
         return found;
     }
@@ -566,7 +567,7 @@ namespace da::obj
         if (!cls) return nullptr;
         const std::wstring key(name);
         {
-            std::lock_guard lock(g_mutex);
+            fault::Guard lock(g_mutex, L"obj");
             const auto c = g_functionCache.find(cls);
             if (c != g_functionCache.end())
             {
@@ -584,7 +585,7 @@ namespace da::obj
                 break;
             }
         }
-        std::lock_guard lock(g_mutex);
+        fault::Guard lock(g_mutex, L"obj");
         g_functionCache[cls][key] = found;
         return found;
     }
@@ -947,36 +948,14 @@ namespace da::obj
         return false;
     }
 
-    bool SafeInvoke(void (*fn)(void*), void* context) noexcept
+    bool SafeInvoke(void (*fn)(void*), void* context)
     {
-        __try
-        {
-            fn(context);
-            return true;
-        }
-        __except (1)
-        {
-            return false;
-        }
+        return fault::Invoke(fn, context);
     }
 
     bool SafeInvokeLogged(const wchar_t* name, void (*fn)(void*), void* context)
     {
-        if (SafeInvoke(fn, context)) return true;
-        // Faults are counted per site and reported now and then, so that a poller dying on
-        // every frame shows in the log instead of failing in silence.
-        static std::map<std::wstring, std::pair<int, double>> faults;
-        static std::mutex faultsMutex;
-        std::lock_guard lock(faultsMutex);
-        auto& [count, reportedAt] = faults[name];
-        ++count;
-        const double now = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
-        if (reportedAt == 0.0 || now - reportedAt > 5.0)
-        {
-            reportedAt = now;
-            log::Error(L"{}: memory fault, skipped ({} so far)", name, count);
-        }
-        return false;
+        return fault::InvokeLogged(name, fn, context);
     }
 
     namespace
@@ -1132,7 +1111,7 @@ namespace da::obj
 
     void ResetCaches()
     {
-        std::lock_guard lock(g_mutex);
+        fault::Guard lock(g_mutex, L"obj");
         g_playerController = nullptr;
         g_gameInstance = nullptr;
         g_propertyCache.clear();

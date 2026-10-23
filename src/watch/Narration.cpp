@@ -1,5 +1,6 @@
 #include "watch/Narration.hpp"
 
+#include "core/Fault.hpp"
 #include "core/GameThread.hpp"
 #include "core/Log.hpp"
 #include "core/ObjectUtil.hpp"
@@ -45,7 +46,7 @@ namespace da::narration
         void Remember(UObject* owner, const std::wstring& line, const std::wstring& priority, const std::wstring& format)
         {
             if (!owner || line.empty()) return;
-            std::lock_guard lock(g_queuedMutex);
+            fault::Guard lock(g_queuedMutex, L"narration");
             if (g_queued.size() > 512) g_queued.clear();
             Queued& queued = g_queued[owner];
             if (priority == L"UI.TTS.Button")
@@ -133,7 +134,7 @@ namespace da::narration
     std::wstring LabelFor(UObject* owner, double maxAgeSeconds)
     {
         if (!owner) return {};
-        std::lock_guard lock(g_queuedMutex);
+        fault::Guard lock(g_queuedMutex, L"narration");
         const auto it = g_queued.find(owner);
         if (it == g_queued.end() || it->second.labelAt < 0.0 || gamethread::NowSeconds() - it->second.labelAt > maxAgeSeconds) return {};
         return it->second.label;
@@ -142,7 +143,7 @@ namespace da::narration
     std::wstring PageNameFor(UObject* page)
     {
         if (!page) return {};
-        std::lock_guard lock(g_queuedMutex);
+        fault::Guard lock(g_queuedMutex, L"narration");
         const auto it = g_queued.find(page);
         return it == g_queued.end() ? std::wstring() : it->second.pageName;
     }

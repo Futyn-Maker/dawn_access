@@ -1,5 +1,6 @@
 #include "core/ParamReader.hpp"
 
+#include "core/Fault.hpp"
 #include "core/Log.hpp"
 
 #include <mutex>
@@ -17,7 +18,7 @@ namespace da::params
     {
         if (!function) return nullptr;
         {
-            std::lock_guard lock(g_mutex);
+            fault::Guard lock(g_mutex, L"params");
             const auto f = g_cache.find(function);
             if (f != g_cache.end())
             {
@@ -35,7 +36,7 @@ namespace da::params
                 break;
             }
         }
-        std::lock_guard lock(g_mutex);
+        fault::Guard lock(g_mutex, L"params");
         g_cache[function][std::wstring(name)] = found;
         return found;
     }

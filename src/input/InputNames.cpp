@@ -1,5 +1,6 @@
 #include "input/InputNames.hpp"
 
+#include "core/Fault.hpp"
 #include "core/GameThread.hpp"
 #include "core/Log.hpp"
 #include "core/ObjectUtil.hpp"
@@ -102,7 +103,7 @@ namespace da::input
         UObject* ActionByName(const std::wstring& name)
         {
             {
-                std::lock_guard lock(g_mutex);
+                fault::Guard lock(g_mutex, L"input");
                 const auto it = g_actions.find(name);
                 if (it != g_actions.end() && obj::IsLive(it->second)) return it->second;
             }
@@ -117,7 +118,7 @@ namespace da::input
             }
             if (found)
             {
-                std::lock_guard lock(g_mutex);
+                fault::Guard lock(g_mutex, L"input");
                 g_actions[name] = found;
             }
             return found;
@@ -350,7 +351,7 @@ namespace da::input
         const Vendor vendor = GameVendor();
         const std::wstring cacheKey = (vendor == Vendor::PlayStation ? L"ps\n" : L"xbox\n") + name;
         {
-            std::lock_guard lock(g_mutex);
+            fault::Guard lock(g_mutex, L"input");
             const auto it = g_keyNameCache.find(cacheKey);
             if (it != g_keyNameCache.end()) return it->second;
         }
@@ -365,7 +366,7 @@ namespace da::input
         if (result.empty()) result = EngineDisplayName(name);
         // 3. Humanized engine key name.
         if (result.empty()) result = Humanize(name);
-        std::lock_guard lock(g_mutex);
+        fault::Guard lock(g_mutex, L"input");
         g_keyNameCache[cacheKey] = result;
         return result;
     }
@@ -398,7 +399,7 @@ namespace da::input
         // The words depend on the device and on the make of the pad the game draws for.
         const auto cacheKey = std::make_pair(static_cast<int>(scheme) + (GameVendor() == Vendor::PlayStation ? 16 : 0), action);
         {
-            std::lock_guard lock(g_mutex);
+            fault::Guard lock(g_mutex, L"input");
             const auto it = g_actionCache.find(cacheKey);
             if (it != g_actionCache.end()) return it->second;
         }
@@ -407,7 +408,7 @@ namespace da::input
         // Nothing found is not remembered: the action's context may not be applied yet.
         if (!display.empty())
         {
-            std::lock_guard lock(g_mutex);
+            fault::Guard lock(g_mutex, L"input");
             g_actionCache[cacheKey] = display;
         }
         return display;
@@ -420,14 +421,14 @@ namespace da::input
         {
             const auto cacheKey = std::make_pair(static_cast<int>(scheme), action);
             {
-                std::lock_guard lock(g_mutex);
+                fault::Guard lock(g_mutex, L"input");
                 const auto it = g_schemeKeysCache.find(cacheKey);
                 if (it != g_schemeKeysCache.end()) return it->second;
             }
             const auto keys = SchemeKeys(action, scheme);
             if (!keys.empty())
             {
-                std::lock_guard lock(g_mutex);
+                fault::Guard lock(g_mutex, L"input");
                 g_schemeKeysCache[cacheKey] = keys;
             }
             return keys;
@@ -486,7 +487,7 @@ namespace da::input
 
     void InvalidateCache()
     {
-        std::lock_guard lock(g_mutex);
+        fault::Guard lock(g_mutex, L"input");
         g_actionCache.clear();
         g_schemeKeysCache.clear();
         g_keyNameCache.clear();
@@ -697,7 +698,7 @@ namespace da::input
         // The Sony pad the game read within the last half second, in XInput's layout.
         bool SonyPad(XInputGamepad& out)
         {
-            std::lock_guard lock(g_sceMutex);
+            fault::Guard lock(g_sceMutex, L"input.scepad");
             if (!g_sceConnected || NowMs() - g_sceReadAt > 500) return false;
             out = g_sceLast;
             return true;
@@ -908,7 +909,7 @@ namespace da::input
                 bool any = false;
                 for (const bool c : g_sceHandleConnected)
                     any = any || c;
-                std::lock_guard lock(g_sceMutex);
+                fault::Guard lock(g_sceMutex, L"input.scepad");
                 g_sceConnected = any;
                 return;
             }
@@ -916,7 +917,7 @@ namespace da::input
             const XInputGamepad real = SceToXInput(*head);
             if (last)
             {
-                std::lock_guard lock(g_sceMutex);
+                fault::Guard lock(g_sceMutex, L"input.scepad");
                 g_sceLast = real;
                 g_sceReadAt = NowMs();
                 g_sceConnected = true;

@@ -1,6 +1,8 @@
 #include "core/Config.hpp"
 #include "core/Strings.hpp"
 
+#include "core/Fault.hpp"
+
 #include <algorithm>
 #include <fstream>
 #include <iterator>
@@ -152,7 +154,7 @@ namespace da::cfg
     Settings LoadSettings(const std::wstring& path, std::wstring* error)
     {
         {
-            std::lock_guard lock(g_mutex);
+            fault::Guard lock(g_mutex, L"config");
             g_path = path;
         }
         Settings s;
@@ -199,7 +201,7 @@ namespace da::cfg
 
     bool Persist(std::wstring_view section, std::wstring_view key, std::wstring_view value)
     {
-        std::lock_guard lock(g_mutex);
+        fault::Guard lock(g_mutex, L"config");
         if (g_path.empty()) return false;
         std::ifstream in(g_path, std::ios::binary);
         if (!in) return false;
@@ -274,7 +276,7 @@ namespace da::cfg
 
     void Set(Settings settings)
     {
-        std::lock_guard lock(g_mutex);
+        fault::Guard lock(g_mutex, L"config");
         g_settings = std::move(settings);
     }
 

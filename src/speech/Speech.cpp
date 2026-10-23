@@ -1,6 +1,7 @@
 #include "speech/Speech.hpp"
 
 #include "core/Config.hpp"
+#include "core/Fault.hpp"
 #include "core/Gate.hpp"
 #include "core/Log.hpp"
 #include "core/Strings.hpp"
@@ -103,7 +104,7 @@ namespace da::speech
 
     void Init()
     {
-        std::lock_guard lock(g_mutex);
+        fault::Guard lock(g_mutex, L"speech");
         g_lastSpoken.clear();
         g_lastMessage.clear();
     }
@@ -112,7 +113,7 @@ namespace da::speech
     {
         const std::wstring text = Clean(raw);
         if (text.empty() || !Says(text)) return;
-        std::lock_guard lock(g_mutex);
+        fault::Guard lock(g_mutex, L"speech");
         if (text == g_lastSpoken && MsSince(g_lastSpokenAt) < cfg::Get().focusDedupeMs)
         {
             log::Trace(L"speech: focus dedupe \"{}\"", text);
@@ -130,7 +131,7 @@ namespace da::speech
     {
         const std::wstring text = Clean(raw);
         if (text.empty() || !Says(text)) return;
-        std::lock_guard lock(g_mutex);
+        fault::Guard lock(g_mutex, L"speech");
         OutputNow(text, false, L"announce");
     }
 
@@ -138,27 +139,27 @@ namespace da::speech
     {
         const std::wstring text = Clean(raw);
         if (text.empty() || !Says(text)) return;
-        std::lock_guard lock(g_mutex);
+        fault::Guard lock(g_mutex, L"speech");
         OutputNow(text, true, L"now");
     }
 
     void Stop()
     {
-        std::lock_guard lock(g_mutex);
+        fault::Guard lock(g_mutex, L"speech");
         outputs::Silence();
         log::Info(L"speech: stopped");
     }
 
     void StopForKey(std::wstring_view key)
     {
-        std::lock_guard lock(g_mutex);
+        fault::Guard lock(g_mutex, L"speech");
         outputs::Silence();
         log::Verbose(L"speech: stopped by {}", key);
     }
 
     void Repeat()
     {
-        std::lock_guard lock(g_mutex);
+        fault::Guard lock(g_mutex, L"speech");
         if (g_history.empty() || !gate::IsOn()) return;
         const std::wstring last = g_history.back();
         log::Say(L"repeat", last);
@@ -168,7 +169,7 @@ namespace da::speech
 
     std::wstring Last()
     {
-        std::lock_guard lock(g_mutex);
+        fault::Guard lock(g_mutex, L"speech");
         return g_lastMessage;
     }
 
@@ -176,7 +177,7 @@ namespace da::speech
     {
         const std::wstring text = str::CollapseWhitespace(Clean(raw));
         if (text.empty()) return true;
-        std::lock_guard lock(g_mutex);
+        fault::Guard lock(g_mutex, L"speech");
         for (auto it = g_recent.rbegin(); it != g_recent.rend(); ++it)
         {
             if (MsSince(it->first) > static_cast<long long>(seconds * 1000.0)) break;
@@ -187,7 +188,7 @@ namespace da::speech
 
     void ToggleOutput()
     {
-        std::lock_guard lock(g_mutex);
+        fault::Guard lock(g_mutex, L"speech");
         const std::wstring reader = outputs::ReaderName();
         // Without a screen reader the choice makes no difference: SAPI speaks either way.
         if (reader.empty() || !outputs::SapiAvailable())
@@ -204,13 +205,13 @@ namespace da::speech
 
     void SetPreferSapi(bool prefer)
     {
-        std::lock_guard lock(g_mutex);
+        fault::Guard lock(g_mutex, L"speech");
         g_preferSapi = prefer;
     }
 
     std::wstring OutputName()
     {
-        std::lock_guard lock(g_mutex);
+        fault::Guard lock(g_mutex, L"speech");
         if (SapiSpeaks()) return L"SAPI";
         return outputs::ReaderName();
     }

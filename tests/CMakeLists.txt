@@ -28,9 +28,11 @@ add_executable(tests
     HotkeyTableTests.cpp
     DescribeTests.cpp
     SymbolsTests.cpp
+    FaultTests.cpp
     "${DA_SRC}/core/Strings.cpp"
     "${DA_SRC}/core/Config.cpp"
     "${DA_SRC}/core/Symbols.cpp"
+    "${DA_SRC}/core/Fault.cpp"
     "${DA_SRC}/locale/Locale.cpp"
     "${DA_SRC}/hotkeys/KeySpec.cpp"
     "${DA_SRC}/hotkeys/HotkeyTable.cpp"

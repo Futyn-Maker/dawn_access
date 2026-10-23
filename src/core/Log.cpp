@@ -1,6 +1,8 @@
 #include "core/Log.hpp"
 #include "core/Strings.hpp"
 
+#include "core/Fault.hpp"
+
 #include <DynamicOutput/DynamicOutput.hpp>
 
 #include <windows.h>
@@ -56,7 +58,7 @@ namespace da::log
 
     void Init(const std::wstring& logFilePath, bool fileEnabled, Level level)
     {
-        std::lock_guard lock(g_mutex);
+        fault::Guard lock(g_mutex, L"log");
         g_level = static_cast<int>(level);
         if (fileEnabled)
         {
@@ -77,7 +79,7 @@ namespace da::log
 
     void Shutdown()
     {
-        std::lock_guard lock(g_mutex);
+        fault::Guard lock(g_mutex, L"log");
         if (g_file)
         {
             fclose(g_file);
@@ -162,7 +164,7 @@ namespace da::log
             RC::Output::send<RC::LogLevel::Default>(STR("[DawnAccess] {}\n"), std::wstring(text));
         }
 
-        std::lock_guard lock(g_mutex);
+        fault::Guard lock(g_mutex, L"log");
         if (!g_file) return;
         const std::string utf8 = str::WideToUtf8(line) + "\n";
         fwrite(utf8.data(), 1, utf8.size(), g_file);

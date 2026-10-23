@@ -1,5 +1,6 @@
 #include "locale/GameText.hpp"
 
+#include "core/Fault.hpp"
 #include "core/Log.hpp"
 #include "core/ObjectUtil.hpp"
 #include "core/Strings.hpp"
@@ -115,11 +116,11 @@ namespace da::gametext
     std::wstring CurrentCulture()
     {
         {
-            std::lock_guard lock(g_mutex);
+            fault::Guard lock(g_mutex, L"gametext");
             if (!g_culture.empty() && std::chrono::steady_clock::now() - g_cultureAt < std::chrono::seconds(1)) return g_culture;
         }
         const std::wstring culture = AskCulture();
-        std::lock_guard lock(g_mutex);
+        fault::Guard lock(g_mutex, L"gametext");
         g_culture = culture;
         g_cultureAt = std::chrono::steady_clock::now();
         return g_culture;
@@ -145,7 +146,7 @@ namespace da::gametext
         if (key.empty()) return {};
         const std::wstring k(key);
         {
-            std::lock_guard lock(g_mutex);
+            fault::Guard lock(g_mutex, L"gametext");
             const auto it = g_cache.find(k);
             if (it != g_cache.end()) return it->second;
         }
@@ -155,7 +156,7 @@ namespace da::gametext
             result = FromTable(table, k);
             if (!result.empty()) break;
         }
-        std::lock_guard lock(g_mutex);
+        fault::Guard lock(g_mutex, L"gametext");
         g_cache[k] = result;
         return result;
     }
@@ -168,7 +169,7 @@ namespace da::gametext
 
     void ClearCache()
     {
-        std::lock_guard lock(g_mutex);
+        fault::Guard lock(g_mutex, L"gametext");
         g_cache.clear();
         g_culture.clear();
         g_tableIds.clear();

@@ -1,6 +1,7 @@
 #include "locale/Locale.hpp"
 
 #include "core/Config.hpp"
+#include "core/Fault.hpp"
 #include "core/Log.hpp"
 #include "core/Strings.hpp"
 
@@ -67,7 +68,7 @@ namespace da::locale
 
     bool LoadTables(const std::wstring& langDir, std::wstring_view localeCode)
     {
-        std::lock_guard lock(g_mutex);
+        fault::Guard lock(g_mutex, L"locale");
         g_fallback.clear();
         g_current.clear();
         g_missingInOverlay.clear();
@@ -111,7 +112,7 @@ namespace da::locale
 
     std::wstring CurrentCode()
     {
-        std::lock_guard lock(g_mutex);
+        fault::Guard lock(g_mutex, L"locale");
         return g_code;
     }
 
@@ -147,7 +148,7 @@ namespace da::locale
 
     std::wstring Mod(std::wstring_view key)
     {
-        std::lock_guard lock(g_mutex);
+        fault::Guard lock(g_mutex, L"locale");
         return LookupLocked(key);
     }
 
@@ -155,7 +156,7 @@ namespace da::locale
     {
         std::wstring pattern;
         {
-            std::lock_guard lock(g_mutex);
+            fault::Guard lock(g_mutex, L"locale");
             pattern = LookupLocked(key);
         }
         return str::Format(pattern, args);
@@ -173,20 +174,20 @@ namespace da::locale
 
     bool Has(std::wstring_view key)
     {
-        std::lock_guard lock(g_mutex);
+        fault::Guard lock(g_mutex, L"locale");
         const std::wstring k = str::ToLower(key);
         return g_current.contains(k) || g_fallback.contains(k);
     }
 
     size_t Count()
     {
-        std::lock_guard lock(g_mutex);
+        fault::Guard lock(g_mutex, L"locale");
         return g_fallback.size();
     }
 
     std::vector<std::wstring> MissingKeys()
     {
-        std::lock_guard lock(g_mutex);
+        fault::Guard lock(g_mutex, L"locale");
         return g_missingInOverlay;
     }
 }

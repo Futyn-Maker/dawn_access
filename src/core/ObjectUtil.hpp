@@ -147,11 +147,11 @@ namespace da::obj
     // (slot parents, hopping from a widget-tree root to its owning user widget).
     bool IsDescendantOf(UObject* widget, UObject* ancestor);
 
-    // Runs `fn(context)` guarded against memory faults from stale game pointers, so a
-    // widget that dies mid-walk costs one skipped frame instead of the process.
+    // Runs `fn(context)` under the fault boundary of core/Fault: a widget that dies mid-walk
+    // costs one skipped frame instead of the process, and nothing stays locked behind it.
     // `fn` must be a captureless function; keep C++ objects inside it, not around it.
-    bool SafeInvoke(void (*fn)(void*), void* context) noexcept;
-    // The same, with a fault written to the log (at most once in five seconds per name).
+    bool SafeInvoke(void (*fn)(void*), void* context);
+    // The same, with the fault written to the log (at most once in five seconds per name).
     bool SafeInvokeLogged(const wchar_t* name, void (*fn)(void*), void* context);
 
     // Well-known objects (cached, validated)

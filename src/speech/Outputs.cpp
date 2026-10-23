@@ -1,5 +1,6 @@
 #include "speech/Outputs.hpp"
 
+#include "core/Fault.hpp"
 #include "core/Log.hpp"
 #include "core/Strings.hpp"
 #include "speech/PrismBridge.hpp"
@@ -77,7 +78,7 @@ namespace da::outputs
 
         void SetVoiceName(const std::wstring& name)
         {
-            std::lock_guard lock(g_stateMutex);
+            fault::Guard lock(g_stateMutex, L"outputs.state");
             g_voiceName = name;
         }
 
@@ -97,7 +98,7 @@ namespace da::outputs
             }
             std::wstring previous;
             {
-                std::lock_guard lock(g_stateMutex);
+                fault::Guard lock(g_stateMutex, L"outputs.state");
                 previous = g_readerName;
                 g_readerName = name;
             }
@@ -405,7 +406,7 @@ namespace da::outputs
                 {
                     Request request;
                     {
-                        std::lock_guard lock(g_queueMutex);
+                        fault::Guard lock(g_queueMutex, L"outputs.queue");
                         if (g_queue.empty()) break;
                         request = std::move(g_queue.front());
                         g_queue.pop_front();
@@ -433,7 +434,7 @@ namespace da::outputs
         void Post(Request&& request)
         {
             {
-                std::lock_guard lock(g_queueMutex);
+                fault::Guard lock(g_queueMutex, L"outputs.queue");
                 // An interrupting line, and a stop, replace the lines that are waiting; the
                 // choice of voice is not speech and stays.
                 if (request.kind == Request::Kind::Silence || (request.kind == Request::Kind::Say && request.interrupt))
@@ -465,7 +466,7 @@ namespace da::outputs
     {
         if (!g_started) return;
         {
-            std::lock_guard lock(g_queueMutex);
+            fault::Guard lock(g_queueMutex, L"outputs.queue");
             g_queue.clear();
         }
         g_quit.store(true);
@@ -484,7 +485,7 @@ namespace da::outputs
 
     std::wstring ReaderName()
     {
-        std::lock_guard lock(g_stateMutex);
+        fault::Guard lock(g_stateMutex, L"outputs.state");
         return g_readerName;
     }
 
@@ -500,7 +501,7 @@ namespace da::outputs
 
     std::wstring SapiVoiceName()
     {
-        std::lock_guard lock(g_stateMutex);
+        fault::Guard lock(g_stateMutex, L"outputs.state");
         return g_voiceName;
     }
 

@@ -1,6 +1,7 @@
 #include "hooks/HookDispatcher.hpp"
 
 #include "core/Config.hpp"
+#include "core/Fault.hpp"
 #include "core/GameThread.hpp"
 #include "core/Log.hpp"
 #include "core/ObjectUtil.hpp"
@@ -143,7 +144,7 @@ namespace da::hooks
             std::vector<Entry*> handlers;
             bool cached = false;
             {
-                std::lock_guard lock(g_mutex);
+                fault::Guard lock(g_mutex, L"hooks");
                 const auto it = cache.find(node);
                 if (it != cache.end())
                 {
@@ -156,7 +157,7 @@ namespace da::hooks
             {
                 functionName = node->GetName();
                 if (!IsSkippedFunctionName(functionName)) handlers = Resolve(entries, node, functionName);
-                std::lock_guard lock(g_mutex);
+                fault::Guard lock(g_mutex, L"hooks");
                 cache[node] = handlers;
             }
 
@@ -187,7 +188,7 @@ namespace da::hooks
             if (!object || !params.Class) return;
             std::vector<ConstructedHandler> matched;
             {
-                std::lock_guard lock(g_mutex);
+                fault::Guard lock(g_mutex, L"hooks");
                 if (g_constructed.empty()) return;
                 const std::wstring cls = obj::ClassName(const_cast<UClass*>(params.Class));
                 for (const auto& entry : g_constructed)
@@ -244,14 +245,14 @@ namespace da::hooks
 
     void OnScript(std::wstring ownerClass, std::wstring function, ScriptHandler handler)
     {
-        std::lock_guard lock(g_mutex);
+        fault::Guard lock(g_mutex, L"hooks");
         g_post.push_back(std::make_unique<Entry>(Entry{std::move(ownerClass), std::move(function), std::move(handler)}));
         g_postCache.clear();
     }
 
     void OnScriptPre(std::wstring ownerClass, std::wstring function, ScriptHandler handler)
     {
-        std::lock_guard lock(g_mutex);
+        fault::Guard lock(g_mutex, L"hooks");
         g_pre.push_back(std::make_unique<Entry>(Entry{std::move(ownerClass), std::move(function), std::move(handler)}));
         g_preCache.clear();
     }
@@ -304,7 +305,7 @@ namespace da::hooks
 
     void OnConstructed(std::wstring className, bool suffix, ConstructedHandler handler)
     {
-        std::lock_guard lock(g_mutex);
+        fault::Guard lock(g_mutex, L"hooks");
         g_constructed.push_back(ConstructedEntry{std::move(className), suffix, std::move(handler)});
     }
 
@@ -330,7 +331,7 @@ namespace da::hooks
 
     size_t ScriptHandlerCount()
     {
-        std::lock_guard lock(g_mutex);
+        fault::Guard lock(g_mutex, L"hooks");
         return g_post.size() + g_pre.size();
     }
 }
