@@ -21,7 +21,6 @@ namespace da::sounds
         ControlLost,   // the game takes the character back
         Interrupt,     // the game offers an interruption, for a moment only
         Timer,         // a clock starts on something the player must answer
-        Collectible,   // a collectible is within reach, for a few seconds
     };
 
     // Prepares the cues at the given volume (0 to 100; 0 keeps the mod silent).

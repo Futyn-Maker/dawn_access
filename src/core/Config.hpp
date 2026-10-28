@@ -41,11 +41,11 @@ namespace da::cfg
 
         // [Exploration]
         bool beacon = true;
+        bool lookSound = true; // the aim sound that leads a look at the thing at hand
         int beaconIntervalMs = 500;
         int exploreRange = 100; // metres
         bool autoTarget = true;
-        int walkDelayMs = 500;         // between the word and the first step
-        bool collectibleHints = false; // the places of the collectibles listed as ways on
+        int walkDelayMs = 500; // between the word and the first step
 
         // [Shooting]
         bool aimSound = true;

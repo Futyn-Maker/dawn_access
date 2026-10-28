@@ -78,10 +78,15 @@ namespace da::obj
 
     // Same readers on raw struct memory (container = struct address).
     bool ReadBoolAt(void* container, FProperty* property, bool& out);
+    // Sets a bool through its property (a bool may be one bit of a byte).
+    bool WriteBoolAt(void* container, FProperty* property, bool value);
     bool ReadIntAt(void* container, FProperty* property, int64_t& out);
     bool ReadFloatAt(void* container, FProperty* property, double& out);
     bool ReadStringAt(void* container, FProperty* property, std::wstring& out);
     bool ReadObjectAt(void* container, FProperty* property, UObject*& out);
+    // Writes a string into an FString property's value (a parameter of a call); an empty
+    // string afterwards gives its memory back.
+    bool WriteStringAt(void* container, FProperty* property, std::wstring_view text);
     // Diagnostic formatting of any property value ("true", "12", "text", "Class Name", "<struct>").
     std::wstring ValueToString(FProperty* property, void* valuePtr, int depth = 0);
 

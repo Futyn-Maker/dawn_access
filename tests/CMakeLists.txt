@@ -29,6 +29,12 @@ add_executable(tests
     DescribeTests.cpp
     SymbolsTests.cpp
     FaultTests.cpp
+    ExploreTextTests.cpp
+    GridPathTests.cpp
+    GroundFileTests.cpp
+    WayListTests.cpp
+    LookTurnTests.cpp
+    HoldTests.cpp
     "${DA_SRC}/core/Strings.cpp"
     "${DA_SRC}/core/Config.cpp"
     "${DA_SRC}/core/Symbols.cpp"
@@ -36,7 +42,13 @@ add_executable(tests
     "${DA_SRC}/locale/Locale.cpp"
     "${DA_SRC}/hotkeys/KeySpec.cpp"
     "${DA_SRC}/hotkeys/HotkeyTable.cpp"
-    "${DA_SRC}/ui/Describe.cpp")
+    "${DA_SRC}/ui/Describe.cpp"
+    "${DA_SRC}/features/ExploreText.cpp"
+    "${DA_SRC}/features/GridPath.cpp"
+    "${DA_SRC}/features/GroundFile.cpp"
+    "${DA_SRC}/features/WayList.cpp"
+    "${DA_SRC}/features/LookTurn.cpp"
+    "${DA_SRC}/features/Hold.cpp")
 
 target_include_directories(tests PRIVATE "${DA_SRC}" "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(tests PRIVATE doctest::doctest)

@@ -2,7 +2,7 @@
 // Mod hotkeys: the keys of hotkeys/HotkeyTable on the keyboard (F5 repeat, F6 read screen,
 // F7 stop, F8 help, F9 subtitle reading on/off, F4 last subtitle line, F3 speech through
 // the screen reader or SAPI, F2 verbosity, F1 the mod off and on, N/P next and previous
-// exploration target, T beacon, K the collectible places, dev keys) and as gamepad chords
+// exploration target, H where it is, G walk, T beacon, dev keys) and as gamepad chords
 // (hold Back and press a face button, a bumper, a trigger, Start or a stick).
 // Keyboard keys are taken by the mod's own low-level keyboard hook ahead of the screen
 // reader and the game (KeyHook.hpp), and polled with GetAsyncKeyState only when the hook

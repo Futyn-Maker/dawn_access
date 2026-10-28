@@ -11,6 +11,8 @@ namespace da::diag
     // Writes every visible user widget with its texts and the top-level widgets on display to
     // Mods\DawnAccess\dumps\screen-<timestamp>.txt and to the log.
     void DumpScreen();
+    // The folder the dumps go to, made if need be; empty before the mod's folder is known.
+    std::wstring DumpsDirectory();
 
     void ToggleTrace();
     // Sets the log level and keeps it in the ini for the next session.

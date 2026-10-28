@@ -179,11 +179,11 @@ namespace da::cfg
         s.soundVolume = ini.GetInt(L"Sounds", L"Volume", s.soundVolume);
         s.readSubtitles = ini.GetBool(L"Subtitles", L"Read", s.readSubtitles);
         s.beacon = ini.GetBool(L"Exploration", L"Beacon", s.beacon);
+        s.lookSound = ini.GetBool(L"Exploration", L"LookSound", s.lookSound);
         s.beaconIntervalMs = ini.GetInt(L"Exploration", L"BeaconIntervalMs", s.beaconIntervalMs);
         s.exploreRange = ini.GetInt(L"Exploration", L"Range", s.exploreRange);
         s.autoTarget = ini.GetBool(L"Exploration", L"AutoTarget", s.autoTarget);
         s.walkDelayMs = ini.GetInt(L"Exploration", L"WalkDelayMs", s.walkDelayMs);
-        s.collectibleHints = ini.GetBool(L"Exploration", L"CollectibleHints", s.collectibleHints);
         s.aimSound = ini.GetBool(L"Shooting", L"AimSound", s.aimSound);
 
         if (const auto* features = ini.Section(L"Features"))

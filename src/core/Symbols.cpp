@@ -61,6 +61,36 @@ namespace da::sym
             {L"UBatesStatusBarWidget.CurrentAnimValue", 0x2cc}, // float
             {L"UBatesStatusBarWidget.TargetAnimValue", 0x2d0},  // float
             {L"UBatesStatusBarWidget.MaxValue", 0x2d4},         // float
+            // The character's binding state, which the game's movement code reads before it
+            // takes the player's input and the glints read before they are drawn.
+            {L"UBatesBindableComponent.BindingState", 0x160}, // uint8 EBindingState
+            // A use location's own flags: the glint is drawn while the first is set, and the
+            // game's interact test asks the others as well.
+            {L"ABatesUseLocation.bIsLinkedActivityEnabled", 0x500},  // bool
+            {L"ABatesUseLocation.bIsLinkedActivitySleeping", 0x501}, // bool
+            {L"ABatesUseLocation.bIsUseLocationEnabled", 0x502},     // bool
+            {L"ABatesUseLocation.bInteractionInProgress", 0x503},    // bool
+            // The camera manager's active layer, an optional byte the game's own exploration
+            // and look-at tests read (IsExplorationCameraActiveLayer: layers 1 to 8).
+            {L"ABatesPlayerCameraManager.ActiveLayer", 0x2438},       // uint8 EBatesCameraLayer
+            {L"ABatesPlayerCameraManager.ActiveLayer.IsSet", 0x2439}, // bool
+            // How many times a trigger volume's action has fired, which the game checks
+            // against TimesCanBeTriggered before it fires again, and keeps in the save.
+            {L"UBatesCharacterTriggerAction.TimesTriggered", 0x58}, // int32
+            // The hold of the character to a path (an optional FBatesLimitedLocomotionState,
+            // 0x110 bytes: Parameters with the spline actor's soft pointer at +0x0 and
+            // AngleLimits at +0x30, the path's Transform at +0x80, the distance along the
+            // spline at +0xe0, the dot limits at +0xe8 and +0xf0), which the movement code
+            // bends the stick by.
+            {L"UBatesCharacterMovementComponent.LimitedLocomotionState", 0x1430},
+            {L"UBatesCharacterMovementComponent.LimitedLocomotionState.IsSet", 0x1540}, // bool
+            // The game's own walk of the character (an optional FAutoLocoState, 0x100 bytes):
+            // while it is set the movement code puts the walk's direction in place of the
+            // player's stick (GetAndUpdateWorldInput, 0x45e1590). A trigger's auto-walk sets it
+            // for the jog to the deer, a stair for the step onto its start.
+            {L"UBatesCharacterMovementComponent.AutoLocoState.IsSet", 0x13e0}, // bool
+            // The camera layer the controller's navigation camera stands on.
+            {L"UBatesNavigationCameraControllerComponent.CameraLayer", 0xcc}, // uint8 EBatesCameraLayer
             // What a level load waits for before the game state turns to Game and the loading
             // screen goes (UBatesLevelStreamingManager::UpdateStreaming broadcasts "finished"
             // only with these flags clear: 2 a streaming request pending, 4 character variants
@@ -76,6 +106,17 @@ namespace da::sym
             {L"UBatesQTEStage.QTEResult", 0x163},   // uint8
             {L"UBatesQTEStage.QTEState", 0x164},    // uint8
             {L"UBatesQTEStage.bHasStarted", 0x189}, // bool
+            // The fade the HUD lays over the picture between scenes: whether it goes to black
+            // (or holds black) rather than coming back from it.
+            {L"UBatesUIFade.bFadeToBlack", 0x2d1}, // bool
+            // The game's interact test (ABatesUseLocation::CanCharacterInteract) asks whether
+            // the character is still blending out of what it was bound to, and the use
+            // location keeps its verdict for the glint's prompt (set by its tick).
+            {L"UBatesBindableCharacterComponent.bIsBlending", 0x220},       // bool
+            {L"ABatesUseLocation.bOverlappingCharacterCanInteract", 0x505}, // bool
+            // A glint is spawned while the player's character stands in its own volume
+            // (ABatesGlint::OnCharacterVolumeStateChanged): only then does the game draw it.
+            {L"ABatesGlint.bIsSpawned", 0x47a}, // bool
             // A glint's widget shows its prompt while the glint's intensity is full, the same
             // moment the glint authorises the press (UBatesGlintWidget::Update, 0x46bf680), fades
             // it in by CurrentShowPrompt, and is going away while bIsDestroying is set. The
@@ -83,6 +124,13 @@ namespace da::sym
             {L"UBatesGlintWidget.bIsShowingPrompt", 0x348},  // bool
             {L"UBatesGlintWidget.bIsDestroying", 0x349},     // bool
             {L"UBatesGlintWidget.CurrentShowPrompt", 0x378}, // float, 0 to 1
+            // The stairs (and every special locomotion) keep a record of each character they
+            // handle: BoundCharacterData, a map of a weak pointer to the character to the record.
+            // A staircase walks the character onto its first step itself
+            // (ABatesStairActivityActor::StartAutoLocoToStartPosition, 0x44f1770) and marks her
+            // record while it does.
+            {L"ABatesSpecialLocoActivityActor.BoundCharacterData", 0x328}, // TMap
+            {L"FStairActivityCharacterData.bIsInAutoLoco", 0x10b},         // bool, in the record
         };
 
         struct CodeViewRecord

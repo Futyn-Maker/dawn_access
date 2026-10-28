@@ -10,6 +10,7 @@
 #include "diag/Diagnostics.hpp"
 #include "features/Choices.hpp"
 #include "features/DontMove.hpp"
+#include "features/Exploration.hpp"
 #include "features/Feature.hpp"
 #include "features/Hud.hpp"
 #include "features/Menus.hpp"
@@ -155,6 +156,7 @@ public:
         da::features::Register(std::make_unique<da::features::ChoicesFeature>());
         da::features::Register(std::make_unique<da::features::QteFeature>());
         da::features::Register(std::make_unique<da::features::DontMoveFeature>());
+        da::features::Register(std::make_unique<da::features::ExplorationFeature>());
 
         Unreal::Hook::FCallbackOptions options{};
         options.bReadonly = true;

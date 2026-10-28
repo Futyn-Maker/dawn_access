@@ -51,7 +51,7 @@ TEST_CASE("LoadSettings keeps the defaults for what the file does not set and re
 {
     TempDir dir;
     const auto path = dir.Write("DawnAccess.ini", "[General]\nVerbosity=brief\n[Hotkeys]\nRepeat=Ctrl+F5\n[Features]\nMenus=0\n[Exploration]\nRange=250\n"
-                                                  "CollectibleHints=1\n[Shooting]\nAimSound=0\n");
+                                                  "[Shooting]\nAimSound=0\n");
     std::wstring error;
     const auto s = cfg::LoadSettings(path.wstring(), &error);
     CHECK(error.empty());
@@ -64,7 +64,6 @@ TEST_CASE("LoadSettings keeps the defaults for what the file does not set and re
     CHECK(s.FeatureEnabled(L"Qte"));
     CHECK(s.exploreRange == 250);
     CHECK(s.beaconIntervalMs == 500);
-    CHECK(s.collectibleHints);
     CHECK_FALSE(s.aimSound);
     CHECK(U8(s.language) == "auto");
 }
@@ -78,7 +77,6 @@ TEST_CASE("LoadSettings on a missing file keeps every default and says so")
     CHECK(s.verbosity == cfg::Verbosity::Full);
     CHECK(U8(s.Hotkey(L"Repeat", L"F5")) == "F5");
     CHECK(s.features.empty());
-    CHECK_FALSE(s.collectibleHints);
     CHECK(s.aimSound);
 }
 

@@ -311,6 +311,11 @@ namespace da::obj
         return false;
     }
 
+    bool WriteBoolAt(void* container, FProperty* property, bool value)
+    {
+        if (!container || !property || PropertyTypeName(property) != L"BoolProperty") return false;
+        static_cast<FBoolProperty*>(property)->SetPropertyValue(property->ContainerPtrToValuePtr<void>(container), value);
+        return true;
     }
 
     bool ReadIntAt(void* container, FProperty* property, int64_t& out)
@@ -898,6 +903,11 @@ namespace da::obj
         return !CallForBool(widget, L"IsInViewport");
     }
 
+    bool WriteStringAt(void* container, FProperty* property, std::wstring_view text)
+    {
+        if (!container || !property || PropertyTypeName(property) != L"StrProperty") return false;
+        *static_cast<FString*>(ValuePtrAt(container, property)) = FString(std::wstring(text).c_str());
+        return true;
     }
 
     std::wstring BoundText(UObject* widget, std::wstring_view property)

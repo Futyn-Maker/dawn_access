@@ -431,6 +431,11 @@ namespace da::diag
         return out;
     }
 
+    std::wstring DumpsDirectory()
+    {
+        return DumpsDir();
+    }
+
     void DumpScreen()
     {
         std::vector<std::wstring> lines;

@@ -26,7 +26,6 @@ namespace da::hotkeys
         Where,
         Walk,
         Beacon,
-        CollectibleHints,
         DevDumpTree,
         DevTrace,
         DevLogLevel,
