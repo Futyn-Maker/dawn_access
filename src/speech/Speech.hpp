@@ -8,6 +8,13 @@
 //   Announce(text) - non-interrupting: the reader says it after what it is already
 //                    saying (screen arrivals, prompts, notifications, subtitles).
 //   Now(text)      - hard interrupt, for what the player asked for directly. No dedupe.
+//   Urgent(text)   - hard interrupt for what the game gives the player a moment to answer
+//                    (the button of a quick-time event): a queued word would come too late.
+//   Hold()         - what the game says by itself waits while such a moment lasts:
+//                    Announce lines are kept in order and said at Release(). Focus lines
+//                    answer the player's own input and are never kept; Now, Urgent and
+//                    Exclusive lines are said at once.
+//   Exclusive(text)- non-interrupting, said even while held: the held moment's own words.
 //   Stop()         - silence everything.
 //   Repeat()       - speak the last utterance again.
 //
@@ -26,6 +33,10 @@ namespace da::speech
     void Focus(std::wstring_view text);
     void Announce(std::wstring_view text);
     void Now(std::wstring_view text);
+    void Urgent(std::wstring_view text);
+    void Hold();
+    void Release();
+    void Exclusive(std::wstring_view text);
     void Stop();
     // Silences everything for a key the player pressed. The log notes it at Verbose only,
     // since the arrows and the D-pad come many times a minute.

@@ -12,9 +12,11 @@
 #include "input/InputNames.hpp"
 #include "locale/Locale.hpp"
 #include "speech/Speech.hpp"
+#include "watch/Watchers.hpp"
 
 #include <windows.h>
 
+#include <atomic>
 #include <map>
 #include <vector>
 
@@ -76,19 +78,38 @@ namespace da::hotkeys
             return (GetAsyncKeyState(vk) & 0x8000) != 0;
         }
 
-        // The name of a key the hook watches, for the log.
-        std::wstring WatchedKeyName(int vk)
+        // The keys that stop speech the moment they go down (HotkeyTable's stop keys), by
+        // virtual-key code with their spelling for the log, and whether each stops only while a
+        // menu page is up.
+        struct WatchedStop
         {
-            switch (vk)
+            int vk;
+            std::wstring name;
+            bool menuOnly;
+        };
+        std::vector<WatchedStop> g_keyboardStops;
+        std::atomic<bool> g_menuUp{false}; // a menu page is up, as the game thread last saw it
+
+        void StopForKeyboardKey(int vk)
+        {
+            for (const auto& stop : g_keyboardStops)
             {
-            case VK_ESCAPE: return L"Escape";
-            case VK_BACK: return L"Backspace";
-            case VK_UP: return L"Up";
-            case VK_DOWN: return L"Down";
-            case VK_LEFT: return L"Left";
-            case VK_RIGHT: return L"Right";
+                if (stop.vk != vk) continue;
+                if (stop.menuOnly && !g_menuUp.load(std::memory_order_relaxed)) return;
+                speech::StopForKey(stop.name);
+                return;
             }
-            return std::to_wstring(vk);
+        }
+
+        void StopForPadKey(std::wstring_view key)
+        {
+            for (const auto& stop : PadStopKeys())
+            {
+                if (key != stop.key) continue;
+                if (stop.menuOnly && !g_menuUp.load(std::memory_order_relaxed)) return;
+                speech::StopForKey(key);
+                return;
+            }
         }
 
         void PollKeyboard()
@@ -257,15 +278,21 @@ namespace da::hotkeys
             bindings.push_back(keyhook::Binding{g_keys[i].key.vk, g_keys[i].key.ctrl, g_keys[i].key.alt, g_keys[i].key.shift, static_cast<int>(i),
                                                 scope == Scope::Context, scope == Scope::Switch});
         }
-        // The keys that move the selection or leave a screen stay the game's; the mod only
-        // answers each, by stopping what is being said the moment it goes down, whether or
-        // not the game answers it with anything new: a list moves on at once, and a screen
-        // the player is leaving is not still being read over the one they arrive at. Only
-        // the hook can do this: it runs before the game is given the key, so the stop always
-        // lands before whatever the new screen says, while a polled key could arrive after
-        // the new screen had been announced and silence that instead. Every other key only
-        // lets the next answer interrupt (speech::Focus).
-        keyhook::Watch({VK_ESCAPE, VK_BACK, VK_UP, VK_DOWN, VK_LEFT, VK_RIGHT}, [](int vk) { speech::StopForKey(WatchedKeyName(vk)); });
+        // The keys that stop what is being said (HotkeyTable's stop keys) are answered by the
+        // hook: it runs before the game is given the key, so the stop always lands before
+        // whatever the press brings up, while a polled key could arrive after the new screen
+        // had been announced and silence that instead. Every other key only lets the next
+        // answer interrupt (speech::Focus).
+        g_keyboardStops.clear();
+        std::vector<int> stopVks;
+        for (const auto& stop : KeyboardStopKeys())
+        {
+            KeySpec key;
+            if (!ParseKeySpec(stop.key, key)) continue;
+            g_keyboardStops.push_back({key.vk, stop.key, stop.menuOnly});
+            stopVks.push_back(key.vk);
+        }
+        keyhook::Watch(stopVks, &StopForKeyboardKey);
         if (keyhook::Install(bindings))
             log::Info(L"keyboard hook installed: the mod's keys are taken ahead of the screen reader and the game");
         else
@@ -273,13 +300,13 @@ namespace da::hotkeys
 
         g_padHold = ChordHold();
         input::SetChordHold(g_padHold);
-        // The pad's own keys for the same: the D-pad, B and Start, answered where the game
-        // reads its pad, which is before it acts on them. The sticks are never among them: a
-        // walk holds one for seconds, and a stick the game answers with a new selection is
-        // answered by the reading of that selection.
-        input::WatchPadButtons(
-            {L"Gamepad_DPad_Up", L"Gamepad_DPad_Down", L"Gamepad_DPad_Left", L"Gamepad_DPad_Right", L"Gamepad_FaceButton_Right", L"Gamepad_Special_Right"},
-            [](std::wstring_view key) { speech::StopForKey(key); });
+        // The pad's own stop keys, answered where the game reads its pad, which is before it
+        // acts on them. A button pressed under the chord hold is hidden from that reading and
+        // so stops nothing: the chord's own answer is said.
+        std::vector<std::wstring> stopButtons;
+        for (const auto& stop : PadStopKeys())
+            stopButtons.emplace_back(stop.key);
+        input::WatchPadButtons(stopButtons, &StopForPadKey);
         g_padBindings.clear();
         if (!g_padHold.empty())
         {
@@ -304,6 +331,7 @@ namespace da::hotkeys
                               {
                                   PollKeyboard();
                                   PollPad();
+                                  g_menuUp.store(watch::CurrentScreen() != nullptr, std::memory_order_relaxed);
                               });
     }
 

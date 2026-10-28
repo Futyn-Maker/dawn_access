@@ -61,4 +61,18 @@ namespace da::hotkeys
     std::span<const Hotkey> Table();
     const Hotkey& Of(Command command);
     std::wstring_view CommandName(Command command);
+
+    // A key of the game's that stops what is being said the moment it goes down, whether or
+    // not the game answers it with anything new: the keys that move a selection, leave a screen,
+    // turn a menu's tabs, or select, skip and use (the cross or A button, Enter, Space). A list
+    // moves on at once, a screen being left is not still read over the one arrived at, and what
+    // the press brings up is said after it, since the stop comes before the game is given the
+    // key. The keys stay the game's: the mod only answers them.
+    struct StopKey
+    {
+        const wchar_t* key; // a keyboard spelling ParseKeySpec reads, or an engine key name of the pad
+        bool menuOnly;      // stops only while a menu page is up: in play the key is the game's for something else
+    };
+    std::span<const StopKey> KeyboardStopKeys();
+    std::span<const StopKey> PadStopKeys();
 }

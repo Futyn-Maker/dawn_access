@@ -47,4 +47,29 @@ namespace da::hotkeys
     {
         return Of(command).name;
     }
+
+    // The game's menus turn their tabs with Q and E and the bumpers (IA_UI_TabLeft and
+    // IA_UI_TabRight in MC_Menu), where a new tab is read at once; in play E is the key to
+    // interact and the right bumper opens the collectibles, whose page then reads itself. The
+    // game offers no remapping of its menu keys, so they are fixed here like the others. The
+    // sticks are never among them: a walk holds one for seconds, and a stick the game answers
+    // with a new selection is answered by the reading of that selection.
+    std::span<const StopKey> KeyboardStopKeys()
+    {
+        static constexpr StopKey keys[] = {
+            {L"Escape", false}, {L"Backspace", false}, {L"Up", false},    {L"Down", false}, {L"Left", false},
+            {L"Right", false},  {L"Enter", false},     {L"Space", false}, {L"Q", true},     {L"E", true},
+        };
+        return keys;
+    }
+
+    std::span<const StopKey> PadStopKeys()
+    {
+        static constexpr StopKey keys[] = {
+            {L"Gamepad_DPad_Up", false},       {L"Gamepad_DPad_Down", false},         {L"Gamepad_DPad_Left", false},
+            {L"Gamepad_DPad_Right", false},    {L"Gamepad_FaceButton_Bottom", false}, {L"Gamepad_FaceButton_Right", false},
+            {L"Gamepad_Special_Right", false}, {L"Gamepad_LeftShoulder", true},       {L"Gamepad_RightShoulder", true},
+        };
+        return keys;
+    }
 }

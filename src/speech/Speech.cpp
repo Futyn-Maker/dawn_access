@@ -33,6 +33,14 @@ namespace da::speech
         constexpr long long kRecentMs = 120'000;
         bool g_preferSapi = false;
 
+        // The lines kept while held, with their policies, and since when the hold stands: a
+        // hold nobody lets go of (its mechanic gone without an ending) lapses by itself.
+        bool g_held = false;
+        Clock::time_point g_heldAt{};
+        std::deque<std::pair<std::wstring, std::wstring>> g_heldLines;
+        constexpr long long kHoldLapseMs = 15'000;
+        constexpr size_t kHeldMost = 12;
+
         // SAPI speaks when no screen reader runs, and when the player prefers it to theirs.
         bool SapiSpeaks()
         {
@@ -100,6 +108,34 @@ namespace da::speech
             log::Verbose(L"speech: dropped while the mod is off: \"{}\"", text);
             return false;
         }
+
+        // Says the lines kept by a hold, in order. Called under the lock.
+        void FlushHeld()
+        {
+            g_held = false;
+            while (!g_heldLines.empty())
+            {
+                const auto [policy, text] = g_heldLines.front();
+                g_heldLines.pop_front();
+                OutputNow(text, false, policy.c_str());
+            }
+        }
+
+        // Whether a line the game says by itself is kept for later. Called under the lock.
+        bool KeptByHold(const std::wstring& text, const wchar_t* policy)
+        {
+            if (!g_held) return false;
+            if (MsSince(g_heldAt) > kHoldLapseMs)
+            {
+                log::Info(L"speech: the hold lapsed after {} s", kHoldLapseMs / 1000);
+                FlushHeld();
+                return false;
+            }
+            if (g_heldLines.size() >= kHeldMost) g_heldLines.pop_front();
+            g_heldLines.emplace_back(policy, text);
+            log::Verbose(L"speech: held \"{}\"", text);
+            return true;
+        }
     }
 
     void Init()
@@ -132,7 +168,33 @@ namespace da::speech
         const std::wstring text = Clean(raw);
         if (text.empty() || !Says(text)) return;
         fault::Guard lock(g_mutex, L"speech");
+        if (KeptByHold(text, L"announce")) return;
         OutputNow(text, false, L"announce");
+    }
+
+    void Hold()
+    {
+        fault::Guard lock(g_mutex, L"speech");
+        if (g_held) return;
+        g_held = true;
+        g_heldAt = Clock::now();
+        log::Verbose(L"speech: what the game says by itself is held");
+    }
+
+    void Release()
+    {
+        fault::Guard lock(g_mutex, L"speech");
+        if (!g_held) return;
+        log::Verbose(L"speech: the hold is let go, with {} line(s) kept", g_heldLines.size());
+        FlushHeld();
+    }
+
+    void Exclusive(std::wstring_view raw)
+    {
+        const std::wstring text = Clean(raw);
+        if (text.empty() || !Says(text)) return;
+        fault::Guard lock(g_mutex, L"speech");
+        OutputNow(text, false, L"exclusive");
     }
 
     void Now(std::wstring_view raw)
@@ -143,10 +205,19 @@ namespace da::speech
         OutputNow(text, true, L"now");
     }
 
+    void Urgent(std::wstring_view raw)
+    {
+        const std::wstring text = Clean(raw);
+        if (text.empty() || !Says(text)) return;
+        fault::Guard lock(g_mutex, L"speech");
+        OutputNow(text, true, L"urgent");
+    }
+
     void Stop()
     {
         fault::Guard lock(g_mutex, L"speech");
         outputs::Silence();
+        g_heldLines.clear();
         log::Info(L"speech: stopped");
     }
 

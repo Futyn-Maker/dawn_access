@@ -88,6 +88,76 @@ TEST_CASE("Every default spelling parses, and a chord or pad default is a gamepa
     CHECK(kChordHoldDefault.starts_with(L"Gamepad_"));
 }
 
+TEST_CASE("The stop keys are plain keys of the keyboard and buttons of the pad")
+{
+    std::set<int> vks;
+    for (const auto& stop : KeyboardStopKeys())
+    {
+        INFO(U8(stop.key));
+        KeySpec key;
+        REQUIRE(ParseKeySpec(stop.key, key));
+        CHECK_FALSE(key.ctrl);
+        CHECK_FALSE(key.alt);
+        CHECK_FALSE(key.shift);
+        CHECK(vks.insert(key.vk).second);
+    }
+    std::set<std::wstring> buttons;
+    for (const auto& stop : PadStopKeys())
+    {
+        INFO(U8(stop.key));
+        CHECK(std::wstring_view(stop.key).starts_with(L"Gamepad_"));
+        CHECK(std::wstring_view(stop.key).find(L"Thumbstick") == std::wstring_view::npos);
+        CHECK(buttons.insert(stop.key).second);
+    }
+}
+
+TEST_CASE("Selecting, skipping and using stop speech at once: Enter, Space and the cross or A button")
+{
+    const auto stopsEverywhere = [](std::span<const StopKey> keys, std::wstring_view name)
+    {
+        for (const auto& stop : keys)
+        {
+            if (name == stop.key) return !stop.menuOnly;
+        }
+        return false;
+    };
+    CHECK(stopsEverywhere(KeyboardStopKeys(), L"Enter"));
+    CHECK(stopsEverywhere(KeyboardStopKeys(), L"Space"));
+    CHECK(stopsEverywhere(PadStopKeys(), L"Gamepad_FaceButton_Bottom"));
+    // Moving and leaving, as before.
+    for (const auto* key : {L"Escape", L"Backspace", L"Up", L"Down", L"Left", L"Right"})
+        CHECK(stopsEverywhere(KeyboardStopKeys(), key));
+    for (const auto* key :
+         {L"Gamepad_DPad_Up", L"Gamepad_DPad_Down", L"Gamepad_DPad_Left", L"Gamepad_DPad_Right", L"Gamepad_FaceButton_Right", L"Gamepad_Special_Right"})
+        CHECK(stopsEverywhere(PadStopKeys(), key));
+    // The tab keys stop speech in the menus alone: in play E interacts and the right bumper
+    // opens the collectibles.
+    for (const auto* key : {L"Q", L"E"})
+        CHECK_FALSE(stopsEverywhere(KeyboardStopKeys(), key));
+    CHECK_FALSE(stopsEverywhere(PadStopKeys(), L"Gamepad_RightShoulder"));
+}
+
+TEST_CASE("No stop key is a key of the mod's own or the chord hold")
+{
+    // The mod's keys answer with speech of their own; a stop on the same key would only be
+    // undone by it, and the chord hold must stay silent so the chord's answer is heard.
+    std::set<int> modKeys;
+    for (const auto& hotkey : Table())
+    {
+        KeySpec key;
+        if (*hotkey.key && ParseKeySpec(hotkey.key, key) && !key.ctrl && !key.alt && !key.shift) modKeys.insert(key.vk);
+    }
+    for (const auto& stop : KeyboardStopKeys())
+    {
+        INFO(U8(stop.key));
+        KeySpec key;
+        REQUIRE(ParseKeySpec(stop.key, key));
+        CHECK_FALSE(modKeys.contains(key.vk));
+    }
+    for (const auto& stop : PadStopKeys())
+        CHECK(std::wstring_view(stop.key) != kChordHoldDefault);
+}
+
 TEST_CASE("The mod's switch is one key of the table, on the keyboard and under the chord")
 {
     int switches = 0;
