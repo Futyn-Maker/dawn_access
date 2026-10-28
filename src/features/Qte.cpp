@@ -6,12 +6,14 @@
 #include "core/ObjectUtil.hpp"
 #include "core/ParamReader.hpp"
 #include "core/Strings.hpp"
+#include "core/Symbols.hpp"
 #include "hooks/HookDispatcher.hpp"
 #include "input/InputNames.hpp"
 #include "locale/Locale.hpp"
 #include "speech/Sounds.hpp"
 #include "speech/Speech.hpp"
 #include "ui/Widgets.hpp"
+#include "watch/GameState.hpp"
 #include "watch/Watchers.hpp"
 
 #include <algorithm>
@@ -34,8 +36,9 @@ namespace da::features
         struct Qte
         {
             UObject* widget = nullptr;
-            std::wstring action; // the input action the game asks for
-            std::wstring text;   // what is said for it: the key or button
+            UObject* stage = nullptr; // the activity's QTE stage that drives the widget
+            std::wstring action;      // the input action the game asks for
+            std::wstring text;        // what is said for it: the key or button
             sounds::Cue cue = sounds::Cue::Up;
             double setUpAt = 0.0;
             double spokenAt = -10.0;
@@ -43,6 +46,7 @@ namespace da::features
             bool paused = false;
             bool finished = false;
             bool demonstration = false; // a prompt a settings page shows as an example
+            double hiddenSince = -1.0;  // since when the prompt has not been drawn
         };
         std::vector<Qte> g_qtes;
         std::wstring g_lastDemoText; // a page can show the same example in several places at once
@@ -85,11 +89,45 @@ namespace da::features
             return cue;
         }
 
-        void Speak(Qte& qte, double now)
+        // The game gives a second or so for the press, so the key of a prompt cuts in over
+        // anything being said the first time (a lesson on the sidebar comes up with the first
+        // prompts): queued, it would come after the prompt has gone. While a prompt is up,
+        // what the game says by itself waits (speech::Hold), since a word in the same moment
+        // drowns the key: on 2026-10-24 a choice's "chosen" and a status card came within
+        // 0.2 s of a prompt's key and the player heard only the timeout. The repeats and the
+        // verdict are the prompt's own words; the examples a settings page shows wait their
+        // turn.
+        void Speak(Qte& qte, double now, bool first)
         {
             qte.spokenAt = now;
             sounds::Play(qte.cue);
-            if (!qte.text.empty()) speech::Announce(qte.text);
+            if (qte.text.empty()) return;
+            if (qte.demonstration)
+                speech::Announce(qte.text);
+            else if (first)
+                speech::Urgent(qte.text);
+            else
+                speech::Exclusive(qte.text);
+        }
+
+        bool g_holding = false; // speech is held for a prompt that is up
+
+        // The stage of an activity that drives a prompt: the one whose widget it is. The stage
+        // keeps it before it sets the prompt up.
+        UObject* StageOf(UObject* widget)
+        {
+            for (auto* stage : obj::FindAllLive(L"BatesQTEStage"))
+            {
+                UObject* shown = nullptr;
+                if (obj::ReadObject(stage, L"QTEWidget", shown) && shown == widget) return stage;
+            }
+            return nullptr;
+        }
+
+        int StageByte(UObject* stage, const wchar_t* member)
+        {
+            const auto* p = static_cast<const uint8_t*>(sym::MemberOf(stage, member));
+            return p ? *p : -1;
         }
 
         // The game set a prompt up: the key or button is named by the device in hand and
@@ -114,16 +152,24 @@ namespace da::features
             // A prompt inside a page of the settings is the game's example of what its
             // prompts look like: said once as it is shown, never repeated, never judged.
             qte.demonstration = ui::InsideMenuPage(widget);
+            if (!qte.demonstration) qte.stage = StageOf(widget);
             log::Info(L"qte: {} set up with {} (\"{}\"), warm-up {:.2f} s (from {}){}", obj::ObjectName(widget), actionName, qte.text, warmup, readFrom,
-                      qte.demonstration ? L", a demonstration" : L"");
+                      qte.demonstration ? std::wstring(L", a demonstration")
+                      : qte.stage       ? L", driven by " + obj::ObjectName(qte.stage)
+                                        : std::wstring(L", its stage not found"));
             g_qtes.push_back(qte);
+            if (!qte.demonstration && !g_holding)
+            {
+                g_holding = true;
+                speech::Hold();
+            }
             if (qte.demonstration)
             {
                 if (qte.text == g_lastDemoText && now - g_lastDemoAt < 0.5) return;
                 g_lastDemoText = qte.text;
                 g_lastDemoAt = now;
             }
-            Speak(g_qtes.back(), now);
+            Speak(g_qtes.back(), now, true);
         }
 
         void OnSetUpEvent(UObject* self, FFrame& stack)
@@ -176,6 +222,14 @@ namespace da::features
         {
             if (qte.finished) return;
             qte.finished = true;
+            // Ended with no verdict (the game left its menu or moved on first): no word and no
+            // tone, as the prompt shows none.
+            if (result != kResultSuccess && result != kResultFailure && result != kResultTimeout)
+            {
+                log::Info(L"qte: {} ended with no verdict ({}) after {:.2f} s (from {})", obj::ObjectName(qte.widget), result,
+                          gamethread::NowSeconds() - qte.setUpAt, readFrom);
+                return;
+            }
             const bool success = result == kResultSuccess;
             log::Info(L"qte: {} {} after {:.2f} s (from {}){}", obj::ObjectName(qte.widget),
                       success ? L"succeeded" : (result == kResultTimeout ? L"timed out" : L"failed"), gamethread::NowSeconds() - qte.setUpAt, readFrom,
@@ -183,7 +237,7 @@ namespace da::features
             if (qte.demonstration) return;
             sounds::Play(success ? sounds::Cue::Confirm : sounds::Cue::Fail);
             if (cfg::Detailed())
-                speech::Announce(locale::Mod(success ? L"result.success" : (result == kResultTimeout ? L"result.timeout" : L"result.failure")));
+                speech::Exclusive(locale::Mod(success ? L"result.success" : (result == kResultTimeout ? L"result.timeout" : L"result.failure")));
         }
 
         void OnEndEvent(UObject* self, FFrame& stack)
@@ -213,18 +267,59 @@ namespace da::features
                 Qte& qte = *it;
                 if (!qte.finished)
                 {
-                    // A prompt that went away without a verdict is over.
-                    if (!obj::IsWidgetShown(qte.widget) && now - qte.setUpAt > 1.0)
+                    // The stage that drives the prompt says how it ended: its verdict, which
+                    // the widget's own event has usually told already, or its end with none
+                    // (its widget handed back, or the stage over). The prompt hangs on the
+                    // canvas that follows the world, in no widget tree, so its own flags are
+                    // asked only when the stage is not known.
+                    bool over = false;
+                    // The prompt's own flags, for when the stage says nothing: one not drawn for a
+                    // second and a half (after its first second) is over.
+                    const bool drawn = obj::IsWidgetShown(qte.widget) || ui::LayerWidgetDrawn(qte.widget);
+                    if (drawn || now - qte.setUpAt <= 1.0)
+                        qte.hiddenSince = -1.0;
+                    else if (qte.hiddenSince < 0.0)
+                        qte.hiddenSince = now;
+                    if (qte.stage && obj::IsLive(qte.stage))
                     {
-                        log::Info(L"qte: {} went away without a verdict", obj::ObjectName(qte.widget));
-                        qte.finished = true;
+                        const int verdict = StageByte(qte.stage, L"UBatesQTEStage.QTEResult");
+                        UObject* shown = nullptr;
+                        obj::ReadObject(qte.stage, L"QTEWidget", shown);
+                        if (verdict > 0)
+                        {
+                            Finish(qte, verdict, L"the stage");
+                            over = true;
+                        }
+                        else if (shown != qte.widget || StageByte(qte.stage, L"UBatesQTEStage.bHasStarted") == 0)
+                        {
+                            Finish(qte, 0, L"the stage, which moved on");
+                            over = true;
+                        }
                     }
-                    else if (!qte.paused && !qte.demonstration && now - qte.spokenAt >= 1.0)
+                    if (!over && qte.hiddenSince >= 0.0 && now - qte.hiddenSince > (qte.stage ? 1.5 : 0.0))
                     {
-                        Speak(qte, now);
+                        Finish(qte, 0, L"the prompt, which went away");
+                        over = true;
                     }
+                    if (!over && !qte.paused && !qte.demonstration && now - qte.spokenAt >= 1.0) Speak(qte, now, false);
                 }
                 ++it;
+            }
+            // What the game says by itself is held while a prompt is up and running in play with no
+            // screen over it; a paused prompt, a menu or a lesson brought up over it lets the game
+            // speak. Once none is, what was held is said, after the verdict.
+            const bool hold =
+                gamestate::InPlay() && !watch::CurrentScreen() &&
+                std::any_of(g_qtes.begin(), g_qtes.end(), [](const Qte& q) { return !q.finished && !q.demonstration && !q.paused && obj::IsLive(q.widget); });
+            if (hold && !g_holding)
+            {
+                g_holding = true;
+                speech::Hold();
+            }
+            else if (!hold && g_holding)
+            {
+                g_holding = false;
+                speech::Release();
             }
         }
 
@@ -260,5 +355,10 @@ namespace da::features
     {
         if (std::none_of(g_qtes.begin(), g_qtes.end(), [](const Qte& q) { return obj::IsLive(q.widget) && !q.finished && !q.demonstration; })) return;
         out.push_back(locale::Mod(input::CurrentScheme() == input::Scheme::Gamepad ? L"help.qte.pad" : L"help.qte"));
+    }
+
+    bool QteInProgress()
+    {
+        return std::any_of(g_qtes.begin(), g_qtes.end(), [](const Qte& q) { return !q.finished && !q.demonstration && obj::IsLive(q.widget); });
     }
 }

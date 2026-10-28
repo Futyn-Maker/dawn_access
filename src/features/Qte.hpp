@@ -22,4 +22,7 @@ namespace da::features
         void Describe(std::vector<std::wstring>& out) override;
         void Help(std::vector<std::wstring>& out) override;
     };
+
+    // True while a quick-time event of the game's is running.
+    bool QteInProgress();
 }

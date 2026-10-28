@@ -29,6 +29,8 @@ TEST_CASE("the members known by offset are in the table, and nothing else answer
     CHECK(Offset(L"UBMTTSQueueItem.Priority") < Offset(L"UBMTTSQueueItem.PriorityTag"));
     CHECK(Offset(L"UBMTTSQueueItem.PriorityTag") < Offset(L"UBMTTSQueueItem.TTSLine"));
     CHECK(Offset(L"UBatesLevelStreamingManager.StreamingFlags") == 0xd0);
+    CHECK(Offset(L"UBatesQTEStage.QTEResult") + 1 == Offset(L"UBatesQTEStage.QTEState"));
+    CHECK(Offset(L"UBatesQTEStage.bHasStarted") == 0x189);
     CHECK(Offset(L"UBatesShaderCacheSubsystem.CompilationMode") < Offset(L"UBatesShaderCacheSubsystem.PrecompilesTotal"));
     CHECK(Offset(L"UBatesGlintWidget.bIsShowingPrompt") + 1 == Offset(L"UBatesGlintWidget.bIsDestroying"));
     CHECK(Offset(L"UBatesGlintWidget.CurrentShowPrompt") == 0x378);

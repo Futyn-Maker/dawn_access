@@ -23,4 +23,7 @@ namespace da::features
         void Describe(std::vector<std::wstring>& out) override;
         void Help(std::vector<std::wstring>& out) override;
     };
+
+    // True while a Stay Calm encounter is running.
+    bool DontMoveInProgress();
 }

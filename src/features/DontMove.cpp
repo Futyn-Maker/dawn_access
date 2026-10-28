@@ -559,4 +559,9 @@ namespace da::features
             return;
         }
     }
+
+    bool DontMoveInProgress()
+    {
+        return std::any_of(g_encounters.begin(), g_encounters.end(), [](const Encounter& e) { return e.started && !e.finished && obj::IsLive(e.widget); });
+    }
 }

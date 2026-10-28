@@ -69,6 +69,13 @@ namespace da::sym
             {L"UBatesLevelStreamingManager.StreamingFlags", 0xd0},  // uint8
             {L"UBatesShaderCacheSubsystem.CompilationMode", 0x60},  // int32
             {L"UBatesShaderCacheSubsystem.PrecompilesTotal", 0x88}, // int32
+            // A quick-time event's stage: its verdict (EBatesQTEResult, set by FinishQTE before
+            // it tells the widget), its state (0 none, 1 warm-up, 2 running) and whether it has
+            // begun; a stage that moves on with no verdict (its end marker reached first) only
+            // takes its widget off the screen, and the game counts the event as failed.
+            {L"UBatesQTEStage.QTEResult", 0x163},   // uint8
+            {L"UBatesQTEStage.QTEState", 0x164},    // uint8
+            {L"UBatesQTEStage.bHasStarted", 0x189}, // bool
             // A glint's widget shows its prompt while the glint's intensity is full, the same
             // moment the glint authorises the press (UBatesGlintWidget::Update, 0x46bf680), fades
             // it in by CurrentShowPrompt, and is going away while bIsDestroying is set. The

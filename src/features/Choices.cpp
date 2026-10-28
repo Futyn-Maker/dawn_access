@@ -38,7 +38,8 @@ namespace da::features
             std::wstring subText;
             bool timed = false;
             double selection = 0.0; // how far the player has held toward it
-            bool heldSaid = false;  // its words said as the player began to hold toward it
+            double peak = 0.0;      // the most the ring has filled since this hold began
+            bool emptying = false;  // the ring has run a good part of the way down since
         };
 
         // A choice: the options set up together.
@@ -59,16 +60,17 @@ namespace da::features
             return g_choices.empty() ? nullptr : &g_choices.back();
         }
 
+        // The choice an option widget belongs to now: the latest that lists it.
         Choice* ChoiceOf(UObject* widget, Option** option)
         {
-            for (auto& choice : g_choices)
+            for (auto choice = g_choices.rbegin(); choice != g_choices.rend(); ++choice)
             {
-                for (auto& o : choice.options)
+                for (auto& o : choice->options)
                 {
                     if (o.widget == widget)
                     {
                         if (option) *option = &o;
-                        return &choice;
+                        return &*choice;
                     }
                 }
             }
@@ -157,13 +159,22 @@ namespace da::features
                 choice = &g_choices.back();
                 choice->firstSetUpAt = now;
             }
-            // The same widget set up anew carries the new words.
-            std::erase_if(choice->options, [&](const Option& o) { return o.widget == self; });
+            // The same widget set up anew carries the new words, and belongs to this choice
+            // alone: the game's two option widgets are pooled and serve one choice after
+            // another, and an earlier, finished choice still listing them took the presses and
+            // the verdict of the next ones until it was dropped half a minute later.
+            for (auto& other : g_choices)
+                std::erase_if(other.options, [&](const Option& o) { return o.widget == self; });
             choice->options.push_back(option);
             if (g_choices.size() > 8) g_choices.erase(g_choices.begin());
         }
 
-        // The player holds toward an option: its words are said as the hold begins.
+        // The player holds toward an option: its words are said as each hold begins, as the
+        // ring starts to fill: from empty, or again after it had run a good part of the way
+        // down (the trigger let go and pressed again before the ring emptied; the game lets
+        // the ring down at a steady pace whenever the trigger is let go or eases). The game
+        // reports every moment twice, its Blueprint and the native under it with the same
+        // value, and a hold's own small ups and downs are the same hold.
         void OnSelection(UObject* self, FFrame& stack)
         {
             double progress = 0.0;
@@ -171,15 +182,18 @@ namespace da::features
             Option* option = nullptr;
             Choice* choice = ChoiceOf(self, &option);
             if (!choice || !option || choice->finished) return;
-            const bool began = progress > 0.05 && option->selection <= 0.05;
+            const double previous = option->selection;
             option->selection = progress;
-            if (began && !option->heldSaid)
+            option->peak = std::max(option->peak, progress);
+            if (progress < option->peak - 0.1) option->emptying = true;
+            const bool began = progress > 0.05 && (previous <= 0.05 || (option->emptying && progress > previous + 1e-4));
+            if (progress <= 0.05 || began)
             {
-                option->heldSaid = true;
-                for (auto& other : choice->options)
-                {
-                    if (other.widget != self) other.heldSaid = false;
-                }
+                option->peak = progress;
+                option->emptying = false;
+            }
+            if (began)
+            {
                 const auto words = OptionWords(*option);
                 log::Verbose(L"choices: holding toward \"{}\"", words);
                 if (!words.empty()) speech::Focus(words);
@@ -323,5 +337,10 @@ namespace da::features
             if (!left.empty() && !right.empty()) out.push_back(locale::Mod(L"help.choice", left, right));
             return;
         }
+    }
+
+    bool ChoiceInProgress()
+    {
+        return std::any_of(g_choices.begin(), g_choices.end(), [](const Choice& c) { return c.announced && !c.finished && !c.options.empty(); });
     }
 }
