@@ -1,5 +1,7 @@
 #include "features/Menus.hpp"
 
+#include "features/MenuRules.hpp"
+
 #include "core/Config.hpp"
 #include "core/GameThread.hpp"
 #include "core/Log.hpp"
@@ -28,42 +30,21 @@ namespace da::features
         obj::ObjectKey g_screen;
         unsigned long long g_screenGeneration = 0; // the display generation the screen was read at
         obj::ObjectKey g_control;
-        std::wstring g_title;        // the page's title as read, so that a page refilled under the same widget is read again
-        std::wstring g_arrivalText;  // what the page's arrival said, so that the same page shown anew with the same words is not read again
-        std::wstring g_controlLabel; // the focused control's label as read, for the same reason
-        std::wstring g_group;        // the heading last said
-        std::wstring g_value;        // the value last seen of the focused control
-        bool g_valueDue = false;     // the value seen has not been said yet
-        double g_valueChangedAt = 0.0;
-        double g_valueSpokenAt = 0.0;
+        std::wstring g_title;                           // the page's title as read, so that a page refilled under the same widget is read again
+        std::wstring g_arrivalText;                     // what the page's arrival said, so that the same page shown anew with the same words is not read again
+        std::wstring g_controlLabel;                    // the focused control's label as read, for the same reason
+        std::wstring g_group;                           // the heading last said
+        menu::Value g_value;                            // the focused control's value, as said and paced (menu::Value)
         std::vector<ui::Prompt> g_prompts;              // the prompts last seen
         std::set<std::wstring> g_promptsSaid;           // the prompts said on this screen, as label and key
         std::set<std::wstring> g_bodySaid;              // the body texts said on this screen, digits aside
         std::map<obj::ObjectKey, double> g_opacitySeen; // the highest opacity seen of each text of the screen
-        double g_promptsChangedAt = -1.0;
-        // An arrival waits for the page to settle: the focus and the texts land a few frames
-        // after the page is displayed.
-        bool g_arrivalPending = false;
-        bool g_arrivalAnew = false; // the pending arrival is the same page shown anew, not a page the player came to
-        double g_arrivalAt = 0.0;
-        constexpr double kSettleSeconds = 0.3;
-        constexpr double kSettleMaxSeconds = 1.2;
-        constexpr double kPromptStableSeconds = 0.5;
+        menu::Steady g_promptsSteady;                   // a change of the prompts standing (menu::Steady)
+        menu::Arrival g_arrival;                        // an arrival waiting for the page to settle (menu::Arrival)
 
         std::wstring PromptKey(const ui::Prompt& prompt)
         {
             return prompt.label + L"\n" + prompt.key;
-        }
-
-        // A text with its digits taken out, so that a count that ticks is one text.
-        std::wstring Shape(const std::wstring& text)
-        {
-            std::wstring shape;
-            for (const wchar_t c : text)
-            {
-                if (!iswdigit(c)) shape += c;
-            }
-            return shape;
         }
 
         // The highest opacity each text of the page has shown while the page is on display,
@@ -133,14 +114,14 @@ namespace da::features
             g_promptsSaid.clear();
             for (const auto& prompt : g_prompts)
                 g_promptsSaid.insert(PromptKey(prompt));
-            g_promptsChangedAt = -1.0;
+            g_promptsSteady.Reset();
         }
 
         void RememberBody(UObject* page)
         {
             g_bodySaid.clear();
             for (const auto& text : ui::ScreenBodyTexts(page, &OpacitySeen))
-                g_bodySaid.insert(Shape(text));
+                g_bodySaid.insert(menu::Shape(text));
         }
 
         void RememberControl(UObject* control, const ui::Description* d)
@@ -148,8 +129,7 @@ namespace da::features
             g_control = obj::KeyOf(control);
             g_controlLabel = d ? d->label : std::wstring();
             g_group = d ? d->group : std::wstring();
-            g_value = d ? d->value : std::wstring();
-            g_valueDue = false;
+            g_value.Known(d ? d->value : std::wstring());
         }
 
         void SpeakArrival(UObject* page, bool anew)
@@ -211,14 +191,13 @@ namespace da::features
             g_arrivalText.clear();
             g_controlLabel.clear();
             g_group.clear();
-            g_value.clear();
+            g_value.Forget();
             g_prompts.clear();
             g_promptsSaid.clear();
             g_bodySaid.clear();
             g_opacitySeen.clear();
-            g_promptsChangedAt = -1.0;
-            g_arrivalPending = false;
-            g_arrivalAnew = false;
+            g_promptsSteady.Reset();
+            g_arrival.Clear();
         }
 
         void Poll(float)
@@ -234,33 +213,23 @@ namespace da::features
             // A page shown anew in the same widget, after another took its place, is an arrival
             // too; so is a page refilled under the same widget, which shows as its title changing.
             const bool shownAnew =
-                pageKey == g_screen && !g_arrivalPending && (watch::DisplayGeneration() != g_screenGeneration || ui::ScreenTitle(page) != g_title);
+                pageKey == g_screen && !g_arrival.Pending() && (watch::DisplayGeneration() != g_screenGeneration || ui::ScreenTitle(page) != g_title);
             if (pageKey != g_screen || shownAnew)
             {
-                if (!g_arrivalPending)
+                if (g_arrival.Begin(now, shownAnew))
                 {
-                    g_arrivalPending = true;
-                    g_arrivalAnew = shownAnew;
-                    g_arrivalAt = now;
                     g_opacitySeen.clear();
                     g_screen = {};
                     log::Verbose(L"menus: new screen {} {}", obj::ClassName(page), obj::ObjectName(page));
                 }
                 SampleOpacity(page);
-                // The page is read once its focus has landed and its stack displays it (the
-                // focus can be given to a page a few frames before it is drawn, as the
-                // collectibles' first tab is), or after the longest wait.
-                const bool settled = now - g_arrivalAt >= kSettleSeconds && FocusedControl() != nullptr && obj::IsWidgetShown(page, false);
-                if (settled || now - g_arrivalAt >= kSettleMaxSeconds)
-                {
-                    g_arrivalPending = false;
-                    SpeakArrival(page, g_arrivalAnew);
-                    g_arrivalAnew = false;
-                }
+                // The page is read once its focus has landed and its stack displays it, or after
+                // the longest wait (menu::Arrival).
+                bool anew = false;
+                if (g_arrival.Due(now, [&] { return FocusedControl() != nullptr && obj::IsWidgetShown(page, false); }, anew)) SpeakArrival(page, anew);
                 return;
             }
-            g_arrivalPending = false;
-            g_arrivalAnew = false;
+            g_arrival.Clear();
 
             UObject* control = FocusedControl();
             const obj::ObjectKey controlKey = obj::KeyOf(control);
@@ -275,21 +244,8 @@ namespace da::features
             if (gamethread::FrameCount() % 8 != 0) return;
             if (control)
             {
-                // A value that moves under a held key is said at most three times a second,
-                // and once more as it comes to rest; each saying interrupts the one before.
-                const auto value = ui::ValueOf(control);
-                if (value != g_value)
-                {
-                    g_value = value;
-                    g_valueChangedAt = now;
-                    g_valueDue = !value.empty();
-                }
-                if (g_valueDue && (now - g_valueSpokenAt >= 0.35 || now - g_valueChangedAt >= 0.15))
-                {
-                    g_valueDue = false;
-                    g_valueSpokenAt = now;
-                    speech::Focus(g_value);
-                }
+                // A value that moves under a held key is paced (menu::Value).
+                if (const auto said = g_value.Update(now, ui::ValueOf(control)); !said.empty()) speech::Focus(said);
             }
             if (gamethread::FrameCount() % 24 == 0)
             {
@@ -310,26 +266,17 @@ namespace da::features
                 // message; a count that goes on ticking is one text.
                 for (const auto& text : ui::ScreenBodyTexts(page, &OpacitySeen))
                 {
-                    if (g_bodySaid.insert(Shape(text)).second) speech::Announce(text);
+                    if (g_bodySaid.insert(menu::Shape(text)).second) speech::Announce(text);
                 }
             }
             const auto prompts = ui::Prompts(page);
             bool changed = prompts.size() != g_prompts.size();
             for (size_t i = 0; !changed && i < prompts.size(); ++i)
                 changed = PromptKey(prompts[i]) != PromptKey(g_prompts[i]);
-            if (changed)
+            if (g_promptsSteady.Stood(now, changed))
             {
-                if (g_promptsChangedAt < 0.0) g_promptsChangedAt = now;
-                if (now - g_promptsChangedAt >= kPromptStableSeconds)
-                {
-                    g_promptsChangedAt = -1.0;
-                    const auto fresh = NewPrompts(page);
-                    if (!fresh.empty()) speech::Announce(fresh);
-                }
-            }
-            else
-            {
-                g_promptsChangedAt = -1.0;
+                const auto fresh = NewPrompts(page);
+                if (!fresh.empty()) speech::Announce(fresh);
             }
         }
 

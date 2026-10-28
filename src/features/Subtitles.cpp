@@ -1,5 +1,7 @@
 #include "features/Subtitles.hpp"
 
+#include "features/TextRules.hpp"
+
 #include "core/Config.hpp"
 #include "core/GameThread.hpp"
 #include "core/Log.hpp"
@@ -23,11 +25,10 @@ namespace da::features
 
     namespace
     {
-        std::vector<UObject*> g_widgets;         // the subtitle widgets the game shows
-        std::vector<std::wstring> g_shown;       // the lines on screen at the last poll
-        std::vector<std::wstring> g_shownBefore; // and at the poll before that
-        std::wstring g_lastLine;                 // the last line that appeared
-        bool g_read = true;                      // whether lines are spoken as they appear
+        std::vector<UObject*> g_widgets; // the subtitle widgets the game shows
+        lines::Subtitles g_lines;        // the lines on screen at the last polls (lines::Subtitles)
+        std::wstring g_lastLine;         // the last line that appeared
+        bool g_read = true;              // whether lines are spoken as they appear
 
         // One subtitle line as displayed: the speaker's name when the game shows it, then the
         // words, each read from the text block the game draws it in.
@@ -53,21 +54,13 @@ namespace da::features
             log::Info(L"subtitles: {} {} tracked", obj::ClassName(widget), obj::ObjectName(widget));
         }
 
-        bool Contains(const std::vector<std::wstring>& lines, const std::wstring& text)
-        {
-            return std::find(lines.begin(), lines.end(), text) != lines.end();
-        }
-
-        // Every frame, so that a line is read the moment it appears: the lines on screen are
-        // compared with those of the two polls before, and only new text is spoken. Two new
-        // lines in one frame are one subtitle wrapped over two lines, or two speakers at
-        // once; they are read together.
+        // Every frame, so that a line is read the moment it appears; only new text is spoken,
+        // and two new lines in one frame are read together (lines::Subtitles).
         void PollImpl()
         {
             std::erase_if(g_widgets, [](UObject* w) { return !obj::IsLive(w); });
             if (g_widgets.empty()) return;
             std::vector<std::wstring> shown;
-            std::vector<std::wstring> fresh;
             for (UObject* widget : g_widgets)
             {
                 if (!obj::IsWidgetShown(widget)) continue;
@@ -76,13 +69,10 @@ namespace da::features
                     UObject* line = nullptr;
                     if (!obj::ReadObject(widget, name, line)) continue;
                     const auto text = LineText(line);
-                    if (text.empty()) continue;
-                    if (!Contains(g_shown, text) && !Contains(g_shownBefore, text) && !Contains(fresh, text)) fresh.push_back(text);
-                    shown.push_back(text);
+                    if (!text.empty()) shown.push_back(text);
                 }
             }
-            g_shownBefore = std::move(g_shown);
-            g_shown = std::move(shown);
+            const auto fresh = g_lines.Update(shown);
             if (fresh.empty()) return;
             g_lastLine = str::Join(fresh, L" ");
             log::Info(L"subtitles: line \"{}\"", g_lastLine);
@@ -124,7 +114,7 @@ namespace da::features
 
     void SubtitlesFeature::Describe(std::vector<std::wstring>& out)
     {
-        if (!g_shown.empty()) out.push_back(str::Join(g_shown, L" "));
+        if (!g_lines.Shown().empty()) out.push_back(str::Join(g_lines.Shown(), L" "));
     }
 
     void SubtitlesFeature::Help(std::vector<std::wstring>& out)
@@ -160,7 +150,6 @@ namespace da::features
     void ResetSubtitles()
     {
         g_lastLine.clear();
-        g_shown.clear();
-        g_shownBefore.clear();
+        g_lines.Reset();
     }
 }

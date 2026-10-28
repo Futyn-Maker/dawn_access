@@ -1,5 +1,7 @@
 #include "features/Hud.hpp"
 
+#include "features/TextRules.hpp"
+
 #include "core/GameThread.hpp"
 #include "core/Log.hpp"
 #include "core/ObjectUtil.hpp"
@@ -14,7 +16,6 @@
 #include "watch/Watchers.hpp"
 
 #include <algorithm>
-#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -51,21 +52,16 @@ namespace da::features
             return false;
         }
 
+        // An element of the HUD and its lines as the rules weigh them (lines::Element).
         struct Tracked
         {
             UObject* instance = nullptr;
-            std::vector<std::wstring> seen;        // its lines at the last poll
-            std::map<std::wstring, double> spoken; // the lines said, by the time each was last on it
-            int stablePolls = 0;
+            lines::Element lines;
         };
 
         std::vector<Tracked> g_tracked;
         std::set<std::wstring> g_classesSeen; // for the log: each kind of element once
-        // How long a line that left the element is remembered as said: one back within a
-        // moment blinked, and is the same line still.
-        constexpr double kLineForgotten = 2.0;
-        std::wstring g_lastText;
-        double g_lastTextAt = -1.0;
+        lines::Echo g_echo;                   // the same words through two elements at once
 
         // The lines an element shows: the texts it draws now (not the ones still fading in,
         // nor the ones faded out), a row of pieces side by side as one line (the camcorder's
@@ -119,9 +115,8 @@ namespace da::features
             g_tracked.push_back(Tracked{widget});
         }
 
-        // An element is read once its words have stopped changing: a caption is filled in a
-        // moment after the element appears, and the same element can show several messages
-        // in a row.
+        // An element is read once its words have stopped changing, line by new line
+        // (lines::Element).
         void PollImpl()
         {
             if (gamethread::FrameCount() % 6 != 0) return;
@@ -135,49 +130,17 @@ namespace da::features
                 }
                 if (obj::IsWidgetShown(it->instance))
                 {
-                    const auto lines = Lines(it->instance);
-                    if (lines != it->seen)
+                    const auto fresh = it->lines.Shown(Lines(it->instance), now);
+                    if (!fresh.empty())
                     {
-                        it->seen = lines;
-                        it->stablePolls = 0;
-                    }
-                    else if (++it->stablePolls >= 2)
-                    {
-                        // Only the lines that are new are said: a line that stays while
-                        // others come and go (a title over a sequence of sentences) is said
-                        // once; a line that went away and comes back is new again, unless it
-                        // is back within a moment. A clock that ticks on is said at every
-                        // tick, as it shows each.
-                        std::vector<std::wstring> fresh;
-                        std::set<std::wstring> present;
-                        for (const auto& line : lines)
-                        {
-                            if (!present.insert(line).second) continue;
-                            const auto known = it->spoken.find(line);
-                            if (known == it->spoken.end() || now - known->second > kLineForgotten) fresh.push_back(line);
-                        }
-                        for (const auto& line : present)
-                            it->spoken[line] = now;
-                        std::erase_if(it->spoken, [&](const auto& entry) { return now - entry.second > kLineForgotten; });
-                        if (!fresh.empty())
-                        {
-                            const auto text = str::JoinSentences(fresh);
-                            log::Info(L"hud: {} says \"{}\"", obj::ClassName(it->instance), text);
-                            // The same words can arrive through two elements at once.
-                            if (text != g_lastText || now - g_lastTextAt > 5.0)
-                            {
-                                g_lastText = text;
-                                g_lastTextAt = now;
-                                speech::Announce(text);
-                            }
-                        }
+                        const auto text = str::JoinSentences(fresh);
+                        log::Info(L"hud: {} says \"{}\"", obj::ClassName(it->instance), text);
+                        if (g_echo.Says(text, now)) speech::Announce(text);
                     }
                 }
                 else
                 {
-                    // Hidden and shown again, it is read again.
-                    it->spoken.clear();
-                    it->seen.clear();
+                    it->lines.Hidden();
                 }
                 ++it;
             }
@@ -303,7 +266,7 @@ namespace da::features
         for (const auto& t : g_tracked)
         {
             if (bar && t.instance == g_loadingScreen) continue;
-            if (obj::IsLive(t.instance) && obj::IsWidgetShown(t.instance) && !t.seen.empty()) out.push_back(str::JoinSentences(t.seen));
+            if (obj::IsLive(t.instance) && obj::IsWidgetShown(t.instance) && !t.lines.Seen().empty()) out.push_back(str::JoinSentences(t.lines.Seen()));
         }
         if (gamestate::InPlay() && !g_objective.empty()) out.push_back(locale::Mod(L"hud.objective", g_objective));
     }

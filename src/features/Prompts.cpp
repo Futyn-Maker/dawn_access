@@ -1,6 +1,7 @@
 #include "features/Prompts.hpp"
 
 #include "features/Exploration.hpp"
+#include "features/PromptRules.hpp"
 
 #include "core/GameThread.hpp"
 #include "core/Log.hpp"
@@ -18,8 +19,6 @@
 #include "watch/Watchers.hpp"
 
 #include <algorithm>
-#include <cmath>
-#include <set>
 #include <string>
 #include <vector>
 
@@ -30,39 +29,20 @@ namespace da::features
 
     namespace
     {
-        // One prompt widget of the game's: an interaction prompt, or a glint's.
-        struct Shown
+        // One prompt widget of the game's, an interaction prompt or a glint's: its question as the
+        // rules weigh it (prompt::Question), and what the mod knows of the widget.
+        struct Shown : prompt::Question
         {
             UObject* widget = nullptr;
             obj::ObjectKey key; // the widget's identity, so that a freed slot reused is not taken for it
             bool glint = false;
-            double fade = 0.0;    // a glint: the fade of its prompt its Blueprint was last handed
-            std::wstring text;    // its readout at the last poll
-            std::wstring actions; // the actions of its caps at the last poll
-            double since = 0.0;   // when the readout became what it is, or the prompt was set up anew
-            bool announced = false;
-            bool hidden = false; // an interaction prompt the game sent away and has not set up since
-            bool up = false;     // a glint: its prompt shown, for the log
+            double fade = 0.0; // a glint: the fade of its prompt its Blueprint was last handed
+            bool up = false;   // a glint: its prompt shown, for the log
         };
         std::vector<Shown> g_shown;
 
-        // How long a readout must stay as it is before it is said. A glint's prompt follows the
-        // game's verdict on a press frame by frame, and that verdict flickers on for a moment as
-        // the character walks through the place or turns past the thing (150 ms in the lodge on
-        // 2026-10-24, the press refused a moment later): such a prompt is no question the game
-        // asks, so a glint's waits longer than an interaction's.
-        constexpr double kPromptStableSeconds = 0.1;
-        constexpr double kGlintStableSeconds = 0.4;
-
-        // The action bar in play: the prompts the game pins to the bottom of the screen while
-        // no menu page is up (continue a lesson, hide a note's transcript). The menus read the
-        // same bar while a page is up.
-        // The bar in play answers the player's own press (a film's skip prompt comes up on the
-        // first press and the second press skips), so it is read almost at once.
-        constexpr double kBarStableSeconds = 0.1;
-        std::vector<ui::Prompt> g_bar;
-        std::set<std::wstring> g_barSaid; // the lines said while they stayed on the bar
-        double g_barChangedAt = -1.0;
+        // The action bar in play (prompt::Bar); the menus read the same bar while a page is up.
+        prompt::Bar g_bar;
 
         Shown* Find(UObject* widget)
         {
@@ -170,30 +150,22 @@ namespace da::features
             return ui::PromptLines(prompts);
         }
 
-        // The game sets an interaction prompt up for each question it asks, the same pooled
-        // widget serving one question after another (the hint to walk, a door's push, a note's
-        // grab), and sends it away with HideAndDestroy (a fade, then off the screen 0.3 s
-        // later). A question set up after the last one went away is new, even in the same
-        // words; set up again while it stays, it is the same question still.
+        // The game sets an interaction prompt up for each question it asks and sends it away
+        // with HideAndDestroy (a fade, then off the screen 0.3 s later): prompt::SetUp, Hide.
         void OnSetup(UObject* self, FFrame&)
         {
             Track(self, false);
             Shown* s = Find(self);
             if (!s) return;
-            if (s->hidden || s->text.empty())
-            {
-                s->announced = false;
-                s->since = gamethread::NowSeconds();
-            }
             if (s->hidden) log::Verbose(L"prompts: {} set up anew", obj::ObjectName(self));
-            s->hidden = false;
+            prompt::SetUp(*s, gamethread::NowSeconds());
         }
 
         void OnHide(UObject* self, FFrame&)
         {
             Shown* s = Find(self);
             if (!s || s->hidden) return;
-            s->hidden = true;
+            prompt::Hide(*s);
             log::Verbose(L"prompts: {} sent away", obj::ObjectName(self));
         }
 
@@ -213,42 +185,20 @@ namespace da::features
 
         void PollBar(double now)
         {
-            // While a page is up the menus own the bar, and the bar as play left it is kept: a
-            // lesson's prompt still there when the page goes asks nothing new, one gone meanwhile
-            // is gone.
+            // While a page is up the menus own the bar (prompt::Bar).
             if (watch::CurrentScreen())
             {
-                g_barChangedAt = -1.0;
+                g_bar.Update(now, true, {});
                 return;
             }
             auto prompts = ui::Prompts(nullptr);
             // The menus' own prompts (IA_UI_*) linger on the bar a moment after a page goes; in
             // play they ask nothing.
             std::erase_if(prompts, [](const ui::Prompt& p) { return str::StartsWith(p.action, L"IA_UI_"); });
-            bool changed = prompts.size() != g_bar.size();
-            for (size_t i = 0; !changed && i < prompts.size(); ++i)
-                changed = Line(prompts[i]) != Line(g_bar[i]);
-            if (!changed)
-            {
-                g_barChangedAt = -1.0;
-                return;
-            }
-            // The bar is read once its prompts have stopped changing for a moment.
-            if (g_barChangedAt < 0.0) g_barChangedAt = now;
-            if (now - g_barChangedAt < kBarStableSeconds) return;
-            g_barChangedAt = -1.0;
-            g_bar = prompts;
-            // A line that left the bar is said again when it comes back.
-            std::set<std::wstring> current;
-            std::vector<std::wstring> fresh;
+            std::vector<std::wstring> lines;
             for (const auto& p : prompts)
-            {
-                const auto line = Line(p);
-                if (line.empty()) continue;
-                current.insert(line);
-                if (!g_barSaid.count(line)) fresh.push_back(line);
-            }
-            g_barSaid = current;
+                lines.push_back(Line(p));
+            const auto fresh = g_bar.Update(now, false, lines);
             if (fresh.empty()) return;
             const auto text = str::Join(fresh, L", ");
             log::Info(L"prompts: action bar \"{}\" [{}]", text, Actions(prompts));
@@ -268,9 +218,7 @@ namespace da::features
         // challenge won.
         UObject* g_phone = nullptr;
         obj::ObjectKey g_phoneKey;
-        int g_phoneState = -1;
-        double g_phoneLevel = 0.0; // the share of the target at the last blip
-        double g_phoneBlipAt = 0.0;
+        prompt::Swipe g_swipe; // the blips and the unlock (prompt::Swipe)
         double g_phoneLoggedAt = 0.0;
         double g_phoneLoggedLevel = -1.0;
 
@@ -292,7 +240,7 @@ namespace da::features
             if (self == g_phone && obj::IsSame(g_phoneKey)) return;
             g_phone = self;
             g_phoneKey = obj::KeyOf(self);
-            g_phoneState = -1;
+            g_swipe.Reset();
             log::Info(L"phone: {} takes the phone out", obj::ObjectName(self));
         }
 
@@ -312,35 +260,24 @@ namespace da::features
             const int state = PhoneState();
             const float target = PhoneFloat(L"ABatesInteractionPhoneUnlock.TargetProgress");
             const float progress = PhoneFloat(L"ABatesInteractionPhoneUnlock.CumulativeProgress");
-            if (state != g_phoneState)
+            const prompt::Swipe::Step step = g_swipe.Update(now, state, progress, target);
+            if (step.stateChanged) log::Info(L"phone: the unlock is in state {} (0 out of the pocket, 1 the intro, 2 the swipe, 3 the outro)", state);
+            if (step.began)
             {
-                const int was = g_phoneState;
-                g_phoneState = state;
-                log::Info(L"phone: the unlock is in state {} (0 out of the pocket, 1 the intro, 2 the swipe, 3 the outro)", state);
-                if (state == 2)
-                {
-                    g_phoneLevel = 0.0;
-                    g_phoneLoggedLevel = -1.0;
-                    log::Info(L"phone: the swipe counts now: a push of the stick adds up to {:.1f} of {:.0f}, and {:.2f} s after the last swipe the progress "
-                              L"slides back {:.0f} a second",
-                              PhoneFloat(L"ABatesInteractionPhoneUnlock.CursorDeltaMultiplier") *
-                                  PhoneFloat(L"ABatesInteractionPhoneUnlock.LeftStickMultiplier"),
-                              target, PhoneFloat(L"ABatesInteractionPhoneUnlock.SwipeDecayDelay"), PhoneFloat(L"ABatesInteractionPhoneUnlock.SwipeDecay"));
-                }
-                if (state == 3 && was == 2)
-                {
-                    log::Info(L"phone: unlocked");
-                    sounds::Play(sounds::Cue::Confirm);
-                }
+                g_phoneLoggedLevel = -1.0;
+                log::Info(L"phone: the swipe counts now: a push of the stick adds up to {:.1f} of {:.0f}, and {:.2f} s after the last swipe the progress "
+                          L"slides back {:.0f} a second",
+                          PhoneFloat(L"ABatesInteractionPhoneUnlock.CursorDeltaMultiplier") * PhoneFloat(L"ABatesInteractionPhoneUnlock.LeftStickMultiplier"),
+                          target, PhoneFloat(L"ABatesInteractionPhoneUnlock.SwipeDecayDelay"), PhoneFloat(L"ABatesInteractionPhoneUnlock.SwipeDecay"));
+            }
+            if (step.unlocked)
+            {
+                log::Info(L"phone: unlocked");
+                sounds::Play(sounds::Cue::Confirm);
             }
             if (state != 2 || target <= 0.0f) return;
-            const double level = std::clamp(static_cast<double>(progress) / target, 0.0, 1.0);
-            if (std::fabs(level - g_phoneLevel) >= 0.095 && now - g_phoneBlipAt >= 0.08)
-            {
-                g_phoneLevel = level;
-                g_phoneBlipAt = now;
-                sounds::Tick(level);
-            }
+            const double level = step.level;
+            if (step.blip) sounds::Tick(level);
             if (level != g_phoneLoggedLevel && now - g_phoneLoggedAt >= 0.5)
             {
                 g_phoneLoggedAt = now;
@@ -351,7 +288,7 @@ namespace da::features
 
         bool PhoneSwipeAsked()
         {
-            return PhoneLive() && g_phoneState == 2;
+            return PhoneLive() && g_swipe.State() == 2;
         }
 
         void PollImpl()
@@ -390,29 +327,14 @@ namespace da::features
                 if (it->glint && inPlay && !glintsAsked)
                 {
                     const bool drawn = obj::IsWidgetShown(it->widget) || ui::LayerWidgetDrawn(it->widget);
-                    if (!drawn || !GlintPromptUp(*it) || !UseLocationOfGlintWidget(it->widget))
-                    {
-                        it->text.clear();
-                        it->actions.clear();
-                        it->announced = false;
-                    }
+                    prompt::Withheld(*it, drawn && GlintPromptUp(*it) && UseLocationOfGlintWidget(it->widget));
                     ++it;
                     continue;
                 }
                 std::wstring actions;
                 const auto text = inPlay && (!it->glint || glintsAsked) ? Readout(*it, &actions) : std::wstring();
-                // The same words for another action (the hint to walk, then a note's step closer)
-                // are another question.
-                if (text != it->text || actions != it->actions)
+                if (prompt::Read(*it, now, text, actions, it->glint))
                 {
-                    it->text = text;
-                    it->actions = actions;
-                    it->since = now;
-                    it->announced = false;
-                }
-                else if (!text.empty() && !it->announced && now - it->since >= (it->glint ? kGlintStableSeconds : kPromptStableSeconds))
-                {
-                    it->announced = true;
                     log::Info(L"prompts: {} {} \"{}\" [{}]", obj::ClassName(it->widget), obj::ObjectName(it->widget), text, actions);
                     speech::Announce(text);
                 }
