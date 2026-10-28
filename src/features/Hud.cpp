@@ -3,7 +3,9 @@
 #include "core/GameThread.hpp"
 #include "core/Log.hpp"
 #include "core/ObjectUtil.hpp"
+#include "core/ParamReader.hpp"
 #include "core/Strings.hpp"
+#include "core/Symbols.hpp"
 #include "hooks/HookDispatcher.hpp"
 #include "locale/Locale.hpp"
 #include "speech/Speech.hpp"
@@ -53,33 +55,24 @@ namespace da::features
         {
             UObject* instance = nullptr;
             std::vector<std::wstring> seen;        // its lines at the last poll
-            std::map<std::wstring, double> spoken; // the shapes said, by the time each was last on it
+            std::map<std::wstring, double> spoken; // the lines said, by the time each was last on it
             int stablePolls = 0;
         };
 
-        // A line's shape: its digits made alike, so that a counter or a clock that goes on
-        // ticking is one line, said once with its first value.
-        std::wstring Shape(const std::wstring& line)
-        {
-            std::wstring shape = line;
-            for (auto& c : shape)
-            {
-                if (c >= L'0' && c <= L'9') c = L'#';
-            }
-            return shape;
-        }
         std::vector<Tracked> g_tracked;
         std::set<std::wstring> g_classesSeen; // for the log: each kind of element once
-        // How long a line that left the element is remembered as said.
+        // How long a line that left the element is remembered as said: one back within a
+        // moment blinked, and is the same line still.
         constexpr double kLineForgotten = 2.0;
         std::wstring g_lastText;
         double g_lastTextAt = -1.0;
 
         // The lines an element shows: the texts it draws now (not the ones still fading in,
-        // nor the ones faded out), then the prompts of its key caps, one line each.
+        // nor the ones faded out), a row of pieces side by side as one line (the camcorder's
+        // minutes, colon and seconds), then the prompts of its key caps, one line each.
         std::vector<std::wstring> Lines(UObject* widget)
         {
-            auto lines = ui::DrawnTexts(widget);
+            auto lines = ui::DrawnRows(widget);
             const auto prompts = ui::PromptsIn(widget);
             // A hint of one line with a bare key beside it (a stick next to "Walk around the
             // kitchen") is one prompt: the line names the key.
@@ -152,20 +145,19 @@ namespace da::features
                     {
                         // Only the lines that are new are said: a line that stays while
                         // others come and go (a title over a sequence of sentences) is said
-                        // once; a line that went away and comes back is new again.
-                        // A line that left and is back within a moment (the blinking colon
-                        // of a clock) is the same line still.
+                        // once; a line that went away and comes back is new again, unless it
+                        // is back within a moment. A clock that ticks on is said at every
+                        // tick, as it shows each.
                         std::vector<std::wstring> fresh;
                         std::set<std::wstring> present;
                         for (const auto& line : lines)
                         {
-                            const auto shape = Shape(line);
-                            if (!present.insert(shape).second) continue;
-                            const auto known = it->spoken.find(shape);
+                            if (!present.insert(line).second) continue;
+                            const auto known = it->spoken.find(line);
                             if (known == it->spoken.end() || now - known->second > kLineForgotten) fresh.push_back(line);
                         }
-                        for (const auto& shape : present)
-                            it->spoken[shape] = now;
+                        for (const auto& line : present)
+                            it->spoken[line] = now;
                         std::erase_if(it->spoken, [&](const auto& entry) { return now - entry.second > kLineForgotten; });
                         if (!fresh.empty())
                         {
@@ -191,9 +183,102 @@ namespace da::features
             }
         }
 
+        // The objective the game keeps for the player, set by the scene's script and shown
+        // on the status page ("Find Hannah"): said when it changes, and read with the screen.
+        std::wstring g_objective;
+        bool g_objectiveKnown = false;
+
+        std::wstring CurrentObjective()
+        {
+            UObject* manager = obj::FindFirstLive(L"BatesTraitsRelationshipsManager");
+            if (!manager) return {};
+            return str::CollapseWhitespace(obj::CallForText(manager, L"GetCurrentObjective"));
+        }
+
+        void PollObjective()
+        {
+            if (gamethread::FrameCount() % 30 != 7) return;
+            const auto objective = CurrentObjective();
+            if (g_objectiveKnown && objective == g_objective) return;
+            const bool first = !g_objectiveKnown;
+            g_objectiveKnown = true;
+            g_objective = objective;
+            if (objective.empty())
+            {
+                if (!first) log::Info(L"hud: the objective is turned off");
+                return;
+            }
+            log::Info(L"hud: the objective is \"{}\"", objective);
+            if (gamestate::InPlay()) speech::Announce(locale::Mod(L"hud.objective", objective));
+        }
+
+        // The loading screen's bar: the share of the level's streamed parts already in, as
+        // the screen draws it (UBatesLoadingScreen::NativeTick hands it to its Blueprint every
+        // frame). It is full long before the screen goes when the game compiles shaders
+        // behind it.
+        UObject* g_loadingScreen = nullptr;
+        double g_loadingShare = -1.0;
+
+        void OnLoadingShare(UObject* self, FFrame& stack)
+        {
+            double share = 0.0;
+            if (!params::Float(stack, L"InPerc", share)) return;
+            g_loadingScreen = self;
+            g_loadingShare = std::clamp(share, 0.0, 1.0);
+        }
+
+        bool LoadingScreenShown()
+        {
+            return g_loadingScreen && obj::IsLive(g_loadingScreen) && obj::IsWidgetShown(g_loadingScreen);
+        }
+
+        // While a level loads, what it waits for, now and then, for the log: the bar; the
+        // streaming manager's flags (2 a streaming request pending, 4 character variants
+        // loading, 8 shaders compiling), which must all clear before the game turns to play;
+        // and the shader compile behind the bar: the game's shader cache's mode (0 once its
+        // own stall check has paused the compile, which only a change of the loading screen's
+        // phase resumes) and the pipelines left of those it began with.
+        double g_loadingLoggedAt = -100.0;
+
+        void PollLoading()
+        {
+            const auto state = gamestate::Current();
+            if (state != gamestate::State::LoadingNewLevel && state != gamestate::State::Loading)
+            {
+                g_loadingLoggedAt = -100.0;
+                return;
+            }
+            const double now = gamethread::NowSeconds();
+            if (g_loadingLoggedAt < 0.0) g_loadingLoggedAt = now;
+            if (now - g_loadingLoggedAt < 15.0) return;
+            g_loadingLoggedAt = now;
+            int flags = -1;
+            int mode = -1;
+            int total = -1;
+            int remaining = -1;
+            if (UObject* streaming = obj::FindFirstLive(L"BatesLevelStreamingManager"))
+            {
+                if (const auto* p = static_cast<const uint8_t*>(sym::MemberOf(streaming, L"UBatesLevelStreamingManager.StreamingFlags"))) flags = *p;
+            }
+            if (UObject* shaders = obj::FindFirstLive(L"BatesShaderCacheSubsystem"))
+            {
+                if (const auto* p = static_cast<const int32_t*>(sym::MemberOf(shaders, L"UBatesShaderCacheSubsystem.CompilationMode"))) mode = *p;
+                if (const auto* p = static_cast<const int32_t*>(sym::MemberOf(shaders, L"UBatesShaderCacheSubsystem.PrecompilesTotal"))) total = *p;
+            }
+            using Count = int32_t (*)();
+            if (auto* count = reinterpret_cast<Count>(sym::Address(L"FShaderPipelineCache::NumPrecompilesRemaining"))) remaining = count();
+            log::Info(L"loading: the bar at {}, the screen {}; streaming flags {} (2 a request pending, 4 character variants, 8 shaders); shader cache mode {} "
+                      L"(0 paused), {} of {} pipelines left to compile",
+                      g_loadingShare < 0.0 ? std::wstring(L"unknown") : std::format(L"{:.0f}%", g_loadingShare * 100.0),
+                      LoadingScreenShown() ? L"shown" : L"not shown", flags < 0 ? std::wstring(L"unknown") : std::format(L"{:#x}", flags), mode, remaining,
+                      total);
+        }
+
         void Poll(float)
         {
             obj::SafeInvokeLogged(L"hud.PollImpl", [](void*) { PollImpl(); }, nullptr);
+            obj::SafeInvokeLogged(L"hud.PollObjective", [](void*) { PollObjective(); }, nullptr);
+            obj::SafeInvokeLogged(L"hud.PollLoading", [](void*) { PollLoading(); }, nullptr);
         }
     }
 
@@ -205,14 +290,21 @@ namespace da::features
                              {
                                  if (appeared && !OwnedElsewhere(widget)) Track(widget);
                              });
+        hooks::OnScript(L"BatesLoadingScreen", L"BP_SetPercLoaded", &OnLoadingShare);
         gamethread::AddPoller(L"hud", &Poll);
     }
 
     void HudFeature::Describe(std::vector<std::wstring>& out)
     {
+        // The loading screen with its bar, as a glance at it shows; its own word is then in the
+        // line already.
+        const bool bar = LoadingScreenShown() && g_loadingShare >= 0.0;
+        if (bar) out.push_back(locale::Mod(L"hud.loading.share", locale::Mod(L"hud.loading"), std::to_wstring(static_cast<int>(g_loadingShare * 100.0 + 0.5))));
         for (const auto& t : g_tracked)
         {
+            if (bar && t.instance == g_loadingScreen) continue;
             if (obj::IsLive(t.instance) && obj::IsWidgetShown(t.instance) && !t.seen.empty()) out.push_back(str::JoinSentences(t.seen));
         }
+        if (gamestate::InPlay() && !g_objective.empty()) out.push_back(locale::Mod(L"hud.objective", g_objective));
     }
 }

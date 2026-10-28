@@ -31,6 +31,9 @@ namespace da::sym
             {L"scePadRead.pointer", 0x8a33c08},      // the pointer it calls through
             {L"scePadReadState", 0x5d06050},         // the stub
             {L"scePadReadState.pointer", 0x8a33c00}, // the pointer it calls through
+            // The engine's count of shader pipelines still to compile (static, no arguments),
+            // which the game's shader cache reads every tick; a loading screen waits for it.
+            {L"FShaderPipelineCache::NumPrecompilesRemaining", 0x224f130},
         };
 
         struct Member
@@ -58,6 +61,14 @@ namespace da::sym
             {L"UBatesStatusBarWidget.CurrentAnimValue", 0x2cc}, // float
             {L"UBatesStatusBarWidget.TargetAnimValue", 0x2d0},  // float
             {L"UBatesStatusBarWidget.MaxValue", 0x2d4},         // float
+            // What a level load waits for before the game state turns to Game and the loading
+            // screen goes (UBatesLevelStreamingManager::UpdateStreaming broadcasts "finished"
+            // only with these flags clear: 2 a streaming request pending, 4 character variants
+            // loading, 8 shader pipelines compiling), and the shader cache's own state (its
+            // mode, 0 once its stall check has paused the compile, and the count it began with).
+            {L"UBatesLevelStreamingManager.StreamingFlags", 0xd0},  // uint8
+            {L"UBatesShaderCacheSubsystem.CompilationMode", 0x60},  // int32
+            {L"UBatesShaderCacheSubsystem.PrecompilesTotal", 0x88}, // int32
             // A glint's widget shows its prompt while the glint's intensity is full, the same
             // moment the glint authorises the press (UBatesGlintWidget::Update, 0x46bf680), fades
             // it in by CurrentShowPrompt, and is going away while bIsDestroying is set. The

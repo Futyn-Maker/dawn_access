@@ -15,8 +15,10 @@ TEST_CASE("the pad library's stubs and their pointers are in the table, and noth
     CHECK(Rva(L"scePadOpen") == 0);
     CHECK(Rva(L"") == 0);
     // A stub and the pointer it reads are two places, and the two stubs are two places.
-    const std::set<uintptr_t> places = {Rva(L"scePadReadState"), Rva(L"scePadReadState.pointer"), Rva(L"scePadRead"), Rva(L"scePadRead.pointer")};
-    CHECK(places.size() == 4);
+    const std::set<uintptr_t> places = {Rva(L"scePadReadState"), Rva(L"scePadReadState.pointer"), Rva(L"scePadRead"), Rva(L"scePadRead.pointer"),
+                                        Rva(L"FShaderPipelineCache::NumPrecompilesRemaining")};
+    CHECK(places.size() == 5);
+    CHECK(Rva(L"FShaderPipelineCache::NumPrecompilesRemaining") == 0x224f130);
 }
 
 TEST_CASE("the members known by offset are in the table, and nothing else answers")
@@ -26,6 +28,8 @@ TEST_CASE("the members known by offset are in the table, and nothing else answer
     CHECK(Offset(L"UBatesKeyRebindSlotWidget.CurrentKey") != 0);
     CHECK(Offset(L"UBMTTSQueueItem.Priority") < Offset(L"UBMTTSQueueItem.PriorityTag"));
     CHECK(Offset(L"UBMTTSQueueItem.PriorityTag") < Offset(L"UBMTTSQueueItem.TTSLine"));
+    CHECK(Offset(L"UBatesLevelStreamingManager.StreamingFlags") == 0xd0);
+    CHECK(Offset(L"UBatesShaderCacheSubsystem.CompilationMode") < Offset(L"UBatesShaderCacheSubsystem.PrecompilesTotal"));
     CHECK(Offset(L"UBatesGlintWidget.bIsShowingPrompt") + 1 == Offset(L"UBatesGlintWidget.bIsDestroying"));
     CHECK(Offset(L"UBatesGlintWidget.CurrentShowPrompt") == 0x378);
     CHECK(Offset(L"UBMUISubsystem.CurrentGamepadVendor") == 0);
