@@ -1,5 +1,7 @@
 #include "features/Choices.hpp"
 
+#include "features/ChoiceRules.hpp"
+
 #include "core/Config.hpp"
 #include "core/GameThread.hpp"
 #include "core/Log.hpp"
@@ -24,57 +26,16 @@ namespace da::features
 
     namespace
     {
-        // The game's own words for how a choice ended.
-        constexpr int64_t kResultLeft = 1;
-        constexpr int64_t kResultRight = 2;
-        constexpr int64_t kResultTimedOut = 3;
+        // The choices as the rules keep them (features/ChoiceRules), and the option taken, said
+        // once every key is released.
+        using choice::Choice;
+        using choice::Option;
+        choice::Book g_book;
+        choice::Chosen g_chosen;
 
-        // One option of a choice: the widget the game set up with its words.
-        struct Option
+        UObject* WidgetOf(const Option& option)
         {
-            UObject* widget = nullptr;
-            int64_t direction = 0; // 0 left, 1 right
-            std::wstring text;
-            std::wstring subText;
-            bool timed = false;
-            double selection = 0.0; // how far the player has held toward it
-            double peak = 0.0;      // the most the ring has filled since this hold began
-            bool emptying = false;  // the ring has run a good part of the way down since
-        };
-
-        // A choice: the options set up together.
-        struct Choice
-        {
-            std::vector<Option> options;
-            double firstSetUpAt = 0.0;
-            bool announced = false;
-            bool finished = false;
-            double timeout = 0.0; // how far the clock has run
-        };
-        std::vector<Choice> g_choices;
-        std::wstring g_pendingChosen; // the option taken, said once every key is released
-        double g_pendingSince = -1.0;
-
-        Choice* Current()
-        {
-            return g_choices.empty() ? nullptr : &g_choices.back();
-        }
-
-        // The choice an option widget belongs to now: the latest that lists it.
-        Choice* ChoiceOf(UObject* widget, Option** option)
-        {
-            for (auto choice = g_choices.rbegin(); choice != g_choices.rend(); ++choice)
-            {
-                for (auto& o : choice->options)
-                {
-                    if (o.widget == widget)
-                    {
-                        if (option) *option = &o;
-                        return &*choice;
-                    }
-                }
-            }
-            return nullptr;
+            return static_cast<UObject*>(option.widget);
         }
 
         const wchar_t* Side(int64_t direction)
@@ -86,7 +47,7 @@ namespace da::features
         std::wstring KeyOf(const Option& option)
         {
             std::vector<std::wstring> keys;
-            for (const auto& prompt : ui::PromptsIn(option.widget))
+            for (const auto& prompt : ui::PromptsIn(WidgetOf(option)))
             {
                 if (!prompt.key.empty()) keys.push_back(prompt.key);
             }
@@ -114,7 +75,7 @@ namespace da::features
             if (cfg::Detailed()) parts.push_back(locale::Mod(Timed(choice) ? L"choice.timed" : L"choice.heading"));
             for (const auto& option : choice.options)
             {
-                if (!obj::IsLive(option.widget)) continue;
+                if (!obj::IsLive(WidgetOf(option))) continue;
                 const auto words = OptionWords(option);
                 if (words.empty()) continue;
                 std::wstring line = locale::Mod(Side(option.direction)) + L": " + words;
@@ -134,9 +95,8 @@ namespace da::features
             if (!text.empty()) speech::Announce(text);
         }
 
-        // The game set an option up with its words. Options set up within a moment of each
-        // other are one choice; the choice is read once both sides are in, or after a moment
-        // should the second never come.
+        // The game set an option up with its words: a choice of its own, or the other side of
+        // the one being set up (choice::Book::SetUp).
         void OnSetUp(UObject* self, FFrame& stack)
         {
             Option option;
@@ -150,87 +110,49 @@ namespace da::features
             const double now = gamethread::NowSeconds();
             log::Info(L"choices: option {} set up: {} \"{}\" \"{}\"{}", obj::ObjectName(self), option.direction == 0 ? L"left" : L"right", option.text,
                       option.subText, option.timed ? L", timed" : L"");
-            Choice* choice = Current();
-            const bool joins = choice && !choice->announced && !choice->finished && now - choice->firstSetUpAt < 1.5 &&
-                               std::none_of(choice->options.begin(), choice->options.end(), [&](const Option& o) { return o.direction == option.direction; });
-            if (!joins)
-            {
-                g_choices.push_back(Choice{});
-                choice = &g_choices.back();
-                choice->firstSetUpAt = now;
-            }
-            // The same widget set up anew carries the new words, and belongs to this choice
-            // alone: the game's two option widgets are pooled and serve one choice after
-            // another, and an earlier, finished choice still listing them took the presses and
-            // the verdict of the next ones until it was dropped half a minute later.
-            for (auto& other : g_choices)
-                std::erase_if(other.options, [&](const Option& o) { return o.widget == self; });
-            choice->options.push_back(option);
-            if (g_choices.size() > 8) g_choices.erase(g_choices.begin());
+            g_book.SetUp(option, now);
         }
 
-        // The player holds toward an option: its words are said as each hold begins, as the
-        // ring starts to fill: from empty, or again after it had run a good part of the way
-        // down (the trigger let go and pressed again before the ring emptied; the game lets
-        // the ring down at a steady pace whenever the trigger is let go or eases). The game
-        // reports every moment twice, its Blueprint and the native under it with the same
-        // value, and a hold's own small ups and downs are the same hold.
+        // The player holds toward an option: its words are said as each hold begins
+        // (choice::Hold). The ring the hold fills on the option stays silent: the words at the
+        // start of the hold and the tone at the end are the whole of it, as a held key keeps
+        // the reader silent in between anyway.
         void OnSelection(UObject* self, FFrame& stack)
         {
             double progress = 0.0;
             params::Float(stack, L"InProgress", progress);
             Option* option = nullptr;
-            Choice* choice = ChoiceOf(self, &option);
+            Choice* choice = g_book.Of(self, &option);
             if (!choice || !option || choice->finished) return;
-            const double previous = option->selection;
-            option->selection = progress;
-            option->peak = std::max(option->peak, progress);
-            if (progress < option->peak - 0.1) option->emptying = true;
-            const bool began = progress > 0.05 && (previous <= 0.05 || (option->emptying && progress > previous + 1e-4));
-            if (progress <= 0.05 || began)
-            {
-                option->peak = progress;
-                option->emptying = false;
-            }
-            if (began)
+            if (choice::Hold(*option, progress))
             {
                 const auto words = OptionWords(*option);
                 log::Verbose(L"choices: holding toward \"{}\"", words);
                 if (!words.empty()) speech::Focus(words);
             }
-            // The ring the hold fills on the option stays silent: the words at the start of
-            // the hold and the tone at the end are the whole of it, as a held key keeps the
-            // reader silent in between anyway.
         }
 
         void OnTimeout(UObject* self, FFrame& stack)
         {
             double progress = 0.0;
             params::Float(stack, L"InProgress", progress);
-            if (Choice* choice = ChoiceOf(self, nullptr)) choice->timeout = progress;
+            if (Choice* choice = g_book.Of(self)) choice->timeout = progress;
         }
 
         // What the game's verdict means: the side taken, with its tone and its word once the
         // keys are released; the time run out; or an end of the stage's own, without a word.
         void Finish(Choice& choice, int64_t result, const std::wstring& how)
         {
-            if (choice.finished || result == 0) return;
-            choice.finished = true;
+            std::wstring chosen;
+            const choice::End end = g_book.Finish(choice, result, &chosen);
+            if (end == choice::End::None) return;
             log::Info(L"choices: ended with {} ({})", result, how);
-            if (result == kResultLeft || result == kResultRight)
+            if (end == choice::End::Left || end == choice::End::Right)
             {
                 sounds::Play(sounds::Cue::Confirm);
-                const int64_t direction = result == kResultLeft ? 0 : 1;
-                for (const auto& o : choice.options)
-                {
-                    if (o.direction == direction && !o.text.empty())
-                    {
-                        g_pendingChosen = locale::Mod(L"choice.chosen", o.text);
-                        g_pendingSince = gamethread::NowSeconds();
-                    }
-                }
+                if (!chosen.empty()) g_chosen.Set(locale::Mod(L"choice.chosen", chosen), gamethread::NowSeconds());
             }
-            else if (result == kResultTimedOut)
+            else if (end == choice::End::TimedOut)
             {
                 sounds::Play(sounds::Cue::Fail);
                 if (cfg::Detailed()) speech::Announce(locale::Mod(L"result.timeout"));
@@ -243,7 +165,7 @@ namespace da::features
         {
             int64_t result = 0;
             params::Int(stack, L"ChoiceResult", result);
-            Choice* choice = ChoiceOf(self, nullptr);
+            Choice* choice = g_book.Of(self);
             if (!choice) return;
             Finish(*choice, result, L"told by " + obj::ObjectName(self));
         }
@@ -251,33 +173,29 @@ namespace da::features
         void PollImpl()
         {
             const double now = gamethread::NowSeconds();
-            // The option taken is told once the keys are released, so that it is not cut off
-            // by the game's answer to the release; failing a release, after a moment.
-            if (!g_pendingChosen.empty() && (!input::InputHeld() || now - g_pendingSince > 2.0))
+            // The option taken is told once the keys are released (choice::Chosen); the keys are
+            // asked about only while it waits.
+            if (g_chosen.Pending())
             {
-                if (cfg::Detailed()) speech::Announce(g_pendingChosen);
-                g_pendingChosen.clear();
+                if (const auto chosen = g_chosen.Due(now, input::InputHeld()); !chosen.empty() && cfg::Detailed()) speech::Announce(chosen);
             }
-            for (auto& choice : g_choices)
+            g_book.Prune([](choice::Handle widget) { return obj::IsLive(static_cast<UObject*>(widget)); });
+            for (auto& choice : g_book.All())
             {
-                std::erase_if(choice.options, [](const Option& o) { return !obj::IsLive(o.widget); });
-                if (choice.finished || choice.announced) continue;
-                if (choice.options.empty()) continue;
-                const bool bothIn = choice.options.size() >= 2;
-                if (bothIn || now - choice.firstSetUpAt >= 2.0) Announce(choice);
+                if (choice::Book::DueToRead(choice, now)) Announce(choice);
             }
             // Each option widget keeps the game's verdict as well ("Choice Result", the
             // Blueprint's own copy of what its end event was told): a verdict the hooks did
             // not deliver is read from there.
-            for (auto& choice : g_choices)
+            for (auto& choice : g_book.All())
             {
                 if (choice.finished || !choice.announced) continue;
                 for (const auto& o : choice.options)
                 {
                     int64_t result = 0;
-                    if (obj::ReadInt(o.widget, L"Choice Result", result) && result != 0)
+                    if (obj::ReadInt(WidgetOf(o), L"Choice Result", result) && result != 0)
                     {
-                        Finish(choice, result, L"read from " + obj::ObjectName(o.widget));
+                        Finish(choice, result, L"read from " + obj::ObjectName(WidgetOf(o)));
                         break;
                     }
                 }
@@ -285,16 +203,13 @@ namespace da::features
             // The options hang in the world beside the character, not in the viewport, so
             // whether they are drawn cannot be asked of them; a choice whose option widgets
             // have all been destroyed without a verdict is over.
-            for (auto& choice : g_choices)
+            for (auto& choice : g_book.All())
             {
-                if (choice.finished || !choice.announced) continue;
-                if (choice.options.empty() && now - choice.firstSetUpAt > 2.0)
-                {
-                    log::Info(L"choices: the options went away without a verdict");
-                    choice.finished = true;
-                }
+                if (!choice::Book::Gone(choice, now)) continue;
+                log::Info(L"choices: the options went away without a verdict");
+                choice.finished = true;
             }
-            std::erase_if(g_choices, [&](const Choice& c) { return c.finished && now - c.firstSetUpAt > 30.0; });
+            g_book.Forget(now);
         }
 
         void Poll(float)
@@ -319,7 +234,7 @@ namespace da::features
 
     void ChoicesFeature::Describe(std::vector<std::wstring>& out)
     {
-        for (const auto& choice : g_choices)
+        for (const auto& choice : g_book.All())
         {
             if (choice.announced && !choice.finished) out.push_back(ChoiceText(choice));
         }
@@ -327,7 +242,7 @@ namespace da::features
 
     void ChoicesFeature::Help(std::vector<std::wstring>& out)
     {
-        for (const auto& choice : g_choices)
+        for (const auto& choice : g_book.All())
         {
             if (!choice.announced || choice.finished) continue;
             std::wstring left;
@@ -341,6 +256,7 @@ namespace da::features
 
     bool ChoiceInProgress()
     {
-        return std::any_of(g_choices.begin(), g_choices.end(), [](const Choice& c) { return c.announced && !c.finished && !c.options.empty(); });
+        auto& choices = g_book.All();
+        return std::any_of(choices.begin(), choices.end(), [](const choice::Choice& c) { return choice::InProgress(c); });
     }
 }

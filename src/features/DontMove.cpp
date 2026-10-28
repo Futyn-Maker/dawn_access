@@ -1,5 +1,7 @@
 #include "features/DontMove.hpp"
 
+#include "features/CalmRules.hpp"
+
 #include "core/Config.hpp"
 #include "core/GameThread.hpp"
 #include "core/Log.hpp"
@@ -30,18 +32,7 @@ namespace da::features
         // The game's kinds of drift, as its set-up names them.
         constexpr int64_t kDriftKinds = 9;
 
-        // The marker's share of the way to the edge within which it counts as in the middle;
-        // the pace of its blip from the middle to the edge; the pace of the double ping inside;
-        // the pace of the steering signal and of the thudded blip past the edge; the least
-        // time between two clock cues; the trace's pace.
-        constexpr double kCentred = 0.15;
-        constexpr double kSlowestBlip = 0.4;
-        constexpr double kFastestBlip = 0.12;
-        constexpr double kInsideTick = 0.5;
-        constexpr double kSteerApart = 0.35;
-        constexpr double kBeyondBlip = 0.2;
-        constexpr double kClockCueApart = 1.0;
-        constexpr double kPingHeard = 0.25; // nothing else sounds this long after the double ping
+        // The trace's pace.
         constexpr double kTraceApart = 0.5;
 
         struct Encounter
@@ -56,17 +47,8 @@ namespace da::features
             bool started = false;
             bool finished = false;
             double startedAt = 0.0;
-            // The live marker.
-            bool beyond = false;
-            bool draining = false; // the game's clock is eating the pool
-            int poolStep = 0;      // the shares of the pool already told
-            double lastBlipAt = -10.0;
-            double lastSteerAt = -10.0;
-            double lastPingAt = -10.0;
-            double lastClockAt = -10.0;
+            calm::Follower follower; // the live marker's sounds
             double lastTraceAt = -10.0;
-            int steerRight = 0; // the way last steered, in steps
-            int steerUp = 0;
             bool positionLogged = false;
         };
         std::vector<Encounter> g_encounters;
@@ -220,30 +202,8 @@ namespace da::features
             return obj::ReadFloatAt(container, obj::StructMember(prop, L"X"), x) && obj::ReadFloatAt(container, obj::StructMember(prop, L"Y"), y);
         }
 
-        // The marker as the game draws and judges it. Its place is a share of the widget's own
-        // limit of travel (left to right, top to bottom); the game counts it past the edge when
-        // the larger of the two shares reaches its threshold, lets it settle below another, and
-        // in the active version pulls it towards a point, the pull, for a while at a time. The
-        // game's clock: a grace runs while the marker is out past the limit, and after it every
-        // moment past the edge drains a pool that never refills; the pool empty is the failure.
-        struct Marker
-        {
-            double x = 0.0;
-            double y = 0.0;
-            bool flagWithin = true; // the game's own flag, which lags its judgement
-            double edge = 0.8;
-            double centre = 1.0;
-            double pullX = 0.0;
-            double pullY = 0.0;
-            bool pulled = false;
-            double clock = 0.0;
-            double pool = 0.0;
-            double grace = 0.0;
-            double graceLimit = 0.0;
-            bool canFail = false;
-        };
-
-        bool ReadMarker(UObject* widget, bool passive, Marker& m)
+        // The marker as the game draws and judges it (calm::Marker), read from the widget.
+        bool ReadMarker(UObject* widget, bool passive, calm::Marker& m)
         {
             UObject* image = nullptr;
             if (!obj::ReadObject(widget, L"Image_Gyro", image) || !image || !obj::IsLive(image)) return false;
@@ -280,27 +240,12 @@ namespace da::features
             return true;
         }
 
-        // The sounds of the marker, told apart by how many notes they have.
-        //
-        // Active version: the double ping means the marker is inside and nothing is asked
-        // (every half second, and at once when it comes back in). A signal of two equal notes
-        // in one ear means push to that side; three notes rising mean push up, falling mean
-        // push down: at once when a pull begins or turns, and, past the edge, every third of
-        // a second with a low thud in front, pointing back to the middle.
-        //
-        // Passive version: the marker's place is the sound. A blip sounds on the side the
-        // marker has drifted to, higher when it is high; past the edge a low thud comes
-        // first; the double ping when it sits in the middle.
-        //
-        // The game's clock: the clock cue sounds when its grace runs out and the pool starts to
-        // drain, and again as half and three quarters of the pool are gone.
+        // The sounds of the marker (calm::Follower), with the log of what they follow.
         void FollowMarker(Encounter& e, double now)
         {
-            Marker m;
+            calm::Marker m;
             if (!ReadMarker(e.widget, e.passive, m)) return;
-            const double offset = std::max(std::fabs(m.x), std::fabs(m.y));
-            const bool beyond = offset >= m.edge; // the game's own test for its clock
-            const double share = std::min(offset / m.edge, 1.0);
+            const bool beyond = calm::Beyond(m);
             if (!e.positionLogged)
             {
                 e.positionLogged = true;
@@ -316,105 +261,41 @@ namespace da::features
                              obj::ObjectName(e.widget), m.x, m.y, beyond ? L"past the edge" : L"inside", m.flagWithin ? L"within" : L"outside",
                              m.pulled ? L"pulled to" : L"last pull", m.pullX, m.pullY, m.clock, m.pool, m.grace, m.graceLimit, stage);
             }
-            bool cameBack = false;
-            if (beyond != e.beyond)
+            const calm::Step step = e.follower.Update(now, m, e.modeKnown, e.passive);
+            const auto name = [&] { return obj::ObjectName(e.widget); };
+            if (step.beyondChanged)
+                log::Info(L"dontmove: {} marker {} at {:.2f}, {:.2f}, clock {:.2f} of {:.2f}", name(), step.beyond ? L"past the edge" : L"back inside", m.x,
+                          m.y, m.clock, m.pool);
+            if (step.drainingChanged && step.draining) log::Info(L"dontmove: {} clock running, {:.2f} of {:.2f} s used", name(), m.clock, m.pool);
+            if (step.clockStep > 0) log::Info(L"dontmove: {} {} of the clock gone: sound: clock", name(), step.clockStep == 2 ? L"three quarters" : L"half");
+            if (step.steered)
             {
-                e.beyond = beyond;
-                cameBack = !beyond;
-                log::Info(L"dontmove: {} marker {} at {:.2f}, {:.2f}, clock {:.2f} of {:.2f}", obj::ObjectName(e.widget),
-                          beyond ? L"past the edge" : L"back inside", m.x, m.y, m.clock, m.pool);
+                const wchar_t* vertical = step.steerUp > 0 ? L"up" : (step.steerUp < 0 ? L"down" : L"");
+                const wchar_t* side = step.steerRight > 0 ? L" right" : (step.steerRight < 0 ? L" left" : L"");
+                if (step.steerChanged)
+                    log::Info(L"dontmove: {} steer {}{} ({}): sound: signal{}", name(), vertical, side,
+                              step.beyond ? L"back from the edge" : L"against the pull", step.beyond ? L" with thud" : L"");
+                else
+                    log::Verbose(L"dontmove: {} sound: signal {}{} with thud", name(), vertical, side);
             }
-            // The marker back inside: the double ping, at once and before anything else.
-            if (cameBack && e.modeKnown && !e.passive)
+            for (size_t i = 0; i < step.sounds.size(); ++i)
             {
-                e.lastPingAt = now;
-                e.lastBlipAt = now;
-                log::Verbose(L"dontmove: {} sound: ping (back inside)", obj::ObjectName(e.widget));
-                sounds::Ping();
-            }
-            const bool pingHeard = now - e.lastPingAt < kPingHeard;
-            // The clock: its grace spent and the marker still out, the pool drains (logged); the
-            // clock cue sounds as half and three quarters of the pool are gone.
-            const bool draining = m.canFail && m.graceLimit > 0.0 && m.grace >= m.graceLimit && beyond;
-            if (draining != e.draining)
-            {
-                e.draining = draining;
-                if (draining) log::Info(L"dontmove: {} clock running, {:.2f} of {:.2f} s used", obj::ObjectName(e.widget), m.clock, m.pool);
-            }
-            if (m.pool > 0.0 && !pingHeard)
-            {
-                const double used = m.clock / m.pool;
-                const int step = used >= 0.75 ? 2 : used >= 0.5 ? 1 : 0;
-                if (step > e.poolStep)
+                const calm::Sound& sound = step.sounds[i];
+                switch (sound.kind)
                 {
-                    e.poolStep = step;
-                    log::Info(L"dontmove: {} {} of the clock gone: sound: clock", obj::ObjectName(e.widget), step == 2 ? L"three quarters" : L"half");
-                    e.lastClockAt = now;
-                    sounds::Play(sounds::Cue::Timer);
-                }
-            }
-            if (e.modeKnown && !e.passive)
-            {
-                // The way to push: past the edge, back towards the middle; inside, against a
-                // pull as it begins or turns. Up on the screen is a smaller y.
-                double wayX = 0.0;
-                double wayY = 0.0;
-                if (beyond)
-                {
-                    wayX = -m.x;
-                    wayY = m.y;
-                }
-                else if (m.pulled)
-                {
-                    wayX = -m.pullX;
-                    wayY = m.pullY;
-                }
-                const double way = std::max(std::fabs(wayX), std::fabs(wayY));
-                if (way > 0.05)
-                {
-                    const int right = static_cast<int>(std::lround(std::clamp(wayX / way, -1.0, 1.0) * 2.0));
-                    const int up = static_cast<int>(std::lround(std::clamp(wayY / way, -1.0, 1.0) * 2.0));
-                    const bool changed = right != e.steerRight || up != e.steerUp;
-                    if ((changed || (beyond && now - e.lastSteerAt >= kSteerApart)) && !pingHeard)
-                    {
-                        const wchar_t* vertical = up > 0 ? L"up" : (up < 0 ? L"down" : L"");
-                        const wchar_t* side = right > 0 ? L" right" : (right < 0 ? L" left" : L"");
-                        if (changed)
-                            log::Info(L"dontmove: {} steer {}{} ({}): sound: signal{}", obj::ObjectName(e.widget), vertical, side,
-                                      beyond ? L"back from the edge" : L"against the pull", beyond ? L" with thud" : L"");
-                        else
-                            log::Verbose(L"dontmove: {} sound: signal {}{} with thud", obj::ObjectName(e.widget), vertical, side);
-                        e.steerRight = right;
-                        e.steerUp = up;
-                        e.lastSteerAt = now;
-                        sounds::Steer(right / 2.0, up / 2.0, beyond);
-                        return;
-                    }
-                }
-                else if (!beyond)
-                {
-                    e.steerRight = 0;
-                    e.steerUp = 0;
-                }
-                if (beyond) return; // the signal is the sound past the edge
-                // Inside: the double ping every half second.
-                if (now - e.lastBlipAt >= kInsideTick)
-                {
-                    e.lastBlipAt = now;
-                    log::Trace(L"dontmove: {} sound: ping", obj::ObjectName(e.widget));
+                case calm::Sound::Kind::Ping:
+                    // The passive version's ping in the middle goes unlogged, as the blips do.
+                    if (step.pingBack && i == 0)
+                        log::Verbose(L"dontmove: {} sound: ping (back inside)", name());
+                    else if (!e.passive)
+                        log::Trace(L"dontmove: {} sound: ping", name());
                     sounds::Ping();
+                    break;
+                case calm::Sound::Kind::Steer: sounds::Steer(sound.right, sound.up, sound.beyond); break;
+                case calm::Sound::Kind::Blip: sounds::Marker(sound.right, sound.up, false, sound.beyond); break;
+                case calm::Sound::Kind::Clock: sounds::Play(sounds::Cue::Timer); break;
                 }
-                return;
             }
-            // Passive: the blip where the marker is; the double ping when it sits in the middle.
-            const bool centred = offset < kCentred;
-            const double interval = centred ? kInsideTick : beyond ? kBeyondBlip : kSlowestBlip - (kSlowestBlip - kFastestBlip) * share;
-            if (now - e.lastBlipAt < interval) return;
-            e.lastBlipAt = now;
-            if (centred)
-                sounds::Ping();
-            else
-                sounds::Marker(std::clamp(m.x / m.edge, -1.0, 1.0), 0.5 - 0.5 * std::clamp(m.y / m.edge, -1.0, 1.0), false, beyond);
         }
 
         void PollImpl()

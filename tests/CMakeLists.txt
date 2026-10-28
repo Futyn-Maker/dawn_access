@@ -35,6 +35,9 @@ add_executable(tests
     WayListTests.cpp
     LookTurnTests.cpp
     HoldTests.cpp
+    CalmRulesTests.cpp
+    QteRulesTests.cpp
+    ChoiceRulesTests.cpp
     "${DA_SRC}/core/Strings.cpp"
     "${DA_SRC}/core/Config.cpp"
     "${DA_SRC}/core/Symbols.cpp"
@@ -48,7 +51,10 @@ add_executable(tests
     "${DA_SRC}/features/GroundFile.cpp"
     "${DA_SRC}/features/WayList.cpp"
     "${DA_SRC}/features/LookTurn.cpp"
-    "${DA_SRC}/features/Hold.cpp")
+    "${DA_SRC}/features/Hold.cpp"
+    "${DA_SRC}/features/CalmRules.cpp"
+    "${DA_SRC}/features/QteRules.cpp"
+    "${DA_SRC}/features/ChoiceRules.cpp")
 
 target_include_directories(tests PRIVATE "${DA_SRC}" "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(tests PRIVATE doctest::doctest)
