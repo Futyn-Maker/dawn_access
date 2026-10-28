@@ -3,6 +3,10 @@
 #include "Support.hpp"
 #include "locale/Locale.hpp"
 
+#include <filesystem>
+#include <set>
+#include <string>
+
 using namespace da;
 using tests::TempDir;
 using tests::U8;
@@ -95,10 +99,35 @@ TEST_CASE("CodeForCulture maps the engine's culture names onto the twenty tables
     CHECK(U8(locale::CodeForCulture(L"zh-Hant")) == "zh_CHT");
     CHECK(U8(locale::CodeForCulture(L"zh-Hans-CN")) == "zh_CHS");
     CHECK(U8(locale::CodeForCulture(L"zh_CHT")) == "zh_CHT");
-    CHECK(U8(locale::CodeForCulture(L"no")) == "nn_NO");
-    CHECK(U8(locale::CodeForCulture(L"nb-NO")) == "nn_NO");
+    CHECK(U8(locale::CodeForCulture(L"no")) == "nb_NO");
+    CHECK(U8(locale::CodeForCulture(L"nb-NO")) == "nb_NO");
+    CHECK(U8(locale::CodeForCulture(L"nn-NO")) == "nb_NO");
     CHECK(U8(locale::CodeForCulture(L" JA ")) == "ja_JP");
     CHECK(locale::CodeForCulture(L"").empty());
     CHECK(locale::CodeForCulture(L"xx").empty());
     CHECK(locale::CodeForCulture(L"xx-YY").empty());
+}
+
+TEST_CASE("The shipped tables are the game's twenty text languages, one each")
+{
+    // The culture names of the game's own localization (Content/Localization/Game/<culture>, the
+    // languages of EAvailableLanguages): each maps to a table the mod ships, and no table is
+    // left over. The game's Norwegian is Bokmål ("ikke", "jeg", "hva"), so its table is nb_NO.
+    const std::filesystem::path lang = std::filesystem::path(DA_REPO_ROOT) / "mod" / "lang";
+    std::set<std::string> mapped;
+    for (const auto* culture : {L"da", L"de", L"en", L"es", L"es-419", L"fi", L"fr", L"it", L"ja",      L"ko",
+                                L"nl", L"no", L"pl", L"pt", L"pt-BR",  L"ru", L"sv", L"tr", L"zh-Hans", L"zh-Hant"})
+    {
+        INFO(U8(culture));
+        const auto code = U8(locale::CodeForCulture(culture));
+        REQUIRE_FALSE(code.empty());
+        CHECK(std::filesystem::exists(lang / (code + ".ini")));
+        CHECK(mapped.insert(code).second);
+    }
+    std::set<std::string> shipped;
+    for (const auto& entry : std::filesystem::directory_iterator(lang))
+    {
+        if (entry.is_regular_file() && entry.path().extension() == ".ini") shipped.insert(entry.path().stem().string());
+    }
+    CHECK(shipped == mapped);
 }

@@ -16,7 +16,7 @@ function Keys($file) {
     }
     return $keys
 }
-$expected = @("da_DK","de_DE","en_US","es_ES","es_MX","fi_FI","fr_FR","it_IT","ja_JP","ko_KR","nl_NL","nn_NO","pl_PL","pt_BR","pt_PT","ru_RU","sv_SE","tr_TR","zh_CHS","zh_CHT")
+$expected = @("da_DK","de_DE","en_US","es_ES","es_MX","fi_FI","fr_FR","it_IT","ja_JP","ko_KR","nb_NO","nl_NL","pl_PL","pt_BR","pt_PT","ru_RU","sv_SE","tr_TR","zh_CHS","zh_CHT")
 $failed = $false
 $total = 0
 $dirs = @($langDir) + @(Get-ChildItem $langDir -Directory | ForEach-Object { $_.FullName })

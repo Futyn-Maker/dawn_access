@@ -133,7 +133,7 @@ namespace da::gametext
         // The game's own setting, as a second answer: its text language, in the order of its
         // language enumeration.
         static const wchar_t* const kLanguages[] = {L"zh_CHS", L"zh_CHT", L"da_DK", L"nl_NL", L"en_US", L"fi_FI", L"fr_FR", L"de_DE", L"it_IT", L"ja_JP",
-                                                    L"ko_KR",  L"nn_NO",  L"pl_PL", L"pt_PT", L"pt_BR", L"ru_RU", L"es_ES", L"es_MX", L"sv_SE", L"tr_TR"};
+                                                    L"ko_KR",  L"nb_NO",  L"pl_PL", L"pt_PT", L"pt_BR", L"ru_RU", L"es_ES", L"es_MX", L"sv_SE", L"tr_TR"};
         UObject* settings = obj::FindFirstLive(L"BatesGameUserSettings");
         int64_t index = -1;
         if (settings && obj::ReadInt(settings, L"CurrentTextLanguage", index) && index >= 0 && index < static_cast<int64_t>(std::size(kLanguages)))

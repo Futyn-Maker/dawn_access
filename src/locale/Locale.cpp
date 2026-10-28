@@ -122,7 +122,7 @@ namespace da::locale
         static const std::pair<const wchar_t*, const wchar_t*> kCultures[] = {
             {L"da", L"da_DK"},      {L"de", L"de_DE"},       {L"en", L"en_US"},     {L"es", L"es_ES"},     {L"es-419", L"es_MX"},   {L"es-mx", L"es_MX"},
             {L"fi", L"fi_FI"},      {L"fr", L"fr_FR"},       {L"it", L"it_IT"},     {L"ja", L"ja_JP"},     {L"ko", L"ko_KR"},       {L"nl", L"nl_NL"},
-            {L"no", L"nn_NO"},      {L"nb", L"nn_NO"},       {L"nn", L"nn_NO"},     {L"pl", L"pl_PL"},     {L"pt", L"pt_PT"},       {L"pt-br", L"pt_BR"},
+            {L"no", L"nb_NO"},      {L"nb", L"nb_NO"},       {L"nn", L"nb_NO"},     {L"pl", L"pl_PL"},     {L"pt", L"pt_PT"},       {L"pt-br", L"pt_BR"},
             {L"ru", L"ru_RU"},      {L"sv", L"sv_SE"},       {L"tr", L"tr_TR"},     {L"zh", L"zh_CHS"},    {L"zh-hans", L"zh_CHS"}, {L"zh-cn", L"zh_CHS"},
             {L"zh-chs", L"zh_CHS"}, {L"zh-hant", L"zh_CHT"}, {L"zh-tw", L"zh_CHT"}, {L"zh-hk", L"zh_CHT"}, {L"zh-cht", L"zh_CHT"},
         };
