@@ -58,6 +58,13 @@ namespace da::sym
             {L"UBatesStatusBarWidget.CurrentAnimValue", 0x2cc}, // float
             {L"UBatesStatusBarWidget.TargetAnimValue", 0x2d0},  // float
             {L"UBatesStatusBarWidget.MaxValue", 0x2d4},         // float
+            // A glint's widget shows its prompt while the glint's intensity is full, the same
+            // moment the glint authorises the press (UBatesGlintWidget::Update, 0x46bf680), fades
+            // it in by CurrentShowPrompt, and is going away while bIsDestroying is set. The
+            // widgets are pooled: one serves glint after glint.
+            {L"UBatesGlintWidget.bIsShowingPrompt", 0x348},  // bool
+            {L"UBatesGlintWidget.bIsDestroying", 0x349},     // bool
+            {L"UBatesGlintWidget.CurrentShowPrompt", 0x378}, // float, 0 to 1
         };
 
         struct CodeViewRecord

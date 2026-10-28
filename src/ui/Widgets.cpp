@@ -12,7 +12,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cwctype>
 #include <map>
+#include <optional>
 #include <set>
 
 namespace da::ui
@@ -134,9 +136,38 @@ namespace da::ui
             bool includeHidden = false;
             bool skipPages = false;      // the pages of the menus and everything in them
             std::wstring_view skipNamed; // a text block left out by its name
+            bool joinRows = false;       // a row of text blocks alone is one line
         };
 
         std::wstring StatusBarText(UObject* bar);
+
+        bool HasLetter(const std::wstring& text)
+        {
+            return std::any_of(text.begin(), text.end(), [](wchar_t c) { return std::iswalpha(c) != 0; });
+        }
+
+        // A horizontal box that holds text blocks and nothing else, as one line: the visible
+        // pieces in their order, run together where one of the two is no word (a number, a
+        // colon), a space between two words. A piece's own fading is left aside (the blinking
+        // colon of a clock); the row's is not. Nothing when the box holds anything else.
+        std::optional<std::wstring> RowText(UObject* row, const TextWalk& walk)
+        {
+            const auto children = obj::PanelChildren(row);
+            if (children.size() < 2 || !std::all_of(children.begin(), children.end(), [](UObject* c) { return IsTextWidget(c); })) return std::nullopt;
+            if (walk.skipFaded && obj::WidgetOpacity(row) < kFadedOpacity) return std::wstring();
+            std::wstring line;
+            std::wstring last;
+            for (UObject* piece : children)
+            {
+                if (!walk.includeHidden && !obj::IsWidgetVisible(piece)) continue;
+                const auto text = str::StripMarkup(obj::TextOf(piece));
+                if (text.empty() || IsTemplate(text)) continue;
+                if (!line.empty() && HasLetter(last) && HasLetter(text)) line += L' ';
+                line += text;
+                last = text;
+            }
+            return line;
+        }
 
         std::vector<std::wstring> Texts(UObject* root, const TextWalk& walk)
         {
@@ -148,6 +179,14 @@ namespace da::ui
                                     if (walk.skipPages && (obj::IsA(w, L"BMUIPage") || obj::IsA(w, L"BatesSubtitlesWidget"))) return false;
                                     if (depth > 0 && walk.skipControls && IsButton(w)) return false;
                                     if (IsKeyIcon(w)) return false;
+                                    if (walk.joinRows && obj::IsA(w, L"HorizontalBox"))
+                                    {
+                                        if (const auto row = RowText(w, walk))
+                                        {
+                                            if (!row->empty()) texts.push_back(*row);
+                                            return false;
+                                        }
+                                    }
                                     if (obj::IsA(w, L"BatesStatusBarWidget"))
                                     {
                                         const auto bar = StatusBarText(w);
@@ -505,18 +544,78 @@ namespace da::ui
             return value;
         }
 
+        // Whether the game's widget pool has a pooled widget (a glint, an interaction prompt) out
+        // in use: one taken back keeps every flag it was drawn with, and, off any parent and out
+        // of the viewport, looks like a widget of a screen layer. The pool is the UI subsystem's
+        // (UBMUIUserWidgetPool::Get), and taking a widget back removes it from ActiveWidgets
+        // (InternalReleaseWidget, 0x421a320). A widget of no pool, or a pool that cannot be
+        // read, is taken as in use.
+        bool PoolHolds(UObject* widget)
+        {
+            if (!obj::IsA(widget, L"BMUIPooledUserWidget")) return true;
+            static UObject* subsystem = nullptr;
+            static obj::ObjectKey key;
+            static double soughtAt = -10.0;
+            if (!subsystem || !obj::IsSame(key))
+            {
+                subsystem = nullptr;
+                const double now = gamethread::NowSeconds();
+                if (now - soughtAt < 2.0) return true;
+                soughtAt = now;
+                subsystem = obj::FindFirstLive(L"BMUISubsystem");
+                key = obj::KeyOf(subsystem);
+                if (!subsystem) return true;
+            }
+            UObject* pool = nullptr;
+            std::vector<UObject*> active;
+            if (!obj::ReadObject(subsystem, L"UserWidgetPool", pool) || !obj::IsLive(pool) || !obj::ReadObjectArray(pool, L"ActiveWidgets", active))
+                return true;
+            return std::find(active.begin(), active.end(), widget) != active.end();
+        }
+
+        // The one direction a stick's key cap draws, by its picture's name (MI_PS_LeftStick_Up,
+        // MI_XB_RightStick_Left, ...): Up, Down, Left or Right; empty for the whole stick
+        // (_All), both ways of an axis (_LeftRight, _UpDown), its press or a half turn, and for
+        // anything that is no stick.
+        std::wstring StickDirectionOfCap(UObject* cap)
+        {
+            for (const auto& name : PictureNames(cap))
+            {
+                const auto at = name.find(L"Stick_");
+                if (at == std::wstring::npos) continue;
+                const auto suffix = name.substr(at + 6);
+                if (suffix == L"Up" || suffix == L"Down" || suffix == L"Left" || suffix == L"Right") return suffix;
+                return {};
+            }
+            return {};
+        }
+
         // The keys the icon of a prompt shows: one key, or one for each direction of an axis
         // (left and right, up and down), which the icon draws as that many key caps.
-        std::wstring PromptKeys(UObject* icon, const std::wstring& action)
+        std::wstring PromptKeys(UObject* icon, const std::wstring& action, UObject* under = nullptr)
         {
             int caps = 0;
+            UObject* shown = nullptr;
             for (const wchar_t* name : {L"XPosInternalWidget", L"XNegInternalWidget", L"YPosInternalWidget", L"YNegInternalWidget"})
             {
                 UObject* cap = nullptr;
-                if (obj::ReadObject(icon, name, cap) && cap && obj::IsLive(cap) && obj::IsWidgetShown(cap)) ++caps;
+                if (obj::ReadObject(icon, name, cap) && cap && obj::IsLive(cap) && (under ? obj::IsWidgetShownUnder(cap, under) : obj::IsWidgetShown(cap)))
+                {
+                    ++caps;
+                    shown = cap;
+                }
             }
             if (caps <= 1)
             {
+                // One direction of a stick drawn alone is that direction: "left stick up". The
+                // direction is the cap's picture's, not its slot's: the hint to walk draws the
+                // whole stick (MI_PS_LeftStick_All) in the slot for up, and says "left stick".
+                if (caps == 1 && shown)
+                {
+                    const auto direction = StickDirectionOfCap(shown);
+                    const auto directional = direction.empty() ? std::wstring() : input::DirectionalKeyForAction(action, direction);
+                    if (!directional.empty()) return directional;
+                }
                 const auto key = input::KeyForAction(action);
                 if (!key.empty()) return key;
                 // The letter printed on the cap, when the action is not one the game maps.
@@ -791,6 +890,15 @@ namespace da::ui
         return root ? OwnTexts(root, false, true) : std::vector<std::wstring>{};
     }
 
+    std::vector<std::wstring> DrawnRows(UObject* root)
+    {
+        if (!root) return {};
+        TextWalk walk;
+        walk.skipFaded = true;
+        walk.joinRows = true;
+        return Texts(root, walk);
+    }
+
     std::vector<std::wstring> AuditTexts(UObject* root)
     {
         if (!root) return {};
@@ -831,10 +939,11 @@ namespace da::ui
         return false;
     }
 
-    bool PromptOfCap(UObject* cap, Prompt& out)
+    bool PromptOfCap(UObject* cap, Prompt& out, UObject* under)
     {
         out = Prompt{};
-        if (!cap || !obj::IsLive(cap) || !obj::IsA(cap, L"BMUIInputActionWidget") || !obj::IsWidgetShown(cap)) return false;
+        if (!cap || !obj::IsLive(cap) || !obj::IsA(cap, L"BMUIInputActionWidget")) return false;
+        if (!(under ? obj::IsWidgetShownUnder(cap, under) : obj::IsWidgetShown(cap))) return false;
         std::wstring label;
         obj::ReadString(cap, L"ContextText", label);
         label = str::Trim(str::StripMarkup(label));
@@ -850,7 +959,7 @@ namespace da::ui
         out.action = actionName;
         if (!actionName.empty())
         {
-            out.key = PromptKeys(cap, actionName);
+            out.key = PromptKeys(cap, actionName, under);
         }
         else
         {
@@ -861,7 +970,7 @@ namespace da::ui
         return !out.label.empty() || !out.key.empty();
     }
 
-    std::vector<Prompt> PromptsIn(UObject* root)
+    std::vector<Prompt> PromptsIn(UObject* root, bool layer)
     {
         std::vector<Prompt> prompts;
         if (!root) return prompts;
@@ -871,10 +980,15 @@ namespace da::ui
                                 if (!obj::IsWidgetVisible(w)) return false;
                                 if (!obj::IsA(w, L"BMUIInputActionWidget")) return true;
                                 Prompt prompt;
-                                if (PromptOfCap(w, prompt)) prompts.push_back(prompt);
+                                if (PromptOfCap(w, prompt, layer ? root : nullptr)) prompts.push_back(prompt);
                                 return false;
                             });
         return prompts;
+    }
+
+    bool LayerWidgetDrawn(UObject* root)
+    {
+        return obj::IsLayerWidget(root) && obj::IsWidgetVisible(root) && obj::WidgetOpacity(root) > 0.02 && PoolHolds(root);
     }
 
     std::wstring PromptLines(const std::vector<Prompt>& prompts)

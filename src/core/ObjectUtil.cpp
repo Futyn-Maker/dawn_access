@@ -311,6 +311,8 @@ namespace da::obj
         return false;
     }
 
+    }
+
     bool ReadIntAt(void* container, FProperty* property, int64_t& out)
     {
         if (!container || !property) return false;
@@ -844,6 +846,58 @@ namespace da::obj
             return IsA(cur, L"UserWidget") && CallForBool(cur, L"IsInViewport");
         }
         return true;
+    }
+
+    bool IsWidgetShownUnder(UObject* widget, UObject* root, bool opaque)
+    {
+        UObject* cur = widget;
+        for (int depth = 0; cur && depth < 48; ++depth)
+        {
+            if (!IsLive(cur)) return false;
+            if (!IsWidgetVisible(cur)) return false;
+            if (opaque && WidgetOpacity(cur) <= 0.02) return false;
+            if (cur == root) return true;
+            UObject* slot = nullptr;
+            UObject* parent = nullptr;
+            if (ReadObject(cur, L"Slot", slot) && slot && IsLive(slot) && ReadObject(slot, L"Parent", parent) && parent)
+            {
+                if (IsA(parent, L"WidgetSwitcher"))
+                {
+                    int64_t active = -1;
+                    std::vector<UObject*> pages;
+                    ReadInt(parent, L"ActiveWidgetIndex", active);
+                    ReadObjectArray(parent, L"Slots", pages);
+                    if (active < 0 || active >= static_cast<int64_t>(pages.size()) || pages[static_cast<size_t>(active)] != slot) return false;
+                }
+                cur = parent;
+                continue;
+            }
+            UObject* outer = cur->GetOuterPrivate();
+            if (outer && IsA(outer, L"WidgetTree"))
+            {
+                UObject* rootWidget = nullptr;
+                UObject* owner = outer->GetOuterPrivate();
+                if (ReadObject(outer, L"RootWidget", rootWidget) && rootWidget == cur && owner && IsA(owner, L"UserWidget"))
+                {
+                    cur = owner;
+                    continue;
+                }
+            }
+            return false;
+        }
+        return false;
+    }
+
+    bool IsLayerWidget(UObject* widget)
+    {
+        if (!IsLive(widget) || !IsA(widget, L"UserWidget")) return false;
+        UObject* slot = nullptr;
+        if (ReadObject(widget, L"Slot", slot) && slot && IsLive(slot)) return false;
+        UObject* outer = widget->GetOuterPrivate();
+        if (outer && IsA(outer, L"WidgetTree")) return false;
+        return !CallForBool(widget, L"IsInViewport");
+    }
+
     }
 
     std::wstring BoundText(UObject* widget, std::wstring_view property)

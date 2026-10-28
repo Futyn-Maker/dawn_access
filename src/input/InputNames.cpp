@@ -472,6 +472,23 @@ namespace da::input
         return names;
     }
 
+    std::wstring DirectionalKeyForAction(std::wstring_view actionName, std::wstring_view direction)
+    {
+        for (const auto& key : SchemeKeysCached(std::wstring(actionName), CurrentScheme()))
+        {
+            std::wstring stick;
+            if (key == L"Gamepad_Left2D")
+                stick = L"Gamepad_LeftStick_";
+            else if (key == L"Gamepad_Right2D")
+                stick = L"Gamepad_RightStick_";
+            else
+                continue;
+            const auto name = KeyDisplayName(stick + std::wstring(direction));
+            if (!name.empty()) return name;
+        }
+        return {};
+    }
+
     std::wstring DescribeAction(std::wstring_view actionName)
     {
         const std::wstring action(actionName);

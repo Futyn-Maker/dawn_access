@@ -4,6 +4,7 @@
 #include "core/Gate.hpp"
 #include "core/Log.hpp"
 #include "core/ObjectUtil.hpp"
+#include "core/Symbols.hpp"
 #include "speech/Speech.hpp"
 #include "ui/Widgets.hpp"
 #include "watch/Watchers.hpp"
@@ -48,6 +49,17 @@ namespace da::diag
             return false;
         }
 
+        void Note(const std::wstring& cls, const std::wstring& text, double now, const wchar_t* kind)
+        {
+            Drawn& d = g_drawn[text];
+            if (d.firstAt == 0.0) d.firstAt = now;
+            d.lastAt = now;
+            if (!d.said && speech::SaidRecently(text, kSaidWithin)) d.said = true;
+            if (d.said || d.reported || now - d.firstAt < kDrawnFor) return;
+            d.reported = true;
+            log::Info(L"unread{}: {} \"{}\"", kind, cls, text);
+        }
+
         void PollImpl()
         {
             // Between two scans of the screen watcher.
@@ -58,14 +70,38 @@ namespace da::diag
             {
                 if (!widget || !obj::IsLive(widget) || LeftAlone(widget)) continue;
                 for (const auto& text : ui::AuditTexts(widget))
+                    Note(cls, text, now, L"");
+            }
+            // The prompts the game draws on screen layers of their own, in no widget tree:
+            // a glint's key once its prompt is up, the keys on the character's wrist in an
+            // interaction. Their words are their keys.
+            for (const wchar_t* cls : {L"BatesInteractionWidget", L"BatesGlintWidget"})
+            {
+                for (UObject* widget : obj::FindAllLive(cls))
                 {
-                    Drawn& d = g_drawn[text];
-                    if (d.firstAt == 0.0) d.firstAt = now;
-                    d.lastAt = now;
-                    if (!d.said && speech::SaidRecently(text, kSaidWithin)) d.said = true;
-                    if (d.said || d.reported || now - d.firstAt < kDrawnFor) continue;
-                    d.reported = true;
-                    log::Info(L"unread: {} \"{}\"", cls, text);
+                    const bool shown = obj::IsWidgetShown(widget);
+                    if (!shown && !ui::LayerWidgetDrawn(widget)) continue;
+                    if (obj::IsA(widget, L"BatesGlintWidget"))
+                    {
+                        // A glint's prompt by the widget's own flags (shown, faded in, not going
+                        // away), as the prompt reader takes it; its cap's opacity without them.
+                        const auto* showing = static_cast<const uint8_t*>(sym::MemberOf(widget, L"UBatesGlintWidget.bIsShowingPrompt"));
+                        const auto* destroying = static_cast<const uint8_t*>(sym::MemberOf(widget, L"UBatesGlintWidget.bIsDestroying"));
+                        const auto* faded = static_cast<const float*>(sym::MemberOf(widget, L"UBatesGlintWidget.CurrentShowPrompt"));
+                        if (showing && destroying && faded)
+                        {
+                            if (*showing == 0 || *destroying != 0 || *faded < 0.99f) continue;
+                        }
+                        else
+                        {
+                            UObject* cap = nullptr;
+                            if (!obj::ReadObject(widget, L"InputActionWidget", cap) || !obj::IsLive(cap) || !obj::IsWidgetVisible(cap) ||
+                                obj::WidgetOpacity(cap) < 0.6)
+                                continue;
+                        }
+                    }
+                    const auto text = ui::PromptLines(ui::PromptsIn(widget, !shown));
+                    if (!text.empty()) Note(obj::ClassName(widget), text, now, L" prompt");
                 }
             }
             for (auto it = g_drawn.begin(); it != g_drawn.end();)

@@ -68,6 +68,10 @@ namespace da::ui
     std::vector<std::wstring> VisibleTexts(UObject* root);
     // The same, with the texts still faded in or out left out: what is drawn now.
     std::vector<std::wstring> DrawnTexts(UObject* root);
+    // The drawn texts as lines the eye reads: a row of text blocks side by side and nothing else
+    // (a clock's minutes, its colon and its seconds) is one line, its pieces run together where
+    // one of them is no word, and a piece that blinks in a drawn row is part of it.
+    std::vector<std::wstring> DrawnRows(UObject* root);
     // The drawn texts outside the pages of the menus (the pages have their own rules): what
     // the unread-text audit checks against what was said.
     std::vector<std::wstring> AuditTexts(UObject* root);
@@ -84,9 +88,15 @@ namespace da::ui
     bool IsVideoText(UObject* widget);
     // The prompt a key cap of the game's shows: its context words and the key of the action
     // it was set up with; false for a cap that is hidden or says nothing.
-    bool PromptOfCap(UObject* cap, Prompt& out);
-    // Every prompt the key caps under a widget show, in tree order.
-    std::vector<Prompt> PromptsIn(UObject* root);
+    // With `under`, a cap counts as shown once its line of parents reaches that widget,
+    // for a widget drawn on a screen layer of its own.
+    bool PromptOfCap(UObject* cap, Prompt& out, UObject* under = nullptr);
+    // Every prompt the key caps under a widget show, in tree order; `layer` for a widget
+    // drawn on a screen layer of its own.
+    std::vector<Prompt> PromptsIn(UObject* root, bool layer = false);
+    // True for a widget the game draws on a screen layer of its own (a glint, a prompt on
+    // the character's wrist) that is visible and not faded out.
+    bool LayerWidgetDrawn(UObject* root);
     // The prompts as one line, a prompt without words said by its key alone.
     std::wstring PromptLines(const std::vector<Prompt>& prompts);
 }

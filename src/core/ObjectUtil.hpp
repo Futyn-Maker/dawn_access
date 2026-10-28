@@ -109,6 +109,13 @@ namespace da::obj
     // Self and all outer user widgets visible and on the active page of any switcher above
     // them; with `opaque`, none of them faded out either.
     bool IsWidgetShown(UObject* widget, bool opaque = false);
+    // The same up to `root`, which is taken as drawn: for a widget the game draws on a screen
+    // layer of its own (a glint, the prompt on the character's wrist), which hangs in no
+    // widget tree and in no viewport.
+    bool IsWidgetShownUnder(UObject* widget, UObject* root, bool opaque = false);
+    // True for a user widget the game draws on a screen layer of its own: no slot, no place
+    // in a widget tree, not added to the viewport.
+    bool IsLayerWidget(UObject* widget);
     // The opacity a widget is drawn with (its render opacity times its colour alpha).
     double WidgetOpacity(UObject* widget);
     // True while the widget animation held in the named property of a user widget plays.

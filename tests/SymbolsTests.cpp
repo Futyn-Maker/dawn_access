@@ -26,6 +26,8 @@ TEST_CASE("the members known by offset are in the table, and nothing else answer
     CHECK(Offset(L"UBatesKeyRebindSlotWidget.CurrentKey") != 0);
     CHECK(Offset(L"UBMTTSQueueItem.Priority") < Offset(L"UBMTTSQueueItem.PriorityTag"));
     CHECK(Offset(L"UBMTTSQueueItem.PriorityTag") < Offset(L"UBMTTSQueueItem.TTSLine"));
+    CHECK(Offset(L"UBatesGlintWidget.bIsShowingPrompt") + 1 == Offset(L"UBatesGlintWidget.bIsDestroying"));
+    CHECK(Offset(L"UBatesGlintWidget.CurrentShowPrompt") == 0x378);
     CHECK(Offset(L"UBMUISubsystem.CurrentGamepadVendor") == 0);
     CHECK(Offset(L"") == 0);
 }

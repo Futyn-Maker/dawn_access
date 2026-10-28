@@ -36,6 +36,10 @@ namespace da::input
     // order of the game's mapping, for an action drawn with a key cap per direction.
     std::vector<std::wstring> KeysForAction(std::wstring_view actionName, int count);
 
+    // The spoken name of one direction of the stick an action is bound to ("left stick up"
+    // for a movement prompt drawn with the up cap alone); `direction` is Up, Down, Left or
+    // Right. Empty when the action is bound to no stick in the current scheme.
+    std::wstring DirectionalKeyForAction(std::wstring_view actionName, std::wstring_view direction);
     // The keys a key-rebind row of the settings draws in its slots, as one spoken line.
     std::wstring KeysOfRebindRow(RC::Unreal::UObject* row);
 
