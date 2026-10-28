@@ -3,7 +3,8 @@
 // the character can do something (take, open, continue, back out), the prompt a glint
 // shows once the character is close enough, and the action bar at the foot of the screen
 // while no menu page is up (continue a lesson, hide a transcript). Each is read as its
-// words and key, once it has settled, and again whenever the game changes it.
+// words and key, once it has settled, and again whenever the game asks anew. The phone's
+// unlock swipe in the woods is followed here too, as the prompt it is.
 
 #include "features/Feature.hpp"
 
@@ -21,5 +22,6 @@ namespace da::features
         }
         void Install() override;
         void Describe(std::vector<std::wstring>& out) override;
+        void Help(std::vector<std::wstring>& out) override;
     };
 }

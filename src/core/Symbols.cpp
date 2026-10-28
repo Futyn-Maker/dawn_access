@@ -124,6 +124,18 @@ namespace da::sym
             {L"UBatesGlintWidget.bIsShowingPrompt", 0x348},  // bool
             {L"UBatesGlintWidget.bIsDestroying", 0x349},     // bool
             {L"UBatesGlintWidget.CurrentShowPrompt", 0x378}, // float, 0 to 1
+            // The phone's unlock swipe (ABatesInteractionPhoneUnlock): its state (an optional
+            // enum: 0 out of the pocket, 1 the intro, 2 the swipe, 3 the outro), the progress the
+            // swipes have made towards the target, and how fast it slides back once no swipe
+            // came for a moment (UpdateSwipeInteraction, 0x4659c20).
+            {L"ABatesInteractionPhoneUnlock.SwipeDecay", 0xd88},             // float, progress lost per second
+            {L"ABatesInteractionPhoneUnlock.SwipeDecayDelay", 0xd8c},        // float, seconds
+            {L"ABatesInteractionPhoneUnlock.CursorDeltaMultiplier", 0xd90},  // float
+            {L"ABatesInteractionPhoneUnlock.LeftStickMultiplier", 0xd98},    // float
+            {L"ABatesInteractionPhoneUnlock.CumulativeProgress", 0xe00},     // float
+            {L"ABatesInteractionPhoneUnlock.TargetProgress", 0xe04},         // float
+            {L"ABatesInteractionPhoneUnlock.InteractionState", 0xe0c},       // int32
+            {L"ABatesInteractionPhoneUnlock.InteractionState.IsSet", 0xe10}, // bool
             // The stairs (and every special locomotion) keep a record of each character they
             // handle: BoundCharacterData, a map of a weak pointer to the character to the record.
             // A staircase walks the character onto its first step itself

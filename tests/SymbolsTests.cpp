@@ -48,6 +48,9 @@ TEST_CASE("the members known by offset are in the table, and nothing else answer
     CHECK(Offset(L"UBatesCharacterMovementComponent.AutoLocoState.IsSet") + 0x50 == Offset(L"UBatesCharacterMovementComponent.LimitedLocomotionState"));
     CHECK(Offset(L"UBatesGlintWidget.bIsShowingPrompt") + 1 == Offset(L"UBatesGlintWidget.bIsDestroying"));
     CHECK(Offset(L"UBatesGlintWidget.CurrentShowPrompt") == 0x378);
+    CHECK(Offset(L"ABatesInteractionPhoneUnlock.CumulativeProgress") + 4 == Offset(L"ABatesInteractionPhoneUnlock.TargetProgress"));
+    CHECK(Offset(L"ABatesInteractionPhoneUnlock.InteractionState") + 4 == Offset(L"ABatesInteractionPhoneUnlock.InteractionState.IsSet"));
+    CHECK(Offset(L"ABatesInteractionPhoneUnlock.SwipeDecay") + 4 == Offset(L"ABatesInteractionPhoneUnlock.SwipeDecayDelay"));
     CHECK(Offset(L"ABatesSpecialLocoActivityActor.BoundCharacterData") == 0x328);
     CHECK(Offset(L"FStairActivityCharacterData.bIsInAutoLoco") == 0x10b);
     CHECK(Offset(L"UBMUISubsystem.CurrentGamepadVendor") == 0);
