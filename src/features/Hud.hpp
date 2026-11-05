@@ -23,4 +23,20 @@ namespace da::features
         void Install() override;
         void Describe(std::vector<std::wstring>& out) override;
     };
+
+    namespace hud
+    {
+        // A HUD text shown a moment ago is still to be said: a control's prompt that comes up with
+        // it waits for it, so that the hint comes first and its keys after. At the lodge's two
+        // totems on 2026-11-04 the inspection's hint and its stick came up within a frame of each
+        // other and were said in one order at the first totem and in the other at the second.
+        // Waits at most kHintFirst from the text's showing. A hint the game draws a moment after
+        // the prompt is waited for by the prompt itself (prompt::HintFirst).
+        constexpr double kHintFirst = 0.6;
+        bool TextSettling(double now);
+        // When an element's words were last said; long ago when none was.
+        double LastSaidAt();
+        // The objective the game keeps for the player now, as last read; empty when none is known.
+        std::wstring Objective();
+    }
 }

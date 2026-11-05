@@ -24,7 +24,7 @@ namespace da::ui
     std::wstring Speak(const Description& d, bool detailed, bool sayGroup)
     {
         std::vector<std::wstring> parts;
-        if (sayGroup && !d.group.empty()) parts.push_back(d.group);
+        if (sayGroup && !d.group.empty() && !d.narrated) parts.push_back(d.group);
         std::vector<std::wstring> words;
         words.push_back(d.label);
         if (detailed)

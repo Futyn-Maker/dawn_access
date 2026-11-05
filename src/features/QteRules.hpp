@@ -96,4 +96,17 @@ namespace da::qte
         std::wstring m_last;
         double m_at = -10.0;
     };
+
+    // An example is said once it has stood kExampleSettle, still drawn on its page: a settings page
+    // the player leaves sets up the example of the row its focus comes back to as it goes (the
+    // settings saved at act2_1: the QTE scale row's example came up and went in 52 ms, and its key
+    // and cue were heard over the pause menu, 2026-11-02).
+    constexpr double kExampleSettle = 0.3;
+    enum class ExampleStep
+    {
+        Wait,
+        Say,
+        Drop, // gone before it was said
+    };
+    ExampleStep Example(double setUpAt, double now, bool shown);
 }

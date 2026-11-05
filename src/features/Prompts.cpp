@@ -1,5 +1,7 @@
 #include "features/Prompts.hpp"
 
+#include "features/Hud.hpp"
+
 #include "features/Exploration.hpp"
 #include "features/PromptRules.hpp"
 
@@ -43,6 +45,16 @@ namespace da::features
 
         // The action bar in play (prompt::Bar); the menus read the same bar while a page is up.
         prompt::Bar g_bar;
+
+        // The first question of an interaction waits a moment for its hint (prompt::HintFirst).
+        prompt::HintFirst g_hintFirst;
+
+        // Whether the interaction's prompts hold back for a hint at this look: one the HUD is still
+        // to say (hud::TextSettling), or one the game may still be about to show.
+        bool HoldForHint(double now)
+        {
+            return hud::TextSettling(now) || g_hintFirst.Waits(now, hud::LastSaidAt());
+        }
 
         Shown* Find(UObject* widget)
         {
@@ -195,6 +207,9 @@ namespace da::features
             // The menus' own prompts (IA_UI_*) linger on the bar a moment after a page goes; in
             // play they ask nothing.
             std::erase_if(prompts, [](const ui::Prompt& p) { return str::StartsWith(p.action, L"IA_UI_"); });
+            // A hint the HUD shows with it is said first.
+            if (!prompts.empty()) g_hintFirst.Asked(now);
+            if (HoldForHint(now)) return;
             std::vector<std::wstring> lines;
             for (const auto& p : prompts)
                 lines.push_back(Line(p));
@@ -308,6 +323,7 @@ namespace da::features
             const bool frozen = gamestate::Paused() || watch::CurrentScreen() != nullptr;
             const bool inPlay = gamestate::InPlay();
             const bool glintsAsked = ExplorationActive() && !WalkInProgress();
+            if (!frozen) g_hintFirst.Interaction(inPlay && CharacterInInteraction());
             for (auto it = g_shown.begin(); it != g_shown.end();)
             {
                 if (!obj::IsSame(it->key))
@@ -333,6 +349,16 @@ namespace da::features
                 }
                 std::wstring actions;
                 const auto text = inPlay && (!it->glint || glintsAsked) ? Readout(*it, &actions) : std::wstring();
+                // A hint the HUD shows with it is said first.
+                if (!it->glint && inPlay)
+                {
+                    if (!text.empty()) g_hintFirst.Asked(now);
+                    if (HoldForHint(now))
+                    {
+                        ++it;
+                        continue;
+                    }
+                }
                 if (prompt::Read(*it, now, text, actions, it->glint))
                 {
                     log::Info(L"prompts: {} {} \"{}\" [{}]", obj::ClassName(it->widget), obj::ObjectName(it->widget), text, actions);
@@ -385,5 +411,9 @@ namespace da::features
     void PromptsFeature::Help(std::vector<std::wstring>& out)
     {
         if (PhoneSwipeAsked()) out.push_back(locale::Mod(L"help.swipe", input::KeyForAction(L"IA_Swipe_Right")));
+        // A half circle of the stick, which nothing on the screen spells out beyond its picture.
+        const bool gesture = std::any_of(g_shown.begin(), g_shown.end(),
+                                         [](const Shown& s) { return obj::IsLive(s.widget) && !s.hidden && s.actions.find(L"Gesture") != std::wstring::npos; });
+        if (gesture) out.push_back(locale::Mod(L"help.gesture"));
     }
 }

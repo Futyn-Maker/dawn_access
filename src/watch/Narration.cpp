@@ -7,6 +7,7 @@
 #include "core/ParamReader.hpp"
 #include "core/Strings.hpp"
 #include "core/Symbols.hpp"
+#include "features/MenuRules.hpp"
 #include "hooks/HookDispatcher.hpp"
 
 #include <Unreal/NameTypes.hpp>
@@ -32,18 +33,18 @@ namespace da::narration
             return name == L"None" ? std::wstring() : name;
         }
 
-        // What the game queued for each owner: the last button-priority line, and the name it
-        // announced the owner's page with.
+        // What the game queued for each owner: its last utterance at the button priority, and
+        // the name it announced the owner's page with.
         struct Queued
         {
-            std::wstring label;
+            menu::Utterance label;
             double labelAt = -1.0;
             std::wstring pageName;
         };
         std::mutex g_queuedMutex;
         std::map<UObject*, Queued> g_queued;
 
-        void Remember(UObject* owner, const std::wstring& line, const std::wstring& priority, const std::wstring& format)
+        void Remember(UObject* owner, const std::wstring& line, const std::wstring& priority, const std::wstring& format, bool clears)
         {
             if (!owner || line.empty()) return;
             fault::Guard lock(g_queuedMutex, L"narration");
@@ -51,7 +52,7 @@ namespace da::narration
             Queued& queued = g_queued[owner];
             if (priority == L"UI.TTS.Button")
             {
-                queued.label = line;
+                queued.label.Queued(line, clears, gamethread::FrameCount());
                 queued.labelAt = gamethread::NowSeconds();
             }
             else if (priority == L"UI.TTS.Page" && format == L"UI.TTSFormat.Menu")
@@ -69,9 +70,11 @@ namespace da::narration
             params::Object(stack, L"InOwner", owner);
             const auto priority = TagName(params::StructPtr(stack, L"InPriorityTag"));
             const auto format = TagName(params::StructPtr(stack, L"InFormatTag"));
+            bool clears = false;
+            params::Bool(stack, L"bInClearPrio", clears);
             const auto text = str::StripMarkup(line);
-            log::Info(L"NARRATION queued \"{}\" by {} priority {} format {}", text, obj::ClassName(owner), priority, format);
-            Remember(owner, text, priority, format);
+            log::Info(L"NARRATION queued \"{}\" by {} priority {} format {}{}", text, obj::ClassName(owner), priority, format, clears ? L", clearing" : L"");
+            Remember(owner, text, priority, format, clears);
         }
 
         // The same from a text block of a widget, with a prefix the game puts before it.
@@ -82,10 +85,12 @@ namespace da::narration
             UObject* owner = nullptr;
             params::Object(stack, L"InOwner", owner);
             const auto priority = TagName(params::StructPtr(stack, L"InPriorityTag"));
+            bool clears = false;
+            params::Bool(stack, L"bInClearPrio", clears);
             const auto text = block ? str::StripMarkup(obj::TextOf(block)) : std::wstring();
-            log::Info(L"NARRATION queued text \"{}\" of {} by {} priority {} prefix {}", text, obj::ObjectName(block), obj::ClassName(owner), priority,
-                      TagName(params::StructPtr(stack, L"InPrefix")));
-            Remember(owner, text, priority, std::wstring());
+            log::Info(L"NARRATION queued text \"{}\" of {} by {} priority {} prefix {}{}", text, obj::ObjectName(block), obj::ClassName(owner), priority,
+                      TagName(params::StructPtr(stack, L"InPrefix")), clears ? L", clearing" : L"");
+            Remember(owner, text, priority, std::wstring(), clears);
         }
 
         // What the game speaks, from its queue's active item: this catches the lines its own
@@ -137,7 +142,7 @@ namespace da::narration
         fault::Guard lock(g_queuedMutex, L"narration");
         const auto it = g_queued.find(owner);
         if (it == g_queued.end() || it->second.labelAt < 0.0 || gamethread::NowSeconds() - it->second.labelAt > maxAgeSeconds) return {};
-        return it->second.label;
+        return it->second.label.Line();
     }
 
     std::wstring PageNameFor(UObject* page)

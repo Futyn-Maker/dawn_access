@@ -43,6 +43,39 @@ namespace da::prompt
         q.announced = false;
     }
 
+    bool CapShowsKey(bool hasAction, bool setUpFromKey)
+    {
+        return hasAction || setUpFromKey;
+    }
+
+    void HintFirst::Interaction(bool in)
+    {
+        if (in && !m_in)
+        {
+            m_pending = true;
+            m_openedAt = -1.0;
+        }
+        if (!in)
+        {
+            m_pending = false;
+            m_openedAt = -1.0;
+        }
+        m_in = in;
+    }
+
+    void HintFirst::Asked(double now)
+    {
+        if (!m_pending) return;
+        m_pending = false;
+        m_openedAt = now;
+    }
+
+    bool HintFirst::Waits(double now, double hintSaidAt) const
+    {
+        if (m_openedAt < 0.0 || hintSaidAt >= m_openedAt - kHintWait) return false;
+        return now - m_openedAt < kHintWait;
+    }
+
     std::vector<std::wstring> Bar::Update(double now, bool pageUp, const std::vector<std::wstring>& lines)
     {
         if (pageUp || lines == m_lines)

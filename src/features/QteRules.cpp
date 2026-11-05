@@ -89,4 +89,10 @@ namespace da::qte
         m_at = now;
         return true;
     }
+
+    ExampleStep Example(double setUpAt, double now, bool shown)
+    {
+        if (!shown) return ExampleStep::Drop;
+        return now - setUpAt < kExampleSettle ? ExampleStep::Wait : ExampleStep::Say;
+    }
 }

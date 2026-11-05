@@ -13,9 +13,9 @@ namespace da::narration
 {
     void Install();
 
-    // The line the game's own narration last queued for a control (at its button priority),
-    // when it queued one within the given seconds: its evaluation of the control's data, such
-    // as the locked word for a collectible not yet earned. Empty otherwise.
+    // What the game's own narration last said of a control (at its button priority), every line
+    // of the utterance, when it queued one within the given seconds: its evaluation of the
+    // control's data, such as the locked word for a collectible not yet earned. Empty otherwise.
     std::wstring LabelFor(RC::Unreal::UObject* owner, double maxAgeSeconds);
 
     // The name the game's narration gave a page it announced as a menu, for a page that draws

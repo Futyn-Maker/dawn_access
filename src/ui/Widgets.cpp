@@ -5,6 +5,8 @@
 #include "core/ObjectUtil.hpp"
 #include "core/Strings.hpp"
 #include "core/Symbols.hpp"
+#include "features/MenuRules.hpp"
+#include "features/PromptRules.hpp"
 #include "input/InputNames.hpp"
 #include "locale/GameText.hpp"
 #include "locale/Locale.hpp"
@@ -90,40 +92,36 @@ namespace da::ui
                    text == L"TextBlockDefaultValue";
         }
 
-        bool HasVisibleText(UObject* widget);
+        bool HasName(UObject* widget);
 
-        // Whether a panel holds controls among its children, and whether any of them carries
-        // words of its own.
-        void ControlsIn(UObject* panel, bool& any, bool& labelled)
+        // The controls a panel holds among its children, and whether any of them is named.
+        menu::Controls ControlsIn(UObject* panel)
         {
-            any = false;
-            labelled = false;
+            menu::Controls controls;
             for (auto* child : obj::PanelChildren(panel))
             {
                 if (!IsButton(child) || IsPromptButton(child)) continue;
-                any = true;
-                if (HasVisibleText(child)) labelled = true;
+                controls.any = true;
+                if (HasName(child)) controls.named = true;
             }
+            return controls;
         }
 
-        // A panel that lays out controls: whatever text it holds beside them heads them, and
-        // is said with the control it heads rather than with the page. A panel whose child
-        // panel holds wordless controls (a row of pictures) heads them the same way; a text
-        // above a row of labelled buttons is the page's own, such as the question of a modal.
+        // A panel that lays out controls (menu::LaysOutControls): whatever text it holds beside
+        // them heads them, and is said with the control it heads rather than with the page.
         bool IsListPanel(UObject* widget)
         {
             if (!obj::IsA(widget, L"PanelWidget")) return false;
-            bool any = false;
-            bool labelled = false;
-            ControlsIn(widget, any, labelled);
-            if (any) return true;
-            for (auto* child : obj::PanelChildren(widget))
+            const menu::Controls own = ControlsIn(widget);
+            std::vector<menu::Controls> panels;
+            if (!own.any)
             {
-                if (!obj::IsA(child, L"PanelWidget")) continue;
-                ControlsIn(child, any, labelled);
-                if (any && !labelled) return true;
+                for (auto* child : obj::PanelChildren(widget))
+                {
+                    if (obj::IsA(child, L"PanelWidget")) panels.push_back(ControlsIn(child));
+                }
             }
-            return false;
+            return menu::LaysOutControls(own, panels);
         }
 
         // The texts a widget shows, walking as deep as the game's layouts go. Controls below
@@ -137,6 +135,9 @@ namespace da::ui
             bool skipPages = false;      // the pages of the menus and everything in them
             std::wstring_view skipNamed; // a text block left out by its name
             bool joinRows = false;       // a row of text blocks alone is one line
+            // Where the texts of the game's badge of an item not looked at yet go, apart from the
+            // others, when asked.
+            std::vector<std::wstring>* badges = nullptr;
         };
 
         std::wstring StatusBarText(UObject* bar);
@@ -176,6 +177,14 @@ namespace da::ui
                                 [&](UObject* w, int depth)
                                 {
                                     if (!walk.includeHidden && !obj::IsWidgetVisible(w)) return false;
+                                    if (walk.badges && depth > 0 && obj::IsA(w, L"BatesUnseenItemWidget"))
+                                    {
+                                        TextWalk inner = walk;
+                                        inner.badges = nullptr;
+                                        for (auto& text : Texts(w, inner))
+                                            walk.badges->push_back(std::move(text));
+                                        return false;
+                                    }
                                     if (walk.skipPages && (obj::IsA(w, L"BMUIPage") || obj::IsA(w, L"BatesSubtitlesWidget"))) return false;
                                     if (depth > 0 && walk.skipControls && IsButton(w)) return false;
                                     if (IsKeyIcon(w)) return false;
@@ -210,9 +219,56 @@ namespace da::ui
             return Texts(root, TextWalk{skipControls, skipFaded, false});
         }
 
-        bool HasVisibleText(UObject* widget)
+        // The texts a control shows, each with whether it sits in the game's badge of an item
+        // not looked at yet.
+        std::vector<menu::Shown> ShownTexts(UObject* control)
         {
-            return !OwnTexts(widget, false, false).empty();
+            std::vector<std::wstring> badges;
+            TextWalk walk;
+            walk.badges = &badges;
+            std::vector<menu::Shown> shown;
+            for (auto& text : Texts(control, walk))
+                shown.push_back({std::move(text), false});
+            for (auto& text : badges)
+                shown.push_back({std::move(text), true});
+            return shown;
+        }
+
+        bool HasName(UObject* widget)
+        {
+            return menu::Names(ShownTexts(widget));
+        }
+
+        // The badge the game draws over a totem slot: the totems page lays a second copy of its
+        // grid over the first, its slots in their unseen-text mode, to draw the badges of the totems
+        // not looked at yet, and the slot the focus lands on draws none itself (the dumps of
+        // 2026-11-02: "НОВОЕ" on WBP_TotemContainer_5's slot of the totem found, over the focused
+        // one). The twin is the slot of the same totem (TotemGroupIndex, TotemIndex).
+        std::vector<menu::Shown> TwinBadges(UObject* slot)
+        {
+            std::vector<menu::Shown> badges;
+            int64_t group = -1;
+            int64_t index = -1;
+            if (!obj::ReadInt(slot, L"TotemGroupIndex", group) || !obj::ReadInt(slot, L"TotemIndex", index)) return badges;
+            UObject* page = obj::NearestAncestorOfClass(slot, L"BMUIPage");
+            if (!page) return badges;
+            obj::WalkWidgetTree(page, 48,
+                                [&](UObject* w, int)
+                                {
+                                    if (!obj::IsWidgetVisible(w)) return false;
+                                    if (w == slot || !obj::IsA(w, L"BatesTotemWidget")) return true;
+                                    int64_t g = -1;
+                                    int64_t i = -1;
+                                    if (obj::ReadInt(w, L"TotemGroupIndex", g) && obj::ReadInt(w, L"TotemIndex", i) && g == group && i == index)
+                                    {
+                                        for (auto& shown : ShownTexts(w))
+                                        {
+                                            if (shown.badge) badges.push_back(std::move(shown));
+                                        }
+                                    }
+                                    return false;
+                                });
+            return badges;
         }
 
         // The game's own word for a locked item, the one its padlock and its clue rows show.
@@ -359,10 +415,7 @@ namespace da::ui
             for (auto* child : obj::PanelChildren(grid))
             {
                 if (!obj::IsA(child, L"PanelWidget") || !obj::IsWidgetShown(child)) continue;
-                bool any = false;
-                bool labelled = false;
-                ControlsIn(child, any, labelled);
-                if (any) alike.push_back(child);
+                if (ControlsIn(child).any) alike.push_back(child);
             }
             if (alike.size() >= 2 && std::find(alike.begin(), alike.end(), panel) != alike.end()) return alike;
             return columns;
@@ -390,7 +443,7 @@ namespace da::ui
         // words of their own, and the headings among the rest. A long settings page has rows
         // thirty layouts deep, and walking every row's words costs more than a frame, so the
         // census of a panel is kept for a second and shared by its rows.
-        std::wstring Label(UObject* control);
+        std::wstring Label(UObject* control, bool* narrated = nullptr);
 
         struct CensusEntry
         {
@@ -489,9 +542,11 @@ namespace da::ui
 
         // The name of a control: what a setting row calls itself; else the text it shows; else
         // what the game attached for its narration; else what the mod's picture table says of
-        // the picture it shows.
-        std::wstring Label(UObject* control)
+        // the picture it shows; else what the game's narration said of it once it was focused
+        // (`narrated` tells). The badge of an item not looked at yet follows the name.
+        std::wstring Label(UObject* control, bool* narrated)
         {
+            if (narrated) *narrated = false;
             std::wstring label;
             if (obj::IsA(control, L"BMUISettingButton") && obj::ReadString(control, L"SettingName", label) && !str::Trim(label).empty())
                 return str::StripMarkup(label);
@@ -503,13 +558,19 @@ namespace da::ui
                 const auto named = Texts(control, TextWalk{false, false, false, false, L"Text_SliderValue"});
                 return named.empty() ? std::wstring() : named.front();
             }
-            const auto texts = OwnTexts(control, false, false);
             if (obj::IsA(control, L"BMUISettingCarousel"))
             {
                 // The row's own texts are its name and its value; the name comes first.
+                const auto texts = OwnTexts(control, false, false);
                 return texts.empty() ? std::wstring() : texts.front();
             }
-            if (!texts.empty()) return str::Join(texts, L", ");
+            auto shown = ShownTexts(control);
+            if (obj::IsA(control, L"BatesTotemWidget") && std::none_of(shown.begin(), shown.end(), [](const menu::Shown& t) { return t.badge; }))
+            {
+                for (auto& badge : TwinBadges(control))
+                    shown.push_back(std::move(badge));
+            }
+            if (menu::Names(shown)) return menu::Named(shown, {});
             // A carousel item whose content is locked (its data says so) draws a padlock and
             // no name, so it is the locked word and nothing more; unlocked, it draws its name
             // as text, which is read above.
@@ -518,19 +579,21 @@ namespace da::ui
                 UObject* data = nullptr;
                 bool unlocked = true;
                 if (obj::ReadObject(control, L"ItemData", data) && data && obj::IsLive(data) && obj::ReadBool(data, L"bIsUnlocked", unlocked) && !unlocked)
-                    return LockedWord();
+                    return menu::Named(shown, LockedWord());
             }
             label = AccessibleText(control);
-            if (!label.empty()) return label;
+            if (!label.empty()) return menu::Named(shown, label);
             for (const auto& picture : PictureNames(control))
             {
                 label = PictureText(picture);
-                if (!label.empty()) return label;
+                if (!label.empty()) return menu::Named(shown, label);
             }
             // What the game's own narration says of the control once it is focused: the
             // game's evaluation of its data, such as the locked word for a butterfly not yet
-            // earned, which it draws as a dimmed picture.
-            return narration::LabelFor(control, 30.0);
+            // earned, which it draws as a dimmed picture, or a totem slot's kind and place.
+            label = narration::LabelFor(control, 30.0);
+            if (narrated) *narrated = !label.empty();
+            return menu::Named(shown, label);
         }
 
         double SliderValue(UObject* control)
@@ -697,7 +760,7 @@ namespace da::ui
         Description d;
         if (!control) return d;
         d.kind = KindOf(control);
-        d.label = Label(control);
+        d.label = Label(control, &d.narrated);
         d.value = ValueOf(control);
         if (!Enabled(control)) d.state = locale::Mod(L"ui.state.disabled");
 
@@ -706,7 +769,7 @@ namespace da::ui
         int index = 0;
         int count = 0;
         std::wstring heading;
-        const bool wordless = !HasVisibleText(control);
+        const bool wordless = !HasName(control);
         const obj::ObjectKey controlKey = obj::KeyOf(control);
         std::vector<std::wstring> counted;
         const Census& census = CensusOf(control);
@@ -838,6 +901,23 @@ namespace da::ui
         return true;
     }
 
+    namespace
+    {
+        // The key of a button that shows one: the action its icon widget was set up for.
+        void KeyOfButton(UObject* button, Prompt& prompt)
+        {
+            UObject* icon = nullptr;
+            if (!obj::ReadObject(button, L"InputActionWidget", icon) || !icon || !obj::IsLive(icon)) return;
+            auto* setup = obj::FindProperty(icon, L"CachedSetupData");
+            UObject* action = nullptr;
+            if (setup && obj::ReadObjectAt(obj::ValuePtr(icon, setup), obj::StructMember(setup, L"InputAction"), action) && action)
+            {
+                prompt.action = obj::ObjectName(action);
+                prompt.key = PromptKeys(icon, prompt.action);
+            }
+        }
+    }
+
     std::vector<Prompt> Prompts(UObject* page)
     {
         std::vector<Prompt> prompts;
@@ -853,21 +933,34 @@ namespace da::ui
                                     if (!obj::IsA(w, L"BMUIActionBarButton")) return true;
                                     Prompt prompt;
                                     prompt.label = str::Join(OwnTexts(w, false, false), L", ");
-                                    // The key: the action the button's icon widget was set up for.
-                                    UObject* icon = nullptr;
-                                    if (obj::ReadObject(w, L"InputActionWidget", icon) && icon && obj::IsLive(icon))
-                                    {
-                                        auto* setup = obj::FindProperty(icon, L"CachedSetupData");
-                                        UObject* action = nullptr;
-                                        if (setup && obj::ReadObjectAt(obj::ValuePtr(icon, setup), obj::StructMember(setup, L"InputAction"), action) && action)
-                                        {
-                                            prompt.action = obj::ObjectName(action);
-                                            prompt.key = PromptKeys(icon, prompt.action);
-                                        }
-                                    }
+                                    KeyOfButton(w, prompt);
                                     if (!prompt.label.empty()) prompts.push_back(prompt);
                                     return false;
                                 });
+            // What a page puts in the bar's slot of its own beside the prompts: the totems page puts
+            // the events of the past there, a title over the film's unlocked parts drawn as a bar,
+            // with a button that plays them by a key of its own (IA_UI_EOTP), enabled once there is
+            // something to play (BP_Show). Its words are said as a prompt, with the key of a
+            // button in it while the button is enabled; the title went unread (2026-11-01).
+            UObject* slot = nullptr;
+            if (obj::ReadObject(bar, L"ActionBarExtraSlot", slot) && slot && obj::IsLive(slot) && obj::IsWidgetShown(slot))
+            {
+                for (auto* child : obj::PanelChildren(slot))
+                {
+                    if (!obj::IsWidgetShown(child)) continue;
+                    Prompt prompt;
+                    prompt.label = str::Join(OwnTexts(child, true, false), L", ");
+                    obj::WalkWidgetTree(child, 12,
+                                        [&](UObject* w, int)
+                                        {
+                                            if (!obj::IsWidgetVisible(w)) return false;
+                                            if (!IsButton(w)) return true;
+                                            if (prompt.key.empty() && Enabled(w)) KeyOfButton(w, prompt);
+                                            return false;
+                                        });
+                    if (!prompt.label.empty()) prompts.push_back(prompt);
+                }
+            }
         }
         // A page among tabs shows the keys that turn them beside the tab names.
         Tab tab;
@@ -957,13 +1050,17 @@ namespace da::ui
         }
         out.label = label;
         out.action = actionName;
+        // A cap set up with nothing shows no key, whatever letters it kept from the question before
+        // (prompt::CapShowsKey); one the controls page set up with a key prints the key's letter.
+        const bool fromKey = actionName.empty() &&
+                             (obj::FindOuterOfClass(cap, L"BatesKeyRebindSlotWidget", 24) || obj::FindOuterOfClass(cap, L"BatesKeyRebindSettingWidget", 24));
+        if (!prompt::CapShowsKey(!actionName.empty(), fromKey)) return false;
         if (!actionName.empty())
         {
             out.key = PromptKeys(cap, actionName, under);
         }
         else
         {
-            // A cap set up with a key rather than an action prints the key's letter.
             const auto printed = NamedText(cap, L"Text_Key");
             if (!printed.empty()) out.key = input::KeyDisplayName(printed);
         }

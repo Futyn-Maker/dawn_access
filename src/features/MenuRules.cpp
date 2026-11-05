@@ -1,5 +1,8 @@
 #include "features/MenuRules.hpp"
 
+#include "core/Strings.hpp"
+
+#include <algorithm>
 #include <cwctype>
 
 namespace da::menu
@@ -48,5 +51,43 @@ namespace da::menu
             if (!iswdigit(c)) shape += c;
         }
         return shape;
+    }
+
+    void Utterance::Queued(const std::wstring& line, bool clears, unsigned long long frame)
+    {
+        if (line.empty()) return;
+        if (clears || frame != m_frame) m_lines.clear();
+        m_frame = frame;
+        m_lines.push_back(line);
+    }
+
+    std::wstring Utterance::Line() const
+    {
+        return str::Join(m_lines, L", ");
+    }
+
+    bool Names(const std::vector<Shown>& texts)
+    {
+        return std::any_of(texts.begin(), texts.end(), [](const Shown& t) { return !t.badge; });
+    }
+
+    std::wstring Named(const std::vector<Shown>& texts, const std::wstring& otherwise)
+    {
+        std::vector<std::wstring> words;
+        for (const auto& t : texts)
+        {
+            if (!t.badge) words.push_back(t.text);
+        }
+        if (words.empty() && !otherwise.empty()) words.push_back(otherwise);
+        for (const auto& t : texts)
+        {
+            if (t.badge) words.push_back(t.text);
+        }
+        return str::Join(words, L", ");
+    }
+
+    bool LaysOutControls(const Controls& own, const std::vector<Controls>& panels)
+    {
+        return own.any || std::any_of(panels.begin(), panels.end(), [](const Controls& p) { return p.any && !p.named; });
     }
 }

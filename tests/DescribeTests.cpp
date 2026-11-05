@@ -69,3 +69,25 @@ TEST_CASE("SpeakTab names the tab, with its kind and place in detail")
     CHECK(U8(ui::SpeakTab(L"Accessibility", 2, 5, false)) == "Accessibility");
     CHECK(U8(ui::SpeakTab(L"Audio", 0, 0, true)) == "Audio, tab");
 }
+
+TEST_CASE("A control the game's narration names is said in its words, without the caption above, 2026-11-01")
+{
+    // The totems tab: a slot is a picture under its column's caption, and the game narrates it as
+    // "Тотем смерти", "6", "Недоступно" (WBP_TotemSegment's hover). The caption said before the
+    // game's words named the column twice: "Смерть. Тотем смерти, 6, Недоступно".
+    TempDir dir;
+    LoadEnglish(dir);
+    ui::Description d;
+    d.kind = ui::Kind::Button;
+    d.group = L"Смерть";
+    d.label = L"Тотем смерти, 6, Недоступно";
+    d.index = 1;
+    d.count = 6;
+    d.narrated = true;
+    CHECK(U8(ui::Speak(d, false, true)) == "Тотем смерти, 6, Недоступно");
+    CHECK(U8(ui::Speak(d, true, true)) == "Тотем смерти, 6, Недоступно, 1 of 6");
+    // A row named by its own words keeps the heading above it.
+    d.narrated = false;
+    d.label = L"Субтитры";
+    CHECK(U8(ui::Speak(d, false, true)) == "Смерть. Субтитры");
+}

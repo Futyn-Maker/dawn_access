@@ -25,8 +25,10 @@ namespace da::lines
         return fresh;
     }
 
-    std::vector<std::wstring> Element::Shown(const std::vector<std::wstring>& lines, double now)
+    std::vector<std::wstring> Element::Shown(const std::vector<std::wstring>& drawnLines, double now, bool drawn)
     {
+        static const std::vector<std::wstring> kNone;
+        const auto& lines = drawn ? drawnLines : kNone;
         if (lines != m_seen)
         {
             m_seen = lines;
@@ -54,11 +56,51 @@ namespace da::lines
         m_seen.clear();
     }
 
+    bool Element::Unsaid(const std::vector<std::wstring>& lines, double now) const
+    {
+        return std::any_of(lines.begin(), lines.end(),
+                           [&](const std::wstring& line)
+                           {
+                               const auto known = m_spoken.find(line);
+                               return known == m_spoken.end() || now - known->second > kLineForgotten;
+                           });
+    }
+
+    bool Card::Ready(double now, bool bodyDrawn)
+    {
+        if (m_since < 0.0) m_since = now;
+        return bodyDrawn || now - m_since >= kCardWait;
+    }
+
     bool Echo::Says(const std::wstring& text, double now)
     {
         if (text == m_last && now - m_at <= kSameWords) return false;
         m_last = text;
         m_at = now;
         return true;
+    }
+
+    Objective::Step Objective::Update(double now, const std::wstring& objective, bool free)
+    {
+        Step step;
+        if (!m_known || objective != m_current)
+        {
+            m_known = true;
+            m_current = objective;
+            m_due = !objective.empty();
+            step.changed = true;
+        }
+        // The opening of a turn ends once its card has come and gone.
+        if (m_opening && m_cardSeen) m_opening = false;
+        if (!free || m_opening)
+        {
+            m_freeSince = -1.0;
+            return step;
+        }
+        if (m_freeSince < 0.0) m_freeSince = now;
+        if (!m_due || now - m_freeSince < kFreeFor) return step;
+        m_due = false;
+        step.say = m_current;
+        return step;
     }
 }

@@ -124,3 +124,54 @@ TEST_CASE("prompt: the phone's swipe: blips as it fills and slides back, the unl
     swipe.Reset();
     CHECK_FALSE(swipe.Update(2.0, 3, 0.0, 50.0).unlocked);
 }
+
+TEST_CASE("prompt: a key cap set up with nothing shows no key, 2026-11-05")
+{
+    // At the mine on the keyboard (research/sessions/s44.log 20:48:22): the cigar stub's prompt had
+    // its grab in the second cap and nothing in the first, which kept the D of the totem's "W, S, A,
+    // D" and was read "D, left mouse button"; after each clue the empty cap alone was read "D".
+    CHECK(prompt::CapShowsKey(true, false));
+    CHECK_FALSE(prompt::CapShowsKey(false, false));
+    // The controls page's rebinding rows set their caps up with a key.
+    CHECK(prompt::CapShowsKey(false, true));
+}
+
+TEST_CASE("prompt: the first question of an interaction waits for the hint the game shows a moment after it, 2026-11-05")
+{
+    // The fortune totem on the keyboard (research/sessions/s44.log): taken into the interaction at
+    // 20:45:22.63, the totem held at 26.68 with its stick and back prompts, the hint drawn at 27.11
+    // and said at 27.35. The keys were said at 26.81, before the hint.
+    prompt::HintFirst h;
+    h.Interaction(false);
+    h.Interaction(true);                 // 22.63
+    CHECK_FALSE(h.Waits(26.0, -1000.0)); // nothing asked yet
+    h.Asked(26.68);
+    CHECK(h.Waits(26.81, -1000.0)); // where the keys were said: they wait
+    CHECK(h.Waits(27.20, -1000.0));
+    CHECK_FALSE(h.Waits(27.36, 27.35)); // the hint said: the keys follow it
+    // No hint comes (the generator's first grab): the keys wait out the moment and no longer.
+    prompt::HintFirst g;
+    g.Interaction(true);
+    g.Asked(34.40);
+    CHECK(g.Waits(34.90, -1000.0));
+    CHECK_FALSE(g.Waits(34.40 + prompt::kHintWait, -1000.0));
+    // The next question of the interaction does not wait.
+    g.Asked(38.70);
+    CHECK_FALSE(g.Waits(38.75, -1000.0));
+}
+
+TEST_CASE("prompt: a hint said just before the first question needs no wait, and a new interaction waits again, 2026-11-04")
+{
+    // The danger totem on the pad (research/sessions/s43-only.log): the hint drawn at 02:56:09.43
+    // and said at 09.70, the stick read at 09.85.
+    prompt::HintFirst h;
+    h.Interaction(true);
+    h.Asked(9.70);
+    CHECK_FALSE(h.Waits(9.75, 9.696));
+    // Out of the interaction and into the next one: its first question waits again.
+    h.Interaction(false);
+    CHECK_FALSE(h.Waits(20.0, 9.696));
+    h.Interaction(true);
+    h.Asked(30.0);
+    CHECK(h.Waits(30.1, 9.696));
+}

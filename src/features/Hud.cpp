@@ -1,6 +1,8 @@
 #include "features/Hud.hpp"
 
+#include "features/Exploration.hpp"
 #include "features/TextRules.hpp"
+#include "features/WorldRead.hpp"
 
 #include "core/GameThread.hpp"
 #include "core/Log.hpp"
@@ -39,6 +41,8 @@ namespace da::features
                                                   L"BMUIPage",
                                                   L"BMUIActionBarWidget",
                                                   L"BatesPersistentCentreDotWidget",
+                                                  L"BatesShootingStageTargetWidget",
+                                                  L"BatesShootingStageReticuleWidget",
                                                   L"BatesTTSIconWidget",
                                                   L"BMUIHUDContainer",
                                                   L"BatesHUDContainer"};
@@ -57,6 +61,7 @@ namespace da::features
         {
             UObject* instance = nullptr;
             lines::Element lines;
+            lines::Card card; // for an update card, which waits for its body (Text_Body)
         };
 
         std::vector<Tracked> g_tracked;
@@ -117,10 +122,14 @@ namespace da::features
 
         // An element is read once its words have stopped changing, line by new line
         // (lines::Element).
+        double g_settlingSince = -1.0; // since when a shown element's words are still to be said
+        double g_saidAt = -1000.0;     // when an element's words were last said
+
         void PollImpl()
         {
             if (gamethread::FrameCount() % 6 != 0) return;
             const double now = gamethread::NowSeconds();
+            bool settling = false;
             for (auto it = g_tracked.begin(); it != g_tracked.end();)
             {
                 if (!obj::IsLive(it->instance))
@@ -130,26 +139,44 @@ namespace da::features
                 }
                 if (obj::IsWidgetShown(it->instance))
                 {
-                    const auto fresh = it->lines.Shown(Lines(it->instance), now);
+                    // An update card of the game's queue is read once its body is drawn (lines::Card).
+                    UObject* body = nullptr;
+                    if (obj::IsA(it->instance, L"BatesHUDUpdateQueueWidget") && obj::ReadObject(it->instance, L"Text_Body", body) && obj::IsLive(body) &&
+                        !it->card.Ready(now, !ui::DrawnTexts(body).empty() && obj::IsWidgetShown(body, true)))
+                    {
+                        ++it;
+                        continue;
+                    }
+                    // Faded out to nothing, it shows no lines (a document's transcript hidden).
+                    const bool drawn = obj::IsWidgetShown(it->instance, true);
+                    const auto lines = Lines(it->instance);
+                    const auto fresh = it->lines.Shown(lines, now, drawn);
+                    if (fresh.empty() && drawn && !lines.empty() && it->lines.Unsaid(lines, now)) settling = true;
                     if (!fresh.empty())
                     {
                         const auto text = str::JoinSentences(fresh);
                         log::Info(L"hud: {} says \"{}\"", obj::ClassName(it->instance), text);
                         if (g_echo.Says(text, now)) speech::Announce(text);
+                        g_saidAt = now;
                     }
                 }
                 else
                 {
                     it->lines.Hidden();
+                    it->card.Hidden();
                 }
                 ++it;
             }
+            if (!settling)
+                g_settlingSince = -1.0;
+            else if (g_settlingSince < 0.0)
+                g_settlingSince = now;
         }
 
         // The objective the game keeps for the player, set by the scene's script and shown
-        // on the status page ("Find Hannah"): said when it changes, and read with the screen.
-        std::wstring g_objective;
-        bool g_objectiveKnown = false;
+        // on the status page ("Find Hannah"): said when it changes, once play runs with no title
+        // card up (lines::Objective), and read with the screen.
+        lines::Objective g_objective;
 
         std::wstring CurrentObjective()
         {
@@ -158,21 +185,84 @@ namespace da::features
             return str::CollapseWhitespace(obj::CallForText(manager, L"GetCurrentObjective"));
         }
 
+        // The cards that name a chapter, introduce a character or change to another: the chapter's
+        // card from the moment the game gives it its number (it is drawn a moment later, its words
+        // fading in), every card while the HUD's watch sees it shown.
+        const wchar_t* const kTitleCards[] = {L"BatesChapterIntroWidget", L"BatesCharacterIntroWidget", L"BatesCharacterChangeWidget"};
+        obj::ObjectKey g_chapterCard; // by its identity: a freed slot reused is not the card
+        double g_chapterCardAt = -100.0;
+        constexpr double kCardDrawnWithin = 2.0;
+
+        void OnChapterNumber(UObject* self, FFrame&)
+        {
+            g_chapterCard = obj::KeyOf(self);
+            g_chapterCardAt = gamethread::NowSeconds();
+            log::Verbose(L"hud: {} is given its chapter's number", obj::ObjectName(self));
+        }
+
+        bool TitleCardUp(double now)
+        {
+            if (obj::IsSame(g_chapterCard) && (obj::IsWidgetShown(g_chapterCard.object) || now - g_chapterCardAt < kCardDrawnWithin)) return true;
+            for (const auto& t : g_tracked)
+            {
+                if (!obj::IsLive(t.instance) || !obj::IsWidgetShown(t.instance)) continue;
+                for (const wchar_t* cls : kTitleCards)
+                {
+                    if (obj::IsA(t.instance, cls)) return true;
+                }
+            }
+            return false;
+        }
+
+        // The card that changes the character (name, place, time) is up.
+        bool CharacterCardUp()
+        {
+            for (const auto& t : g_tracked)
+            {
+                if (obj::IsLive(t.instance) && obj::IsWidgetShown(t.instance) && obj::IsA(t.instance, L"BatesCharacterChangeWidget")) return true;
+            }
+            return false;
+        }
+
+        obj::ObjectKey g_objectivePawn; // the player's character the objective was last weighed for
+
         void PollObjective()
         {
             if (gamethread::FrameCount() % 30 != 7) return;
-            const auto objective = CurrentObjective();
-            if (g_objectiveKnown && objective == g_objective) return;
-            const bool first = !g_objectiveKnown;
-            g_objectiveKnown = true;
-            g_objective = objective;
-            if (objective.empty())
+            const double now = gamethread::NowSeconds();
+            const bool known = g_objective.Known();
+            // A turn opens at a level's load, or when the player is given another character; its
+            // objective waits for the card that names her, or for the first hand-over
+            // (lines::Objective).
+            UObject* pawn = world::Pawn();
+            const bool newCharacter = pawn && !(obj::KeyOf(pawn) == g_objectivePawn);
+            if (pawn) g_objectivePawn = obj::KeyOf(pawn);
+            if (gamestate::Current() == gamestate::State::LoadingNewLevel || newCharacter)
             {
-                if (!first) log::Info(L"hud: the objective is turned off");
-                return;
+                if (!g_objective.Opens()) log::Verbose(L"hud: a turn opens: a new objective waits for the character's card or the hand-over");
+                g_objective.Opening();
             }
-            log::Info(L"hud: the objective is \"{}\"", objective);
-            if (gamestate::InPlay()) speech::Announce(locale::Mod(L"hud.objective", objective));
+            if (CharacterCardUp()) g_objective.Card();
+            if (ExplorationActive()) g_objective.HandedOver();
+            const bool free = gamestate::InPlay() && !TitleCardUp(now);
+            const auto step = g_objective.Update(now, CurrentObjective(), free);
+            if (step.changed)
+            {
+                if (g_objective.Current().empty())
+                {
+                    if (known) log::Info(L"hud: the objective is turned off");
+                }
+                else
+                {
+                    log::Info(L"hud: the objective is \"{}\"{}", g_objective.Current(),
+                              !step.say.empty()     ? L""
+                              : g_objective.Opens() ? L", said once the character's card has come and gone, or she is handed over"
+                                                    : L", said once play runs with no title card up");
+                }
+            }
+            if (step.say.empty()) return;
+            if (!step.changed) log::Info(L"hud: the objective \"{}\" is said now", step.say);
+            speech::Announce(locale::Mod(L"hud.objective", step.say));
         }
 
         // The loading screen's bar: the share of the level's streamed parts already in, as
@@ -254,6 +344,7 @@ namespace da::features
                                  if (appeared && !OwnedElsewhere(widget)) Track(widget);
                              });
         hooks::OnScript(L"BatesLoadingScreen", L"BP_SetPercLoaded", &OnLoadingShare);
+        hooks::OnScript(L"BatesChapterIntroWidget", L"BP_SetChapterNumber", &OnChapterNumber);
         gamethread::AddPoller(L"hud", &Poll);
     }
 
@@ -268,6 +359,21 @@ namespace da::features
             if (bar && t.instance == g_loadingScreen) continue;
             if (obj::IsLive(t.instance) && obj::IsWidgetShown(t.instance) && !t.lines.Seen().empty()) out.push_back(str::JoinSentences(t.lines.Seen()));
         }
-        if (gamestate::InPlay() && !g_objective.empty()) out.push_back(locale::Mod(L"hud.objective", g_objective));
+        if (gamestate::InPlay() && !g_objective.Current().empty()) out.push_back(locale::Mod(L"hud.objective", g_objective.Current()));
+    }
+
+    bool hud::TextSettling(double now)
+    {
+        return g_settlingSince >= 0.0 && now - g_settlingSince < kHintFirst;
+    }
+
+    double hud::LastSaidAt()
+    {
+        return g_saidAt;
+    }
+
+    std::wstring hud::Objective()
+    {
+        return g_objective.Current();
     }
 }

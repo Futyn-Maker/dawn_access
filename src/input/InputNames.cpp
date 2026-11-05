@@ -6,6 +6,7 @@
 #include "core/ObjectUtil.hpp"
 #include "core/Strings.hpp"
 #include "core/Symbols.hpp"
+#include "locale/GameText.hpp"
 #include "locale/Locale.hpp"
 
 #include <Unreal/Core/Containers/Array.hpp>
@@ -362,6 +363,9 @@ namespace da::input
         std::wstring result;
         if (vendor == Vendor::PlayStation && locale::Has(L"key.ps." + lower)) result = locale::Mod(L"key.ps." + lower);
         if (result.empty() && locale::Has(L"key." + lower)) result = locale::Mod(L"key." + lower);
+        //    An entry that names one of the game's strings with "@" is that string in the game's
+        //    language (the touch pad's swipes, as the game's own key list names them).
+        if (str::StartsWith(result, L"@")) result = gametext::Resolve(result.substr(1));
         // 2. Engine display name.
         if (result.empty()) result = EngineDisplayName(name);
         // 3. Humanized engine key name.

@@ -230,3 +230,14 @@ TEST_CASE("qte: an example shown in several places at once is said once")
     CHECK(examples.Says(L"cross button", 0.3));
     CHECK(examples.Says(L"cross button", 1.0));
 }
+
+TEST_CASE("qte: a settings example is said once it has stood a moment, never one already gone, 2026-11-02")
+{
+    // The settings saved at act2_1 (s39): the QTE scale row's example came up at 10:29:09.709 as
+    // the page went and was gone at 09.761; its key and cue were heard over the pause menu.
+    CHECK(qte::Example(9.709, 9.709, true) == qte::ExampleStep::Wait);
+    CHECK(qte::Example(9.709, 9.761, false) == qte::ExampleStep::Drop);
+    // The example of a row the player rests on is said a moment after it comes up.
+    CHECK(qte::Example(59.0, 59.2, true) == qte::ExampleStep::Wait);
+    CHECK(qte::Example(59.0, 59.0 + qte::kExampleSettle + 0.01, true) == qte::ExampleStep::Say);
+}

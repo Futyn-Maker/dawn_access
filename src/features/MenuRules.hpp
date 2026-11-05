@@ -4,6 +4,7 @@
 // prompts is said, and a text's shape, which tells a count that ticks from new words.
 
 #include <string>
+#include <vector>
 
 namespace da::menu
 {
@@ -98,4 +99,54 @@ namespace da::menu
 
     // A text with its digits taken out, so that a count that ticks is one text.
     std::wstring Shape(const std::wstring& text);
+
+    // The game's own narration of a control is one utterance queued as lines: the first clears
+    // what its priority had queued (bInClearPrio), the others join it in the same frame. A totem
+    // slot hovered queues "Тотем смерти", "6", "Недоступно" (WBP_TotemSegment's hover), and the
+    // mod took the last line alone, so a slot said "Недоступно" and a totem found "1"
+    // (2026-11-01). The control's narration is every line of its utterance; a line that clears,
+    // or one queued at another frame, begins a new one.
+    class Utterance
+    {
+    public:
+        void Queued(const std::wstring& line, bool clears, unsigned long long frame);
+        std::wstring Line() const;
+
+    private:
+        std::vector<std::wstring> m_lines;
+        unsigned long long m_frame = 0;
+    };
+
+    // A text a control shows, and whether it sits in the badge the game sets on an item the
+    // player has not looked at yet (BatesUnseenItemWidget: "НОВОЕ" on a butterfly, a clue, a
+    // totem found).
+    struct Shown
+    {
+        std::wstring text;
+        bool badge = false;
+    };
+
+    // Whether a control's texts name it: a badge is a mark on the item, not its name, and a totem
+    // found draws its badge and nothing else.
+    bool Names(const std::vector<Shown>& texts);
+
+    // A control's words: the texts that name it, else `otherwise` (what the game's narration
+    // says of it, the picture table's words), and then its marks.
+    std::wstring Named(const std::vector<Shown>& texts, const std::wstring& otherwise);
+
+    // The controls a panel holds as its children: whether there are any, and whether any of
+    // them is named.
+    struct Controls
+    {
+        bool any = false;
+        bool named = false;
+    };
+
+    // Whether a panel lays out controls, so that its other texts head them and are said with
+    // them rather than as the page's own words: it holds controls itself, or a panel among its
+    // children holds controls none of which is named (a row of pictures). A text beside a row
+    // of named buttons is the page's own, such as the question of a modal. A totem found named
+    // its column by its badge, and the columns' captions were read as the page's text
+    // (2026-11-01: "Тотемы. Смерть. Наставление.").
+    bool LaysOutControls(const Controls& own, const std::vector<Controls>& panels);
 }

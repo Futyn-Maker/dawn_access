@@ -42,6 +42,41 @@ namespace da::prompt
     // up stays the same prompt; only its going down makes its next showing a new one.
     void Withheld(Question& q, bool stillUp);
 
+    // Whether a key cap of the game's shows a key: one set up with an input action shows that
+    // action's keys; one set up with a key alone, which only the rebinding rows of the controls page
+    // do (UBatesKeyRebindSlotWidget::UpdateCurrentKey, UBatesKeyRebindSettingWidget::NativeTick, with
+    // UBMUIInputActionWidget::SetupFromKey), shows that key. A cap set up with nothing is an empty
+    // slot: the interaction prompt fades it out (WBP_Interaction: TargetMainOpacity and
+    // TargetSecOpacity are 1 with an action and 0 without), and its key caps keep the letters of the
+    // question before, which are no key of this one: at the mine on 2026-11-05, on the keyboard, the
+    // cigar stub's grab was read "D, left mouse button", the D left over from the totem's "W, S, A,
+    // D", and "D" alone was read after each clue.
+    bool CapShowsKey(bool hasAction, bool setUpFromKey);
+
+    // The first question an interaction asks waits a moment for a hint the game shows with it, so
+    // that the hint comes first and its keys after, whichever the game draws first: at the danger
+    // totem on 2026-11-04 (on the pad) the inspection's hint came 0.4 s before its stick, at the
+    // fortune totem on 2026-11-05 (on the keyboard) 0.3 s after, and its keys were said first. The
+    // wait opens at the first look the interaction's prompts have words (its own or the action
+    // bar's), and lasts until a text of the HUD has been said since kHintWait before it opened, or
+    // for kHintWait; later questions of the interaction do not wait.
+    constexpr double kHintWait = 0.6;
+    class HintFirst
+    {
+    public:
+        // Whether the character is bound to an interaction, at every look.
+        void Interaction(bool in);
+        // The interaction's prompts have words at this look.
+        void Asked(double now);
+        // Whether the prompts wait at this look; `hintSaidAt` is when a text of the HUD was last said.
+        bool Waits(double now, double hintSaidAt) const;
+
+    private:
+        bool m_in = false;
+        bool m_pending = false;
+        double m_openedAt = -1.0;
+    };
+
     // The action bar in play: the prompts the game pins to the bottom of the screen while no menu
     // page is up. It answers the player's own press (a film's skip prompt comes up on the first
     // press and the second press skips), so it is read almost at once, after kBarStable. While a

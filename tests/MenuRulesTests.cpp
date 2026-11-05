@@ -7,6 +7,7 @@
 #include <vector>
 
 using namespace da;
+using tests::U8;
 
 namespace
 {
@@ -119,4 +120,63 @@ TEST_CASE("menu: a count that ticks keeps its shape, new words do not")
     CHECK(menu::Shape(L"Compiling shaders: 41%") == menu::Shape(L"Compiling shaders: 42%"));
     CHECK(menu::Shape(L"Compiling shaders: 41%") != menu::Shape(L"Loading: 41%"));
     CHECK(menu::Shape(L"12 of 36") == L" of ");
+}
+
+TEST_CASE("menu: the game's narration of a control is every line of its utterance, 2026-11-01")
+{
+    // The totems tab, as the game queued it (s37): a slot hovered queues its kind with the clearing
+    // flag, then its place and, locked, the locked word, all in one frame.
+    menu::Utterance slot;
+    slot.Queued(L"Тотем смерти", true, 16124);
+    slot.Queued(L"6", false, 16124);
+    slot.Queued(L"Недоступно", false, 16124);
+    CHECK(U8(slot.Line()) == "Тотем смерти, 6, Недоступно");
+    // The next slot begins a new utterance, and a totem found has no locked word.
+    slot.Queued(L"Тотем наставления", true, 16300);
+    slot.Queued(L"1", false, 16300);
+    CHECK(U8(slot.Line()) == "Тотем наставления, 1");
+    // A butterfly's one line, queued without the clearing flag at a frame of its own, is its own
+    // utterance.
+    menu::Utterance butterfly;
+    butterfly.Queued(L"КРЫСЫ, ТОЛЬКО ПУШИСТЫЕ", false, 15000);
+    butterfly.Queued(L"Недоступно", false, 15100);
+    CHECK(U8(butterfly.Line()) == "Недоступно");
+    // An empty line adds nothing.
+    butterfly.Queued(L"", false, 15100);
+    CHECK(U8(butterfly.Line()) == "Недоступно");
+}
+
+TEST_CASE("menu: the badge of an item not looked at yet is a mark, not its name, 2026-11-01")
+{
+    // A totem found draws its badge and nothing else: it is unnamed, and the game's narration names
+    // it, with the badge after.
+    const std::vector<menu::Shown> totem{{L"НОВОЕ", true}};
+    CHECK_FALSE(menu::Names(totem));
+    CHECK(U8(menu::Named(totem, L"Тотем наставления, 1")) == "Тотем наставления, 1, НОВОЕ");
+    // A butterfly and a clue draw their names; the badge follows the name wherever it sits.
+    const std::vector<menu::Shown> butterfly{{L"КРЫСЫ, ТОЛЬКО ПУШИСТЫЕ", false}, {L"НОВОЕ", true}};
+    CHECK(menu::Names(butterfly));
+    CHECK(U8(menu::Named(butterfly, L"")) == "КРЫСЫ, ТОЛЬКО ПУШИСТЫЕ, НОВОЕ");
+    const std::vector<menu::Shown> clue{{L"НОВОЕ", true}, {L"1.", false}, {L"Плакат", false}};
+    CHECK(U8(menu::Named(clue, L"")) == "1., Плакат, НОВОЕ");
+    // Nothing drawn and nothing narrated is no label.
+    CHECK(menu::Named({}, L"").empty());
+    CHECK(U8(menu::Named({}, L"Недоступно")) == "Недоступно");
+}
+
+TEST_CASE("menu: a panel of pictures heads them with its caption, a found one among them or not, 2026-11-01")
+{
+    // A totem column (WBP_TotemContainer): its grid of slots and, beside it, the caption's panel.
+    // With a totem found the slot's badge named the grid, and the captions of the two columns with
+    // a totem were read as the page's text: "Тотемы. Смерть. Наставление. Смерть. Недоступно".
+    const menu::Controls none;
+    const std::vector<menu::Shown> found{{L"НОВОЕ", true}};
+    const menu::Controls grid{true, menu::Names(found)};
+    CHECK(menu::LaysOutControls(none, {grid, none}));
+    // A modal's question beside its row of named buttons is the page's own.
+    CHECK_FALSE(menu::LaysOutControls(none, {{true, true}, none}));
+    // A panel with controls of its own lays them out, named or not.
+    CHECK(menu::LaysOutControls({true, true}, {}));
+    // A panel with no controls anywhere lays out none.
+    CHECK_FALSE(menu::LaysOutControls(none, {none, none}));
 }

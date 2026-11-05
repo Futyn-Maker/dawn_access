@@ -39,7 +39,8 @@ namespace da::features
             std::wstring action;      // the input action the game asks for
             std::wstring text;        // what is said for it: the key or button
             sounds::Cue cue = sounds::Cue::Up;
-            bool opened = false; // the game has begun taking the press
+            bool opened = false;       // the game has begun taking the press
+            bool exampleWaits = false; // an example not said yet (qte::Example)
         };
         std::vector<Qte> g_qtes;
         qte::Examples g_examples; // a page can show the same example in several places at once
@@ -134,13 +135,19 @@ namespace da::features
                       qte.demonstration ? std::wstring(L", a demonstration")
                       : qte.stage       ? L", driven by " + obj::ObjectName(qte.stage)
                                         : std::wstring(L", its stage not found"));
+            if (qte.demonstration)
+            {
+                // Said once it has stood a moment on its page (qte::Example).
+                qte.exampleWaits = true;
+                g_qtes.push_back(qte);
+                return;
+            }
             g_qtes.push_back(qte);
-            if (!qte.demonstration && !g_holding)
+            if (!g_holding)
             {
                 g_holding = true;
                 speech::Hold();
             }
-            if (qte.demonstration && !g_examples.Says(qte.text, now)) return;
             Speak(g_qtes.back(), now, true);
         }
 
@@ -236,6 +243,18 @@ namespace da::features
                     continue;
                 }
                 Qte& qte = *it;
+                if (qte.exampleWaits)
+                {
+                    const auto step = qte::Example(qte.setUpAt, now, obj::IsWidgetShown(qte.widget) || ui::LayerWidgetDrawn(qte.widget));
+                    if (step != qte::ExampleStep::Wait)
+                    {
+                        qte.exampleWaits = false;
+                        if (step == qte::ExampleStep::Drop)
+                            log::Verbose(L"qte: the example {} went before it was said", obj::ObjectName(qte.widget));
+                        else if (g_examples.Says(qte.text, now))
+                            Speak(qte, now, true);
+                    }
+                }
                 if (!qte.finished)
                 {
                     // How it ended, by its stage or its own flags, or its key once more
