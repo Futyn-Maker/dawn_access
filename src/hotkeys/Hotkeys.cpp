@@ -17,6 +17,7 @@
 #include <windows.h>
 
 #include <atomic>
+#include <format>
 #include <map>
 #include <vector>
 
@@ -71,6 +72,48 @@ namespace da::hotkeys
             DWORD pid = 0;
             GetWindowThreadProcessId(fg, &pid);
             return pid == GetCurrentProcessId();
+        }
+
+        // The window in front, for the log: its title and the program it belongs to.
+        std::wstring ForegroundWindowName()
+        {
+            HWND fg = GetForegroundWindow();
+            if (!fg) return L"no window";
+            wchar_t title[256] = {};
+            GetWindowTextW(fg, title, 255);
+            DWORD pid = 0;
+            GetWindowThreadProcessId(fg, &pid);
+            std::wstring program = L"?";
+            if (HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid))
+            {
+                wchar_t path[MAX_PATH] = {};
+                DWORD size = MAX_PATH;
+                if (QueryFullProcessImageNameW(process, 0, path, &size)) program = path;
+                CloseHandle(process);
+            }
+            return std::format(L"\"{}\" of {} (process {})", title, program, pid);
+        }
+
+        // The pad's keys answer only while the game's window is in front and the pad is read: when
+        // either goes, the log says so. At chapter one the scanner's keys went silent half a minute
+        // before the game went down (2026-11-01), with no word of why.
+        void NotePadState(bool inFront, bool valid)
+        {
+            static bool knownInFront = true;
+            static bool knownValid = true;
+            if (inFront != knownInFront)
+            {
+                knownInFront = inFront;
+                if (inFront)
+                    log::Info(L"hotkeys: the game's window is in front again; the pad's keys answer");
+                else
+                    log::Info(L"hotkeys: the game's window is no longer in front ({} is); the pad's keys are not answered", ForegroundWindowName());
+            }
+            if (inFront && valid != knownValid)
+            {
+                knownValid = valid;
+                log::Info(L"hotkeys: {}", valid ? L"the pad is read again" : L"no pad reading (none connected, or the game reads none)");
+            }
         }
 
         bool Down(int vk)
@@ -186,7 +229,9 @@ namespace da::hotkeys
         void PollPad()
         {
             if ((g_padBindings.empty() && g_exploreBindings.empty()) || gamethread::FrameCount() % 3 != 0) return;
-            const input::PadReading pad = GameWindowInForeground() ? input::ReadPad() : input::PadReading{};
+            const bool inFront = GameWindowInForeground();
+            const input::PadReading pad = inFront ? input::ReadPad() : input::PadReading{};
+            NotePadState(inFront, pad.valid);
             const bool chord = pad.valid && !g_padHold.empty() && input::PadKeyDown(pad, g_padHold);
             PollBindings(pad, g_padBindings, pad.valid && chord);
             PollBindings(pad, g_exploreBindings, pad.valid && !chord && gate::IsOn() && InContext());
