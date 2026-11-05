@@ -106,6 +106,19 @@ namespace da::sym
             {L"UBatesQTEStage.QTEResult", 0x163},   // uint8
             {L"UBatesQTEStage.QTEState", 0x164},    // uint8
             {L"UBatesQTEStage.bHasStarted", 0x189}, // bool
+            // A stage of an activity keeps its own clock (real seconds, still in a pause) and
+            // whether it ran out.
+            {L"UBatesActivitySequenceStage.SecondsInCurrentStage", 0x90}, // float
+            {L"UBatesActivitySequenceStage.bHasTimedOut", 0x94},          // bool
+            // A shooting stage runs between StartShootingStage and OnFinished; its aim is kept as
+            // degrees off the direction it began in, and the nearest target's distance from the
+            // aim in the screen's pixels, which its highlight is judged by.
+            {L"UBatesShootingStage.bShootingStageStarted", 0x450},               // bool
+            {L"UBatesShootingStage.bAimOnlyStageCompleted", 0x452},              // bool
+            {L"UBatesShootingStage.bUseAimAssist", 0x361},                       // bool
+            {L"UBatesShootingStage.CachedScreenDistanceToClosestTarget", 0x378}, // float
+            {L"UBatesShootingStage.CachedYaw", 0x390},                           // float
+            {L"UBatesShootingStage.CachedPitch", 0x394},                         // float
             // The fade the HUD lays over the picture between scenes: whether it goes to black
             // (or holds black) rather than coming back from it.
             {L"UBatesUIFade.bFadeToBlack", 0x2d1}, // bool

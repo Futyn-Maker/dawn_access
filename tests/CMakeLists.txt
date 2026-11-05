@@ -41,6 +41,7 @@ add_executable(tests
     PromptRulesTests.cpp
     TextRulesTests.cpp
     MenuRulesTests.cpp
+    ShootingRulesTests.cpp
     SceneScriptsTests.cpp
     ShapesTests.cpp
     RoomsTests.cpp
@@ -64,6 +65,7 @@ add_executable(tests
     "${DA_SRC}/features/PromptRules.cpp"
     "${DA_SRC}/features/TextRules.cpp"
     "${DA_SRC}/features/MenuRules.cpp"
+    "${DA_SRC}/features/ShootingRules.cpp"
     "${DA_SRC}/features/SceneScripts.cpp"
     "${DA_SRC}/features/Shapes.cpp"
     "${DA_SRC}/features/Rooms.cpp")
