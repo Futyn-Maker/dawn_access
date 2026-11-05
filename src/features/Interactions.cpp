@@ -2,6 +2,8 @@
 
 #include "features/Exploration.hpp"
 #include "features/NudgeRules.hpp"
+#include "features/PromptRules.hpp"
+#include "features/Prompts.hpp"
 #include "features/WorldRead.hpp"
 
 #include "core/GameThread.hpp"
@@ -22,6 +24,7 @@
 #include <cmath>
 #include <cstring>
 #include <format>
+#include <algorithm>
 #include <map>
 #include <memory>
 #include <string>
@@ -289,6 +292,127 @@ namespace da::features
                 log::Info(L"interactions: {} examines in its stage {} ({}){}", obj::ObjectName(interaction), index + 1, obj::ObjectName(stage),
                           reveals ? std::format(L", which reveals at {:.2f} of the turn", threshold) : std::wstring(L", which reveals nothing"));
             }
+        }
+
+        // ---- a stage on a clock ----------------------------------------------------------------
+
+        // The stages of the interaction that run on a clock (UBatesInteractionStageBase's
+        // bStageCanTimeout and SecondsUntilTimeout), by their index, found once on binding. A
+        // sighted player sees the countdown the game draws; the Timer cue sounds once as such a
+        // stage begins: Jessica's phone in chapter 3 gives 5 s, a lever later on decides who lives
+        // in 30 (research/mechanics/gaps.md).
+        std::map<int64_t, double> g_timedStages;
+        int64_t g_timedCued = -1; // the stage the cue sounded for
+
+        void FindTimedStages(UObject* interaction)
+        {
+            g_timedStages.clear();
+            g_timedCued = -1;
+            std::vector<UObject*> components;
+            obj::ReadObjectArray(interaction, L"BlueprintCreatedComponents", components);
+            for (UObject* component : components)
+            {
+                if (!obj::IsLive(component) || !obj::IsA(component, L"BatesInteractionStageBase")) continue;
+                bool timed = false;
+                double seconds = 0.0;
+                int64_t index = -1;
+                obj::ReadBool(component, L"bStageCanTimeout", timed);
+                obj::ReadFloat(component, L"SecondsUntilTimeout", seconds);
+                obj::ReadInt(component, L"Stage", index);
+                if (!timed || seconds <= 0.0) continue;
+                g_timedStages[index] = seconds;
+                log::Info(L"interactions: {} runs its stage {} ({}) on a clock of {:.1f} s", obj::ObjectName(interaction), index + 1,
+                          obj::ObjectName(component), seconds);
+            }
+        }
+
+        // The stage the interaction is in, when it runs on a clock: its seconds, else 0.
+        double TimedStageSeconds(UObject* interaction)
+        {
+            int64_t current = -1;
+            if (g_timedStages.empty() || !obj::IsLive(interaction) || !obj::ReadInt(interaction, L"CurrentStage", current)) return 0.0;
+            const auto it = g_timedStages.find(current);
+            return it == g_timedStages.end() ? 0.0 : it->second;
+        }
+
+        void PollTimedStage(UObject* interaction)
+        {
+            int64_t current = -1;
+            if (g_timedStages.empty() || !obj::ReadInt(interaction, L"CurrentStage", current) || current == g_timedCued) return;
+            const auto it = g_timedStages.find(current);
+            if (it == g_timedStages.end()) return;
+            g_timedCued = current;
+            log::Info(L"interactions: the stage on a clock begins: {:.1f} s", it->second);
+            sounds::Play(sounds::Cue::Timer);
+        }
+
+        // ---- the states its anim graphs stand in -------------------------------------------------
+
+        // The states the interaction's anim graphs stand in now: the current state of each of their
+        // state machines (UAnimInstance::GetCurrentStateName), the machines counted from 0.
+        std::vector<std::wstring> CurrentStates(UObject* interaction)
+        {
+            std::vector<std::wstring> out;
+            for (UObject* instance : AnimInstances(interaction))
+            {
+                auto* fn = obj::FindFunction(instance, L"GetCurrentStateName");
+                if (!fn) continue;
+                for (int machine = 0; machine < 4; ++machine)
+                {
+                    std::wstring name;
+                    obj::Call(
+                        instance, fn,
+                        [&](void* params)
+                        {
+                            for (auto* prop : fn->ForEachProperty())
+                            {
+                                if (prop && prop->GetName() == L"MachineIndex") *static_cast<int32_t*>(obj::ValuePtrAt(params, prop)) = machine;
+                            }
+                        },
+                        [&](void* params)
+                        {
+                            for (auto* prop : fn->ForEachProperty())
+                            {
+                                if (prop && prop->GetName() == L"ReturnValue") obj::ReadStringAt(params, prop, name);
+                            }
+                        });
+                    if (!name.empty() && name != L"None") out.push_back(name);
+                }
+            }
+            return out;
+        }
+
+        std::wstring g_statesSeen;
+        double g_statesSince = -1.0;
+        bool g_promptRepeated = false;
+
+        // What the states say that nothing else does. A fire laid with no matches to light it plays
+        // its no_matches state, the character's empty hands, and the scene waits for the fire; and an
+        // idle the interaction comes back to after a step takes the stage's input again with no prompt
+        // drawn (prompt::IdleAfterStep): its last prompt is said once more, two seconds on.
+        void PollStates(UObject* interaction, double now)
+        {
+            const auto states = CurrentStates(interaction);
+            const auto joined = str::Join(states, L", ");
+            if (joined != g_statesSeen)
+            {
+                g_statesSeen = joined;
+                g_statesSince = now;
+                g_promptRepeated = false;
+                log::Verbose(L"interactions: {} stands in {}", obj::ObjectName(interaction), joined.empty() ? L"no state" : joined);
+                if (std::find(states.begin(), states.end(), L"no_matches") != states.end())
+                {
+                    log::Info(L"interactions: {} has no matches to light it", obj::ObjectName(interaction));
+                    speech::Announce(locale::Mod(L"interact.nomatches"));
+                }
+            }
+            const bool idle = std::any_of(states.begin(), states.end(), [](const std::wstring& st) { return prompt::IdleAfterStep(st); });
+            if (!idle || g_promptRepeated || now - g_statesSince < 2.0 || LastInteractionPromptAt() >= g_statesSince || InteractionPromptShown()) return;
+            const auto again = LastInteractionPrompt();
+            if (again.empty()) return;
+            g_promptRepeated = true;
+            log::Info(L"interactions: {} waits in {} for its input again, no prompt drawn: \"{}\" said again", obj::ObjectName(interaction), joined, again);
+            speech::Announce(again);
         }
 
         // The examine stage of the stage the interaction is in, or null.
@@ -571,6 +695,11 @@ namespace da::features
                     if (bound) log::Info(L"interactions: the character uses {} ({})", obj::ObjectName(bound), obj::ClassName(bound));
                     if (bound && obj::IsA(bound, L"BatesInteractionComplex") && !obj::IsA(bound, L"BatesInteractionComplexCameraNudge"))
                         FindExamineStages(bound);
+                    if (bound) FindTimedStages(bound);
+                    else g_timedStages.clear();
+                    g_statesSeen.clear();
+                    g_statesSince = -1.0;
+                    g_promptRepeated = false;
                 }
             }
             if (!g_interaction || !obj::IsSame(g_interactionKey)) return;
@@ -581,6 +710,8 @@ namespace da::features
             else if (!g_examineStages.empty())
                 PollTurn(g_interaction, now);
             if (g_lampActive && gamethread::FrameCount() % 2 == 0) PollLamp(now);
+            PollTimedStage(g_interaction);
+            if (gamethread::FrameCount() % 6 == 1) PollStates(g_interaction, now);
         }
 
         void Poll(float)
@@ -662,5 +793,10 @@ namespace da::features
     bool RevealLed()
     {
         return g_turnCourse.Led() && g_interaction && obj::IsSame(g_interactionKey) && !gamestate::Paused() && !watch::CurrentScreen();
+    }
+
+    bool InteractionStageTimed()
+    {
+        return g_interaction && obj::IsSame(g_interactionKey) && TimedStageSeconds(g_interaction) > 0.0;
     }
 }

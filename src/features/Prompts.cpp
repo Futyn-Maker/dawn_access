@@ -1,6 +1,7 @@
 #include "features/Prompts.hpp"
 
 #include "features/Hud.hpp"
+#include "features/Interactions.hpp"
 
 #include "features/Exploration.hpp"
 #include "features/PromptRules.hpp"
@@ -51,9 +52,14 @@ namespace da::features
 
         // Whether the interaction's prompts hold back for a hint at this look: one the HUD is still
         // to say (hud::TextSettling), or one the game may still be about to show.
+        // The last question an interaction asked that was read, and when (LastInteractionPrompt).
+        std::wstring g_lastQuestion;
+        double g_lastQuestionAt = -1000.0;
+
         bool HoldForHint(double now)
         {
-            return hud::TextSettling(now) || g_hintFirst.Waits(now, hud::LastSaidAt());
+            // A stage on a clock gives no moment to wait for its hint.
+            return hud::TextSettling(now) || (!InteractionStageTimed() && g_hintFirst.Waits(now, hud::LastSaidAt()));
         }
 
         Shown* Find(UObject* widget)
@@ -363,6 +369,11 @@ namespace da::features
                 {
                     log::Info(L"prompts: {} {} \"{}\" [{}]", obj::ClassName(it->widget), obj::ObjectName(it->widget), text, actions);
                     speech::Announce(text);
+                    if (!it->glint)
+                    {
+                        g_lastQuestion = text;
+                        g_lastQuestionAt = now;
+                    }
                 }
                 ++it;
             }
@@ -415,5 +426,30 @@ namespace da::features
         const bool gesture = std::any_of(g_shown.begin(), g_shown.end(),
                                          [](const Shown& s) { return obj::IsLive(s.widget) && !s.hidden && s.actions.find(L"Gesture") != std::wstring::npos; });
         if (gesture) out.push_back(locale::Mod(L"help.gesture"));
+        // A half circle drawn with the grab beside it: the item is let go with the button (the
+        // lantern of chapter 3), where the boiler of chapter 2 wanted R2 released.
+        const bool held = std::any_of(g_shown.begin(), g_shown.end(),
+                                      [](const Shown& s)
+                                      {
+                                          return obj::IsLive(s.widget) && !s.hidden && s.actions.find(L"Gesture") != std::wstring::npos &&
+                                                 s.actions.find(L"IA_GrabInteraction") != std::wstring::npos;
+                                      });
+        if (held) out.push_back(locale::Mod(L"help.gesture.held", input::KeyForAction(L"IA_GrabInteraction")));
+    }
+
+    std::wstring LastInteractionPrompt()
+    {
+        return g_lastQuestion;
+    }
+
+    double LastInteractionPromptAt()
+    {
+        return g_lastQuestionAt;
+    }
+
+    bool InteractionPromptShown()
+    {
+        return std::any_of(g_shown.begin(), g_shown.end(),
+                           [](const Shown& q) { return !q.glint && !q.hidden && !q.text.empty() && obj::IsLive(q.widget) && obj::IsWidgetShown(q.widget); });
     }
 }

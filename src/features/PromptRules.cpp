@@ -48,6 +48,19 @@ namespace da::prompt
         return hasAction || setUpFromKey;
     }
 
+    bool IdleAfterStep(std::wstring_view state)
+    {
+        const size_t at = state.rfind(L"_idle_");
+        if (at == std::wstring_view::npos || at == 0) return false;
+        const std::wstring_view number = state.substr(at + 6);
+        if (number.empty() || number.size() > 2) return false;
+        for (const wchar_t c : number)
+        {
+            if (c < L'0' || c > L'9') return false;
+        }
+        return number != L"0";
+    }
+
     void HintFirst::Interaction(bool in)
     {
         if (in && !m_in)

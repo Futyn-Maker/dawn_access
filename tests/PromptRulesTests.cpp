@@ -175,3 +175,21 @@ TEST_CASE("prompt: a hint said just before the first question needs no wait, and
     h.Asked(30.0);
     CHECK(h.Waits(30.1, 9.696));
 }
+
+TEST_CASE("prompts: an idle an interaction comes back to after a step takes its input again, 2026-11-06")
+{
+    // The kitchen door of chapter 3 (research/interactions/analysis/BP_Bashdoordown__act3_11.txt): the
+    // push's prompt is drawn at idle_0 and hidden at each barge, and the door takes the same push in
+    // idle_1 and idle_2 with no prompt drawn; a player who pushes once waits there for ever.
+    CHECK_FALSE(prompt::IdleAfterStep(L"bash_door_down_idle_0"));
+    CHECK(prompt::IdleAfterStep(L"bash_door_down_idle_1"));
+    CHECK(prompt::IdleAfterStep(L"bash_door_down_idle_2"));
+    CHECK_FALSE(prompt::IdleAfterStep(L"bash_door_down_barge_0"));
+    // The idles of chapters 1 and 2's items are no steps' (the reveal, a page, a grab).
+    CHECK_FALSE(prompt::IdleAfterStep(L"reveal_idle"));
+    CHECK_FALSE(prompt::IdleAfterStep(L"page1_idle"));
+    CHECK_FALSE(prompt::IdleAfterStep(L"grab_idle"));
+    CHECK_FALSE(prompt::IdleAfterStep(L"_idle_1"));
+    CHECK_FALSE(prompt::IdleAfterStep(L"door_idle_1a"));
+    CHECK_FALSE(prompt::IdleAfterStep(L"door_idle_"));
+}

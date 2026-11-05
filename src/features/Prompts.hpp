@@ -24,4 +24,10 @@ namespace da::features
         void Describe(std::vector<std::wstring>& out) override;
         void Help(std::vector<std::wstring>& out) override;
     };
+
+    // The last question an interaction asked that was read (its words as said), and when.
+    std::wstring LastInteractionPrompt();
+    double LastInteractionPromptAt();
+    // Whether an interaction's question is drawn now.
+    bool InteractionPromptShown();
 }

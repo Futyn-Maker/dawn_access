@@ -5,6 +5,7 @@
 
 #include <set>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace da::prompt
@@ -52,6 +53,15 @@ namespace da::prompt
     // cigar stub's grab was read "D, left mouse button", the D left over from the totem's "W, S, A,
     // D", and "D" alone was read after each clue.
     bool CapShowsKey(bool hasAction, bool setUpFromKey);
+
+    // Whether an interaction's anim state is an idle it comes back to after a step, where the game
+    // takes the stage's input again: the states are named for the step they follow
+    // (bash_door_down_idle_1 after the first barge at the kitchen door of chapter 3, _idle_2 after
+    // the second; the first, _idle_0, comes before any step). The game hides the push's prompt at
+    // each barge and never draws it again, and the door waits for two more pushes
+    // (research/mechanics/gaps.md), so where no prompt has been drawn since such a state began, its
+    // interaction's last prompt is said again.
+    bool IdleAfterStep(std::wstring_view state);
 
     // The first question an interaction asks waits a moment for a hint the game shows with it, so
     // that the hint comes first and its keys after, whichever the game draws first: at the danger

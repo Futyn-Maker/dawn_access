@@ -27,4 +27,6 @@ namespace da::features
     bool FramingLed();
     // True while the look beacon leads the turn of an item in hand to its reveal.
     bool RevealLed();
+    // True while the interaction the character is bound to is in a stage that runs on a clock.
+    bool InteractionStageTimed();
 }
