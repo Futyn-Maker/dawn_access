@@ -106,6 +106,18 @@ namespace da::sym
             {L"UBatesQTEStage.QTEResult", 0x163},   // uint8
             {L"UBatesQTEStage.QTEState", 0x164},    // uint8
             {L"UBatesQTEStage.bHasStarted", 0x189}, // bool
+            // What holds an interaction's input back (a bit each: the initial delay, a telescope's
+            // own lock); its look input is taken only while none is set.
+            {L"ABatesInteractionBase.InputBlockers", 0xc78}, // uint8
+            // An examine stage measures the turn of the item in hand only while it is fully held and
+            // no ramp of its own moves it (UBatesInteractionStageExamine::UpdateMovementInput,
+            // 0x4659600): the share of the turn, and whether it is past the reveal (both handed to
+            // the item's anim instances every frame as InteractionEvaluation and bIsRevealing).
+            {L"UBatesInteractionStageBase.bIsFullyHolding", 0x1ce},                // bool
+            {L"UBatesInteractionStageExamine.bIsRampingIK", 0x2a8},                // bool
+            {L"UBatesInteractionStageExamine.bIsRevealing", 0x2a9},                // bool
+            {L"UBatesInteractionStageExamine.IKRampSpeed", 0x2b0},                 // float
+            {L"UBatesInteractionStageExamine.NormalisedExamineEvaluation", 0x2b4}, // float
             // A stage of an activity keeps its own clock (real seconds, still in a pause) and
             // whether it ran out.
             {L"UBatesActivitySequenceStage.SecondsInCurrentStage", 0x90}, // float

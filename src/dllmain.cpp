@@ -13,6 +13,7 @@
 #include "features/Exploration.hpp"
 #include "features/Feature.hpp"
 #include "features/Hud.hpp"
+#include "features/Interactions.hpp"
 #include "features/Menus.hpp"
 #include "features/Prompts.hpp"
 #include "features/Qte.hpp"
@@ -161,6 +162,7 @@ public:
         da::features::Register(std::make_unique<da::features::ExplorationFeature>());
         da::features::Register(std::make_unique<da::features::TotemsFeature>());
         da::features::Register(std::make_unique<da::features::ShootingFeature>());
+        da::features::Register(std::make_unique<da::features::InteractionsFeature>());
 
         Unreal::Hook::FCallbackOptions options{};
         options.bReadonly = true;
