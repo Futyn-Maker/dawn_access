@@ -489,3 +489,48 @@ TEST_CASE("a flood climbs a stair level by level and its frontier only grows")
     CHECK(flood.Cost({9, 0, 6}) == doctest::Approx(9.0));
     CHECK_FALSE(flood.Reached({9, 0, 0}));
 }
+
+TEST_CASE("a link takes the search and the flood through a wall the steps cannot pass, from one end to the other only")
+{
+    // A wall with a doorway too tight for the cells (no step through it), and the game's passage
+    // through it as a link between the cells at its two ends.
+    const Map map{{
+        "S..#...",
+        "...#...",
+        "...#..G",
+    }};
+    const grid::Cell a{2, 1, 0};
+    const grid::Cell b{4, 1, 0};
+    const auto links = [&](grid::Cell from, std::vector<grid::Link>& out)
+    {
+        if (from == a) out.push_back({b, 2.0});
+        if (from == b) out.push_back({a, 2.0});
+    };
+    // Without the link the goal is walled in.
+    CHECK(Solve(map).empty());
+    grid::Search search(map.Find('S'), map.Find('G'), 0.0, -1, 100, 100000);
+    search.SetLinks(links);
+    while (search.Step(50, map.Passable()) == grid::Search::State::Running)
+    {
+    }
+    const auto path = search.Path();
+    REQUIRE_FALSE(path.empty());
+    // The way goes through the link: its two ends follow each other.
+    const auto at = std::find(path.begin(), path.end(), a);
+    REQUIRE(at != path.end());
+    REQUIRE(at + 1 != path.end());
+    CHECK(*(at + 1) == b);
+    // The flood reaches the far side only through the link, and counts its cost.
+    grid::Flood walled(map.Find('S'), 100, 100000);
+    while (walled.Step(50, map.Passable()) == grid::Flood::State::Running)
+    {
+    }
+    CHECK_FALSE(walled.Reached(map.Find('G')));
+    grid::Flood linked(map.Find('S'), 100, 100000);
+    linked.SetLinks(links);
+    while (linked.Step(50, map.Passable()) == grid::Flood::State::Running)
+    {
+    }
+    CHECK(linked.Reached(map.Find('G')));
+    CHECK(linked.Cost(b) == doctest::Approx(linked.Cost(a) + 2.0));
+}

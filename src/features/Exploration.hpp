@@ -3,8 +3,8 @@
 // use locations the level has turned on, each with the name it carries in the level, its
 // distance and its direction from the camera's point of view, and the places the level is
 // waiting for the character to walk into), a beacon that leads to the chosen target along
-// the walkable route where the level has a navigation mesh and straight at it where it has
-// none, and a walk that takes the character there by itself.
+// the way felt out over the ground with the character's own collision, and a walk that takes
+// the character there by itself.
 
 #include "features/Feature.hpp"
 
@@ -45,8 +45,12 @@ namespace da::features
     bool WalkInProgress();
     // The use location the game offers the character right now, or null.
     RC::Unreal::UObject* OfferedUseLocation();
-    // Whether the beacon and the aim sounds are switched on (the one switch serves both).
-    bool AimSoundOn();
+    // Whether the look beacon is on: the one switch of every sound that leads a turn to a point the
+    // game waits for (the look the thing at hand needs, a totem's premonition, a framing, the
+    // reveal of an item turned in the hand).
+    bool LookBeaconOn();
+    // Switches the look beacon off and on, says which, and keeps the switch in the settings.
+    void ToggleLookBeacon();
     // Whether the game has bound the character to an interaction.
     bool CharacterInInteraction();
     // Switches the beacon off and on, and says which.

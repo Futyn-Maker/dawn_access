@@ -41,6 +41,9 @@ add_executable(tests
     PromptRulesTests.cpp
     TextRulesTests.cpp
     MenuRulesTests.cpp
+    SceneScriptsTests.cpp
+    ShapesTests.cpp
+    RoomsTests.cpp
     "${DA_SRC}/core/Strings.cpp"
     "${DA_SRC}/core/Config.cpp"
     "${DA_SRC}/core/Symbols.cpp"
@@ -60,7 +63,10 @@ add_executable(tests
     "${DA_SRC}/features/ChoiceRules.cpp"
     "${DA_SRC}/features/PromptRules.cpp"
     "${DA_SRC}/features/TextRules.cpp"
-    "${DA_SRC}/features/MenuRules.cpp")
+    "${DA_SRC}/features/MenuRules.cpp"
+    "${DA_SRC}/features/SceneScripts.cpp"
+    "${DA_SRC}/features/Shapes.cpp"
+    "${DA_SRC}/features/Rooms.cpp")
 
 target_include_directories(tests PRIVATE "${DA_SRC}" "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(tests PRIVATE doctest::doctest)
@@ -76,6 +82,24 @@ set_target_properties(tests PROPERTIES
     CXX_STANDARD_REQUIRED ON)
 if(MSVC)
     target_compile_options(tests PRIVATE /W4 /utf-8 /permissive-)
+endif()
+
+# The audit of trigger volumes over a recorded ground (audit\Audit.cpp): no test, a tool built
+# from the same engine-free modules, run by hand over the records play leaves.
+add_executable(audit
+    audit/Audit.cpp
+    "${DA_SRC}/core/Strings.cpp"
+    "${DA_SRC}/features/GridPath.cpp"
+    "${DA_SRC}/features/GroundFile.cpp"
+    "${DA_SRC}/features/WayList.cpp"
+    "${DA_SRC}/features/Shapes.cpp")
+target_include_directories(audit PRIVATE "${DA_SRC}")
+target_compile_definitions(audit PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
+set_target_properties(audit PROPERTIES
+    CXX_STANDARD 23
+    CXX_STANDARD_REQUIRED ON)
+if(MSVC)
+    target_compile_options(audit PRIVATE /W4 /utf-8 /permissive-)
 endif()
 
 enable_testing()

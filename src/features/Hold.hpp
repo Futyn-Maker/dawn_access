@@ -24,6 +24,8 @@ namespace da::hold
         bool cameraFree = false; // the camera is one the game explores through (IsExplorationCameraActiveLayer)
         bool inputTaken = false; // the controller takes movement input
         bool gameWalks = false;  // the game's own walk has her (not a staircase's first step, which is hers)
+        bool falling = false;    // she is in the air, the game letting her drop (MovementMode Falling)
+        bool sceneWaits = false; // the scene that made her the player waits a moment before it goes on (scripts::Switch)
         bool covered = false;    // the loading screen, a film or the fade to black covers the picture
     };
 
@@ -38,6 +40,8 @@ namespace da::hold
         Camera,
         GameWalks,
         InputIgnored,
+        Falling,
+        SceneWaits,
     };
 
     // The hard reasons take the character back at once: no character, the game out of play, the
@@ -58,6 +62,38 @@ namespace da::hold
     // paused (the player leaves the scene from the pause menu) ends without one.
     constexpr double kHandOverSettle = 0.5;
     constexpr double kSoftTakeBack = 1.0;
+
+    // A level's first moments are no hold, however long they last: the game turns to play a while
+    // before its first scene binds the character, and the freedom between can outlast any settle
+    // (1.26 s at chapter one's start on 2026-11-01, after its film was skipped, where the hold
+    // sounded a handing over and, at the opening scene, a taking back). After the game turns to
+    // play from a loading or a frozen screen, the character is handed over only once everything has
+    // stood for kLevelSettle; once the level's first scene has bound her, a later hand-over settles
+    // as usual.
+    constexpr double kLevelSettle = 3.0;
+
+    // The way back from a pause is the pause's own. The collectibles show their pictures through a
+    // camera of the menu's, which turns back to the scene for a moment after the game runs again
+    // (2026-11-01, act2_1: 0.38 s and 0.54 s), and a hold that stood before the pause ended on it
+    // and was handed over anew, with a tone each time the player looked at the collectibles.
+    // After a pause, a hold that stood before it stands while only the camera or a soft reason
+    // keeps the character from the player, for at most kPauseReturn; a scene that binds her, a
+    // cover, no character, or a camera that has not come back by then ends it without a tone, as
+    // a hold that ends during the pause does.
+    constexpr double kPauseReturn = 1.0;
+
+    // A character in the air is no one's to walk: the game lets go of her while it drops her
+    // through empty space between two shots, at the cable car's end of chapter one and as Matt
+    // was put in the player's hands at act2_1 (2026-11-01, a metre a tenth of a second, with no
+    // ground under her), and the hold sounded a handing over and a taking back each time. Falling
+    // is a soft reason like ignored input: no hand-over while it lasts, and a hold ends once it has
+    // lasted kSoftTakeBack (a step off a kerb lasts a fraction of that).
+    //
+    // A character the scene has just made the player's is not handed over while the scene's own
+    // script waits before going on with her (scripts::Switch): act2_1's snowball fight makes
+    // Jessica the player, waits its SceneTransitionFadeWaitTime of 2 s on the exploration camera
+    // and then starts her scene, and the hold sounded a handing over and a taking back in between
+    // (2026-11-02). The wait is a soft reason, as falling is; it lasts only as long as the script's.
 
     class Hold
     {
@@ -88,6 +124,9 @@ namespace da::hold
         double m_softSince = -1.0; // since when a soft reason alone has kept the character from the player
         bool m_wasPaused = false;
         bool m_takenSilently = false;
+        double m_backSince = -1.0; // since when play has run again after a pause the hold stood through
+        bool m_inPlay = false;     // the last frame was in play
+        bool m_levelStart = false; // play began a moment ago and the level's first scene has not yet bound her
         Why m_why = Why::None;
     };
 }

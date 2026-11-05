@@ -11,6 +11,7 @@
 #include <map>
 #include <queue>
 #include <set>
+#include <utility>
 #include <vector>
 
 namespace da::grid
@@ -30,6 +31,17 @@ namespace da::grid
     // from a cell; the caller may cache it.
     using Passable = std::function<bool(Cell from, Cell& to)>;
 
+    // A way from a cell to one that is not its neighbour, which no step between neighbours finds:
+    // the game's guidance passage through a doorway too tight for the cells' middles, which it takes
+    // the character through from one end to the other. `cost` is in cells, as a step's.
+    struct Link
+    {
+        Cell to;
+        double cost = 1.0;
+    };
+    // The links out of a cell, asked once as the cell is expanded; none when not given.
+    using Links = std::function<void(Cell from, std::vector<Link>& out)>;
+
     class Search
     {
     public:
@@ -46,11 +58,19 @@ namespace da::grid
         // `maxRadius` bounds the search around the start, and `maxExpansions` its total work.
         // `levelWeight` is how many cells over the ground one level of height counts as when
         // the cell nearest the goal is kept: a cell right under a goal out of reach upstairs
-        // is not near it.
-        Search(Cell start, Cell goal, double goalRadius, int goalLevels, int maxRadius, int maxExpansions, double levelWeight = 0.0);
+        // is not near it. `fits`, when given, must hold of a cell for it to count as arriving
+        // too: a volume is reached where the character's capsule touches its own collision,
+        // which the circle around its middle only bounds.
+        Search(Cell start, Cell goal, double goalRadius, int goalLevels, int maxRadius, int maxExpansions, double levelWeight = 0.0,
+               std::function<bool(Cell)> fits = {});
 
         // Expands up to `steps` cells and says how the search stands.
         State Step(int steps, const Passable& passable);
+        // The links it takes besides the steps between neighbours.
+        void SetLinks(Links links)
+        {
+            m_links = std::move(links);
+        }
         State Current() const
         {
             return m_state;
@@ -107,6 +127,9 @@ namespace da::grid
         int m_maxRadius;
         int m_maxExpansions;
         double m_levelWeight;
+        std::function<bool(Cell)> m_fits;
+        Links m_links;
+        std::vector<Link> m_linked;
         int m_expanded = 0;
         bool m_radiusReached = false;
         State m_state = State::Running;
@@ -140,6 +163,11 @@ namespace da::grid
 
         // Expands up to `steps` cells and says how the run stands.
         State Step(int steps, const Passable& passable);
+        // The links it takes besides the steps between neighbours.
+        void SetLinks(Links links)
+        {
+            m_links = std::move(links);
+        }
         State Current() const
         {
             return m_state;
@@ -162,6 +190,10 @@ namespace da::grid
         // The reached cell of least cost within `radius` cells of `goal` over the ground and on a
         // level within `levels` of the goal's (any when negative); false when there is none.
         bool BestIn(Cell goal, double radius, int levels, Cell& out) const;
+        // The reached cell of least cost within `reach` cells of `goal` over the ground, on a level
+        // within `levels` of the goal's (any when negative), that `fits` takes; false when there is
+        // none.
+        bool BestWhere(Cell goal, int reach, int levels, const std::function<bool(Cell)>& fits, Cell& out) const;
         // The reached cell nearest a goal, the levels between them weighed as in Search.
         Cell Nearest(Cell goal, double levelWeight) const;
         // The levels reached at a column, in the order they were reached; null when none is.
@@ -173,6 +205,12 @@ namespace da::grid
         int Expanded() const
         {
             return m_expanded;
+        }
+        // The cells reached, in the order the run reached them: what a caller weighs cell by cell
+        // takes up the ones reached since it last looked.
+        const std::vector<Cell>& Order() const
+        {
+            return m_order;
         }
         Cell Start() const
         {
@@ -196,6 +234,8 @@ namespace da::grid
         Cell m_start;
         int m_maxRadius;
         int m_maxExpansions;
+        Links m_links;
+        std::vector<Link> m_linked;
         int m_expanded = 0;
         bool m_radiusReached = false;
         double m_frontier = 0.0;
@@ -204,6 +244,7 @@ namespace da::grid
         std::map<Cell, double> m_best;
         std::map<Cell, Cell> m_cameFrom;
         std::set<Cell> m_closed;
+        std::vector<Cell> m_order;
         std::map<std::pair<int, int>, std::vector<int>> m_columns; // the levels reached at each column
     };
 

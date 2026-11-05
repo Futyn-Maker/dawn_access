@@ -19,9 +19,10 @@ namespace da::grid
         return std::sqrt(dx * dx + dy * dy);
     }
 
-    Search::Search(Cell start, Cell goal, double goalRadius, int goalLevels, int maxRadius, int maxExpansions, double levelWeight)
+    Search::Search(Cell start, Cell goal, double goalRadius, int goalLevels, int maxRadius, int maxExpansions, double levelWeight,
+                   std::function<bool(Cell)> fits)
         : m_start(start), m_goal(goal), m_goalRadius(goalRadius), m_goalLevels(goalLevels), m_maxRadius(maxRadius), m_maxExpansions(maxExpansions),
-          m_levelWeight(levelWeight)
+          m_levelWeight(levelWeight), m_fits(std::move(fits))
     {
         m_best[start] = 0.0;
         m_nearest = start;
@@ -52,7 +53,8 @@ namespace da::grid
     bool Search::AtGoal(Cell a) const
     {
         if (Distance(a, m_goal) > m_goalRadius) return false;
-        return m_goalLevels < 0 || std::abs(a.level - m_goal.level) <= m_goalLevels;
+        if (m_goalLevels >= 0 && std::abs(a.level - m_goal.level) > m_goalLevels) return false;
+        return !m_fits || m_fits(a);
     }
 
     Search::State Search::Step(int steps, const Passable& passable)
@@ -109,6 +111,25 @@ namespace da::grid
                     m_open.push(Open{g + Heuristic(next), g, next});
                 }
             }
+            if (!m_links) continue;
+            m_linked.clear();
+            m_links(current.cell, m_linked);
+            for (const Link& link : m_linked)
+            {
+                const Cell next = link.to;
+                if (std::abs(next.x - m_start.x) > m_maxRadius || std::abs(next.y - m_start.y) > m_maxRadius)
+                {
+                    m_radiusReached = true;
+                    continue;
+                }
+                if (m_closed.count(next)) continue;
+                const double g = current.g + link.cost;
+                const auto known = m_best.find(next);
+                if (known != m_best.end() && known->second <= g) continue;
+                m_best[next] = g;
+                m_cameFrom[next] = current.cell;
+                m_open.push(Open{g + Heuristic(next), g, next});
+            }
         }
         return m_state;
     }
@@ -164,6 +185,7 @@ namespace da::grid
             m_open.pop();
             if (m_closed.count(current.cell)) continue;
             m_closed.insert(current.cell);
+            m_order.push_back(current.cell);
             m_columns[{current.cell.x, current.cell.y}].push_back(current.cell.level);
             m_frontier = current.g;
             ++m_expanded;
@@ -195,6 +217,25 @@ namespace da::grid
                     m_cameFrom[next] = current.cell;
                     m_open.push(Open{g, next});
                 }
+            }
+            if (!m_links) continue;
+            m_linked.clear();
+            m_links(current.cell, m_linked);
+            for (const Link& link : m_linked)
+            {
+                const Cell next = link.to;
+                if (std::abs(next.x - m_start.x) > m_maxRadius || std::abs(next.y - m_start.y) > m_maxRadius)
+                {
+                    m_radiusReached = true;
+                    continue;
+                }
+                if (m_closed.count(next)) continue;
+                const double g = current.g + link.cost;
+                const auto known = m_best.find(next);
+                if (known != m_best.end() && known->second <= g) continue;
+                m_best[next] = g;
+                m_cameFrom[next] = current.cell;
+                m_open.push(Open{g, next});
             }
         }
         return m_state;
@@ -245,6 +286,29 @@ namespace da::grid
                         best = cost;
                         out = c;
                     }
+                }
+            }
+        }
+        return best >= 0.0;
+    }
+
+    bool Flood::BestWhere(Cell goal, int reach, int levels, const std::function<bool(Cell)>& fits, Cell& out) const
+    {
+        double best = -1.0;
+        for (int y = goal.y - reach; y <= goal.y + reach; ++y)
+        {
+            for (int x = goal.x - reach; x <= goal.x + reach; ++x)
+            {
+                const auto column = m_columns.find({x, y});
+                if (column == m_columns.end()) continue;
+                for (const int level : column->second)
+                {
+                    if (levels >= 0 && std::abs(level - goal.level) > levels) continue;
+                    const Cell c{x, y, level};
+                    const double cost = Cost(c);
+                    if (cost < 0.0 || (best >= 0.0 && cost >= best) || !fits(c)) continue;
+                    best = cost;
+                    out = c;
                 }
             }
         }

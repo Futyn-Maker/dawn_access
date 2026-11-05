@@ -1,0 +1,677 @@
+#include "features/SceneScripts.hpp"
+
+#include "core/Strings.hpp"
+
+#include <algorithm>
+#include <iterator>
+#include <regex>
+#include <set>
+
+namespace da::scripts
+{
+    namespace
+    {
+        // The calls that move a scene on: a film, the next level, a teleport, the player put in
+        // another character, a cut to an activity, a sequence, an order to start an activity, the
+        // totem's flow, the lessons' hold on walking let go, a new objective.
+        const wchar_t* const kStoryCalls[] = {L"SF_PlayMovie",          L"SF_LoadNextLevel",         L"SF_Teleport",
+                                              L"SF_SetPlayerCharacter", L"SF_CutToActivity",         L"SF_StartSequence",
+                                              L"SF_OrderStartActivity", L"SF_StartTotemFlowCommand", L"SF_SetAllowLocomotionInTutorials",
+                                              L"SF_SetCurrentObjective"};
+        // A companion sent on ahead: led or moved, not escorting the player, who leads then.
+        const wchar_t* const kSentOnCalls[] = {L"SF_OrderLeadTo", L"SF_OrderMoveTo"};
+
+        std::vector<std::wstring> CallsIn(const std::wstring& text)
+        {
+            static const std::wregex call(LR"re((SF_[A-Za-z0-9_]+)\s*\()re");
+            std::vector<std::wstring> calls;
+            for (auto it = std::wsregex_iterator(text.begin(), text.end(), call); it != std::wsregex_iterator(); ++it)
+                calls.push_back((*it)[1].str());
+            return calls;
+        }
+
+        // The calls that start an activity or drive one on; turning one on or off (SF_SetEnableActivity)
+        // only makes it available, and the thing it makes available is listed for itself.
+        const wchar_t* const kStartingCalls[] = {L"SF_StartActivity", L"SF_SendMessageToActivity", L"SF_CutToActivity", L"SF_OrderStartActivity"};
+
+        // The activities the calls in a text start or drive on.
+        std::vector<std::wstring> ActivitiesIn(const std::wstring& text)
+        {
+            static const std::wregex call(LR"re((SF_[A-Za-z0-9_]+)\s*\(\s*sm\s*,\s*\{([^}]*)\})re");
+            static const std::wregex activity(LR"re(activit(?:y|ies)\s*=\s*"([^"]*)")re");
+            std::vector<std::wstring> activities;
+            for (auto it = std::wsregex_iterator(text.begin(), text.end(), call); it != std::wsregex_iterator(); ++it)
+            {
+                const auto name = (*it)[1].str();
+                if (std::find(std::begin(kStartingCalls), std::end(kStartingCalls), name) == std::end(kStartingCalls)) continue;
+                const auto args = (*it)[2].str();
+                std::wsmatch m;
+                if (!std::regex_search(args, m, activity)) continue;
+                for (const auto& one : str::Split(m[1].str(), L','))
+                {
+                    if (!one.empty()) activities.push_back(one);
+                }
+            }
+            return activities;
+        }
+
+        void AddUnique(std::vector<std::wstring>& to, const std::vector<std::wstring>& from)
+        {
+            for (const auto& one : from)
+            {
+                if (one == L"SF_Start") continue;
+                if (std::find(to.begin(), to.end(), one) == to.end()) to.push_back(one);
+            }
+        }
+
+        bool SentOn(std::wstring_view call)
+        {
+            return std::find(std::begin(kSentOnCalls), std::end(kSentOnCalls), call) != std::end(kSentOnCalls);
+        }
+
+        bool MovesOn(const std::vector<std::wstring>& calls, const std::vector<std::wstring>& activities, bool companions)
+        {
+            return std::any_of(calls.begin(), calls.end(), [&](const std::wstring& c) { return StoryCall(c) || (companions && SentOn(c)); }) ||
+                   std::any_of(activities.begin(), activities.end(), [](const std::wstring& a) { return StoryActivity(a); });
+        }
+
+        // ---- the state machines as SMED exports them ----------------------------------------
+        //
+        //   function Scene03_shootingrange_State_3(sm)
+        //     Debug_SetSMEDStateID(sm, 340)
+        //     if SF_IsInTrigger(sm, {gameObjects = "Sam",
+        //         trigger = "T_a_shootingrange"}) then
+        //       M_JumpToState(sm,7)
+        //       return
+        //     end
+        //   end
+        //   ...
+        //   gRegisteredStatemachines.Scene03_shootingrange = { ... states = {
+        //     {nextState = 4, func = Scene03_shootingrange_State_7, funcList = '...'}, ...
+        //
+        // A state's function runs at every update; a state registered with a next state passes
+        // on to it at once unless one of its conditions jumps (an action, or a branch), one without
+        // waits until a condition's link jumps. Conditions nest: a question can stand inside
+        // another condition's link (the Act2_2 companion's loop asks about leaving the selfie only
+        // while the selfie is not done).
+
+        // A condition and what runs when it holds.
+        struct Block
+        {
+            std::wstring condition;           // without its "then"; "else" for an else
+            std::wstring text;                // the statements inside, those of nested conditions' links included
+            std::vector<struct Block> blocks; // the conditions nested inside
+        };
+
+        struct StateText
+        {
+            std::wstring direct; // the statements outside any condition
+            std::vector<Block> blocks;
+        };
+
+        struct Machine
+        {
+            std::map<int, StateText> states;
+            std::map<int, int> next; // the registered next state, where it is not nil
+        };
+
+        std::wstring Code(const std::wstring& line)
+        {
+            // The exports keep comments on lines of their own and no "--" inside a string.
+            const auto at = line.find(L"--");
+            return str::Trim(at == std::wstring::npos ? std::wstring_view(line) : std::wstring_view(line).substr(0, at));
+        }
+
+        bool Opens(const std::wstring& s)
+        {
+            return str::StartsWith(s, L"if ") || str::StartsWith(s, L"for ") || str::StartsWith(s, L"while ") || s == L"do" || s == L"repeat" ||
+                   str::StartsWith(s, L"function ") || str::StartsWith(s, L"local function ") || s.find(L"function(") != std::wstring::npos;
+        }
+
+        bool Closes(const std::wstring& s)
+        {
+            return s == L"end" || str::StartsWith(s, L"end ") || str::StartsWith(s, L"end)") || str::StartsWith(s, L"end,") || str::StartsWith(s, L"until ");
+        }
+
+        // A line that opens and closes a block of its own ("if x then y end").
+        bool Whole(const std::wstring& s)
+        {
+            return Opens(s) && (str::EndsWith(s, L" end") || str::EndsWith(s, L" end)"));
+        }
+
+        std::wstring WithoutThen(std::wstring condition)
+        {
+            condition = str::Trim(condition);
+            if (str::EndsWith(condition, L"then")) condition = str::Trim(std::wstring_view(condition).substr(0, condition.size() - 4));
+            return condition;
+        }
+
+        // A condition starting at `lines[i]` ("if " or "elseif " cut off as `skip`), over as many
+        // lines as it takes to reach its "then": the condition, and the line that ends it.
+        std::wstring ConditionAt(const std::vector<std::wstring>& lines, size_t& i, size_t skip)
+        {
+            std::wstring condition = lines[i].substr(skip);
+            while (!str::EndsWith(lines[i], L"then") && i + 1 < lines.size())
+            {
+                ++i;
+                condition += L" " + lines[i];
+            }
+            return WithoutThen(condition);
+        }
+
+        // Reads a body from `i` up to the line that closes it at its own depth ("end", "elseif",
+        // "else"), and returns that line's index.
+        size_t ReadBody(const std::vector<std::wstring>& lines, size_t i, std::wstring* direct, std::wstring& text, std::vector<Block>& blocks)
+        {
+            for (; i < lines.size(); ++i)
+            {
+                const auto& s = lines[i];
+                if (s.empty()) continue;
+                if (Closes(s) || str::StartsWith(s, L"elseif ") || s == L"else") return i;
+                if (str::StartsWith(s, L"if ") && !Whole(s))
+                {
+                    Block block;
+                    block.condition = ConditionAt(lines, i, 3);
+                    size_t at = ReadBody(lines, i + 1, nullptr, block.text, block.blocks);
+                    text += block.text;
+                    // An "elseif" or an "else" goes on the same "end".
+                    while (at < lines.size() && (str::StartsWith(lines[at], L"elseif ") || lines[at] == L"else"))
+                    {
+                        blocks.push_back(std::move(block));
+                        block = Block{};
+                        if (lines[at] == L"else")
+                            block.condition = L"else";
+                        else
+                            block.condition = ConditionAt(lines, at, 7);
+                        at = ReadBody(lines, at + 1, nullptr, block.text, block.blocks);
+                        text += block.text;
+                    }
+                    blocks.push_back(std::move(block));
+                    i = at;
+                    continue;
+                }
+                if (Opens(s) && !Whole(s))
+                {
+                    // A loop or a function inside: its statements are this body's, its conditions
+                    // are read like any other.
+                    if (direct) *direct += s + L"\n";
+                    text += s + L"\n";
+                    std::wstring inner;
+                    i = ReadBody(lines, i + 1, nullptr, inner, blocks);
+                    if (direct) *direct += inner;
+                    text += inner;
+                    continue;
+                }
+                if (direct) *direct += s + L"\n";
+                text += s + L"\n";
+            }
+            return i;
+        }
+
+        std::map<std::wstring, Machine> ParseMachines(const std::wstring& script)
+        {
+            std::map<std::wstring, Machine> machines;
+            std::vector<std::wstring> lines;
+            for (auto& line : str::Split(script, L'\n', false))
+            {
+                if (!line.empty() && line.back() == L'\r') line.pop_back();
+                lines.push_back(Code(line));
+            }
+            static const std::wregex header(LR"re(^function\s+([A-Za-z0-9_]+)_State_(\d+)\s*\(\s*sm\s*\))re");
+            for (size_t i = 0; i < lines.size(); ++i)
+            {
+                if (!str::StartsWith(lines[i], L"function ")) continue;
+                std::wsmatch m;
+                if (!std::regex_search(lines[i], m, header)) continue;
+                StateText state;
+                std::wstring all;
+                i = ReadBody(lines, i + 1, &state.direct, all, state.blocks);
+                machines[m[1].str()].states[std::stoi(m[2].str())] = std::move(state);
+            }
+            static const std::wregex registered(LR"re(\{\s*nextState\s*=\s*(\d+|nil)\s*,\s*func\s*=\s*([A-Za-z0-9_]+)_State_(\d+))re");
+            for (auto it = std::wsregex_iterator(script.begin(), script.end(), registered); it != std::wsregex_iterator(); ++it)
+            {
+                const auto next = (*it)[1].str();
+                if (next == L"nil") continue;
+                machines[(*it)[2].str()].next[std::stoi((*it)[3].str())] = std::stoi(next);
+            }
+            return machines;
+        }
+
+        std::vector<int> JumpsIn(const std::wstring& text)
+        {
+            static const std::wregex jump(LR"re(M_JumpToState\s*\(\s*sm\s*,\s*(\d+)\s*\))re");
+            std::vector<int> jumps;
+            for (auto it = std::wsregex_iterator(text.begin(), text.end(), jump); it != std::wsregex_iterator(); ++it)
+                jumps.push_back(std::stoi((*it)[1].str()));
+            return jumps;
+        }
+
+        // A condition that holds by itself once its time is up.
+        bool TimeWait(const std::wstring& condition)
+        {
+            return str::StartsWith(condition, L"SF_Wait(") || str::StartsWith(condition, L"SF_Wait (");
+        }
+
+        // A state that waits for its time alone: its one condition is a wait for time.
+        bool WaitsForTime(const StateText& text)
+        {
+            return text.blocks.size() == 1 && TimeWait(text.blocks.front().condition);
+        }
+
+        struct Question
+        {
+            bool negated = false;
+            std::wstring who;
+            std::vector<std::wstring> triggers;
+        };
+
+        std::vector<Question> QuestionsIn(const std::wstring& condition)
+        {
+            static const std::wregex poll(LR"re((not\s+)?SF_IsInTrigger\s*\(\s*sm\s*,\s*\{([^}]*)\}\s*\))re");
+            static const std::wregex who(LR"re(gameObjects\s*=\s*"([^"]*)")re");
+            static const std::wregex trigger(LR"re(trigger\s*=\s*"([^"]*)")re");
+            std::vector<Question> questions;
+            if (condition.find(L"SF_IsInTrigger") == std::wstring::npos) return questions;
+            for (auto it = std::wsregex_iterator(condition.begin(), condition.end(), poll); it != std::wsregex_iterator(); ++it)
+            {
+                Question q;
+                q.negated = (*it)[1].matched;
+                const auto args = (*it)[2].str();
+                std::wsmatch m;
+                if (std::regex_search(args, m, who)) q.who = str::Trim(m[1].str());
+                if (std::regex_search(args, m, trigger))
+                {
+                    for (const auto& one : str::Split(m[1].str(), L','))
+                    {
+                        if (!one.empty()) q.triggers.push_back(one);
+                    }
+                }
+                if (!q.triggers.empty()) questions.push_back(std::move(q));
+            }
+            return questions;
+        }
+
+        // Where a link leads: the calls and activities on the way, and the waiting states the
+        // machine comes to rest in.
+        struct Path
+        {
+            std::vector<std::wstring> calls;
+            std::vector<std::wstring> activities;
+            std::vector<int> waits;
+        };
+
+        void Take(Path& path, const std::wstring& text)
+        {
+            AddUnique(path.calls, CallsIn(text));
+            for (const auto& a : ActivitiesIn(text))
+            {
+                if (std::find(path.activities.begin(), path.activities.end(), a) == path.activities.end()) path.activities.push_back(a);
+            }
+        }
+
+        void WalkFrom(const Machine& machine, int state, Path& path, std::set<int>& visited)
+        {
+            for (int steps = 0; steps < 64; ++steps)
+            {
+                if (!visited.insert(state).second) return;
+                const auto found = machine.states.find(state);
+                if (found == machine.states.end()) return;
+                const StateText& text = found->second;
+                Take(path, text.direct);
+                const auto next = machine.next.find(state);
+                // An action, or a branch that passes on when none of its conditions holds.
+                if (text.blocks.empty() || next != machine.next.end())
+                {
+                    if (next == machine.next.end()) return;
+                    state = next->second;
+                    continue;
+                }
+                // A wait for time passes by itself.
+                if (WaitsForTime(text))
+                {
+                    Take(path, text.blocks.front().text);
+                    const auto jumps = JumpsIn(text.blocks.front().text);
+                    if (jumps.empty()) return;
+                    state = jumps.back();
+                    continue;
+                }
+                path.waits.push_back(state);
+                return;
+            }
+        }
+
+        // Everything a machine can do from `start`, every condition taken either way.
+        void Reach(const Machine& machine, int start, Path& path)
+        {
+            std::vector<int> todo{start};
+            std::set<int> seen;
+            while (!todo.empty())
+            {
+                const int state = todo.back();
+                todo.pop_back();
+                if (!seen.insert(state).second) continue;
+                const auto found = machine.states.find(state);
+                if (found == machine.states.end()) continue;
+                Take(path, found->second.direct);
+                for (const auto& block : found->second.blocks)
+                {
+                    Take(path, block.text);
+                    for (const int jump : JumpsIn(block.text))
+                        todo.push_back(jump);
+                }
+                if (const auto next = machine.next.find(state); next != machine.next.end()) todo.push_back(next->second);
+            }
+        }
+
+        Path Follow(const Machine& machine, int from, const std::wstring& link)
+        {
+            Path path;
+            Take(path, link);
+            for (int target : JumpsIn(link))
+            {
+                std::set<int> seen{from};
+                WalkFrom(machine, target, path, seen);
+            }
+            return path;
+        }
+
+        // Whether a state registered with a next state comes back to itself on its own: the
+        // companion's loop in Act2_2 passes from its questions to a wait of a tenth of a second
+        // and back, so it asks at every turn; the answerphone's single look in act2_11 passes on
+        // and never comes back.
+        bool Loops(const Machine& machine, int state)
+        {
+            const auto first = machine.next.find(state);
+            if (first == machine.next.end()) return false;
+            int at = first->second;
+            std::set<int> visited;
+            for (int steps = 0; steps < 64; ++steps)
+            {
+                if (at == state) return true;
+                if (!visited.insert(at).second) return false;
+                const auto found = machine.states.find(at);
+                if (found == machine.states.end()) return false;
+                const auto next = machine.next.find(at);
+                if (found->second.blocks.empty() || next != machine.next.end())
+                {
+                    if (next == machine.next.end()) return false;
+                    at = next->second;
+                    continue;
+                }
+                if (!WaitsForTime(found->second)) return false;
+                const auto jumps = JumpsIn(found->second.blocks.front().text);
+                if (jumps.empty()) return false;
+                at = jumps.back();
+            }
+            return false;
+        }
+
+        bool SameCharacter(const std::wstring& a, const std::wstring& b)
+        {
+            return str::EqualsNoCase(a, b) || str::EqualsNoCase(a, L"Player") || str::EqualsNoCase(b, L"Player");
+        }
+
+        // Every question in a state's conditions, at any depth, with the link it guards.
+        void Questions(const std::vector<Block>& blocks, std::vector<std::pair<const Block*, Question>>& out)
+        {
+            for (const auto& block : blocks)
+            {
+                for (auto& q : QuestionsIn(block.condition))
+                    out.emplace_back(&block, std::move(q));
+                Questions(block.blocks, out);
+            }
+        }
+    }
+
+    bool StoryCall(std::wstring_view call)
+    {
+        return std::find(std::begin(kStoryCalls), std::end(kStoryCalls), call) != std::end(kStoryCalls);
+    }
+
+    bool StoryActivity(std::wstring_view activity)
+    {
+        return !activity.empty() && !str::StartsWith(activity, L"PAO_") && !str::StartsWith(activity, L"pao_");
+    }
+
+    bool ParseEnterEvent(const std::wstring& script, EnterEvent& out)
+    {
+        static const std::wregex header(LR"re(gEvents\["EnterTrigger"\]\["([^"]+)"\])re");
+        static const std::wregex limit(LR"re(triggerLimit\s*=\s*(-?\d+))re");
+        std::wsmatch m;
+        if (!std::regex_search(script, m, header)) return false;
+        out.trigger = m[1].str();
+        if (std::regex_search(script, m, limit)) out.limit = std::stoi(m[1].str());
+        // What walking in does is what the script's machine reaches from its start, every
+        // condition taken either way: a state nothing leads to is no part of it (the totem
+        // plaque's trigger at chapter one still holds the start of a look its designers cut off).
+        Path path;
+        const auto machines = ParseMachines(script);
+        if (machines.empty())
+        {
+            Take(path, script);
+        }
+        else
+        {
+            static const std::wregex startState(LR"re(startState\s*=\s*(\d+))re");
+            const int start = std::regex_search(script, m, startState) ? std::stoi(m[1].str()) : 1;
+            for (const auto& [name, machine] : machines)
+                Reach(machine, start, path);
+        }
+        for (const auto& name : path.calls)
+        {
+            if (name != L"SF_End") out.calls.push_back(name);
+        }
+        out.activities = path.activities;
+        // A companion's order here is not the scene's: a trigger's script runs whenever she walks
+        // in (most of these every time), and progress never waits on it.
+        out.story = MovesOn(out.calls, out.activities, false);
+        return true;
+    }
+
+    std::vector<Poll> ParsePolls(const std::wstring& script, const std::wstring& source)
+    {
+        std::vector<Poll> polls;
+        if (script.find(L"SF_IsInTrigger") == std::wstring::npos) return polls;
+        const auto machines = ParseMachines(script);
+        // Each question with the waiting states its way on comes to rest in.
+        std::vector<std::vector<int>> restsIn;
+        for (const auto& [name, machine] : machines)
+        {
+            for (const auto& [number, state] : machine.states)
+            {
+                std::vector<std::pair<const Block*, Question>> questions;
+                Questions(state.blocks, questions);
+                if (questions.empty()) continue;
+                const bool waits = !machine.next.count(number) || Loops(machine, number);
+                for (const auto& [block, q] : questions)
+                {
+                    const Path path = Follow(machine, number, block->text);
+                    const bool leaves = !JumpsIn(block->text).empty();
+                    for (const auto& trigger : q.triggers)
+                    {
+                        Poll p;
+                        p.source = source;
+                        p.machine = name;
+                        p.state = number;
+                        p.trigger = trigger;
+                        p.who = q.who;
+                        p.negated = q.negated;
+                        p.waits = waits;
+                        p.leaves = leaves;
+                        p.calls = path.calls;
+                        p.activities = path.activities;
+                        p.story = !q.negated && waits && leaves && MovesOn(path.calls, path.activities, true);
+                        polls.push_back(std::move(p));
+                        restsIn.push_back(path.waits);
+                    }
+                }
+            }
+        }
+        // A way on that leads only to another question for the same character moves the scene
+        // on as that one does.
+        for (bool changed = true; changed;)
+        {
+            changed = false;
+            for (size_t i = 0; i < polls.size(); ++i)
+            {
+                if (polls[i].story || polls[i].negated || !polls[i].waits || !polls[i].leaves) continue;
+                for (size_t k = 0; k < polls.size() && !polls[i].story; ++k)
+                {
+                    const Poll& other = polls[k];
+                    if (!other.story || other.machine != polls[i].machine || !SameCharacter(other.who, polls[i].who)) continue;
+                    if (std::find(restsIn[i].begin(), restsIn[i].end(), other.state) == restsIn[i].end()) continue;
+                    polls[i].story = true;
+                    changed = true;
+                }
+            }
+        }
+        return polls;
+    }
+
+    void Waits::SetPolls(std::vector<Poll> polls)
+    {
+        m_polls = std::move(polls);
+    }
+
+    void Waits::Asked(double now, const std::wstring& trigger, bool player)
+    {
+        Asking& a = m_asked[trigger];
+        a.any = now;
+        if (player) a.player = now;
+    }
+
+    bool Waits::AskedNow(double now, const std::wstring& trigger, bool player) const
+    {
+        const auto found = m_asked.find(trigger);
+        if (found == m_asked.end()) return false;
+        return now - (player ? found->second.player : found->second.any) <= kAskedWithin;
+    }
+
+    bool Waits::ElsewhereNow(double now, const Poll& poll) const
+    {
+        for (const auto& other : m_polls)
+        {
+            if (other.source != poll.source || other.machine != poll.machine || other.state == poll.state) continue;
+            if (!AskedNow(now, other.trigger, false)) continue;
+            // Only that state of all asks about its volume.
+            const bool alone =
+                std::all_of(m_polls.begin(), m_polls.end(), [&](const Poll& p)
+                            { return p.trigger != other.trigger || (p.source == other.source && p.machine == other.machine && p.state == other.state); });
+            if (alone) return true;
+        }
+        return false;
+    }
+
+    Waits::Verdict Waits::Judge(double now, const std::wstring& trigger, const std::wstring& character) const
+    {
+        Verdict verdict;
+        std::vector<const Poll*> story;
+        for (const auto& p : m_polls)
+        {
+            if (p.trigger != trigger || !(str::EqualsNoCase(p.who, L"Player") || str::EqualsNoCase(p.who, character))) continue;
+            if (!verdict.poll) verdict.poll = &p;
+            if (p.story) story.push_back(&p);
+        }
+        if (!verdict.poll) return verdict;
+        verdict.kind = Kind::NoStory;
+        if (story.empty()) return verdict;
+        verdict.kind = Kind::NotNow;
+        verdict.poll = story.front();
+        if (!AskedNow(now, trigger, true)) return verdict;
+        for (const Poll* p : story)
+        {
+            if (ElsewhereNow(now, *p)) continue;
+            verdict.kind = Kind::Waiting;
+            verdict.poll = p;
+            return verdict;
+        }
+        return verdict;
+    }
+
+    bool HeldWaits::Waiting(const std::wstring& trigger, Waits::Kind kind, bool inside)
+    {
+        using Kind = Waits::Kind;
+        if (kind == Kind::Waiting)
+        {
+            // In it, the scene is about to move on: it is held no longer.
+            if (inside)
+                m_held.erase(trigger);
+            else
+                m_held.insert(trigger);
+            return true;
+        }
+        if (kind == Kind::NotNow && m_held.count(trigger))
+        {
+            if (!inside) return true;
+            m_held.erase(trigger);
+            return false;
+        }
+        m_held.erase(trigger);
+        return false;
+    }
+
+    std::map<std::wstring, double> ParseVariables(const std::wstring& script)
+    {
+        std::map<std::wstring, double> variables;
+        static const std::wregex assignment(LR"re(gVariables\.([A-Za-z0-9_]+)\s*=\s*(-?[0-9]+(?:\.[0-9]+)?))re");
+        for (auto it = std::wsregex_iterator(script.begin(), script.end(), assignment); it != std::wsregex_iterator(); ++it)
+            variables[(*it)[1].str()] = std::stod((*it)[2].str());
+        return variables;
+    }
+
+    std::vector<Switch> ParseSwitches(const std::wstring& script, const std::map<std::wstring, double>& variables)
+    {
+        std::vector<Switch> switches;
+        if (script.find(L"SF_SetPlayerCharacter") == std::wstring::npos) return switches;
+        static const std::wregex set(LR"re(SF_SetPlayerCharacter\s*\(\s*sm\s*,\s*\{\s*character\s*=\s*"([^"]+)")re");
+        static const std::wregex seconds(LR"re(seconds\s*=\s*(gVariables\.([A-Za-z0-9_]+)|-?[0-9]+(?:\.[0-9]+)?))re");
+        for (const auto& [name, machine] : ParseMachines(script))
+        {
+            for (const auto& [number, state] : machine.states)
+            {
+                std::wsmatch m;
+                if (!std::regex_search(state.direct, m, set)) continue;
+                Switch sw;
+                sw.machine = name;
+                sw.state = number;
+                sw.character = m[1].str();
+                // The state it goes on to, past states that only act and pass on (Ashley's shader
+                // set-up at act2_1's telescope): a wait for time whose way on moves the story on.
+                auto waiting = machine.states.end();
+                auto next = machine.next.find(number);
+                for (int steps = 0; steps < 8 && next != machine.next.end(); ++steps)
+                {
+                    const auto found = machine.states.find(next->second);
+                    if (found == machine.states.end()) break;
+                    if (WaitsForTime(found->second))
+                    {
+                        waiting = found;
+                        break;
+                    }
+                    if (!found->second.blocks.empty()) break;
+                    next = machine.next.find(next->second);
+                }
+                if (waiting != machine.states.end())
+                {
+                    const auto& wait = waiting->second.blocks.front();
+                    std::wsmatch w;
+                    if (std::regex_search(wait.condition, w, seconds) && MovesOn(CallsIn(wait.text), ActivitiesIn(wait.text), false))
+                    {
+                        if (w[2].matched)
+                        {
+                            const auto value = variables.find(w[2].str());
+                            if (value != variables.end()) sw.seconds = value->second;
+                        }
+                        else
+                        {
+                            sw.seconds = std::stod(w[1].str());
+                        }
+                    }
+                }
+                switches.push_back(sw);
+            }
+        }
+        return switches;
+    }
+}

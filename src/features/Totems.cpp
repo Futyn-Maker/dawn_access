@@ -8,6 +8,7 @@
 #include "core/ObjectUtil.hpp"
 #include "core/ParamReader.hpp"
 #include "hooks/HookDispatcher.hpp"
+#include "hotkeys/Hotkeys.hpp"
 #include "input/InputNames.hpp"
 #include "locale/Locale.hpp"
 #include "speech/Sounds.hpp"
@@ -218,7 +219,7 @@ namespace da::features
                           lateral, vertical, depth, hitKnown ? L"" : L" (the view misses the totem)", closeness, progress * 100.0,
                           onPoint ? L"on the point" : L"off it", pad.valid ? pad.leftX : 0, pad.valid ? pad.leftY : 0);
             }
-            if (!AimSoundOn()) return;
+            if (!LookBeaconOn()) return;
             const double interval = onPoint ? 0.12 : 0.09 + 0.4 * std::clamp(1.0 - closeness, 0.0, 1.0);
             if (now - g_blipAt < interval) return;
             g_blipAt = now;
@@ -296,6 +297,20 @@ namespace da::features
         {
             obj::SafeInvokeLogged(L"totems.PollImpl", [](void*) { PollImpl(); }, nullptr);
         }
+
+        // The turn is led while the game measures the view against the premonition: from the
+        // moment the totem is held until its vision, and never for a vision seen before.
+        bool PremonitionLed()
+        {
+            return g_totem && g_held && !g_visionSaid && !g_witnessed && obj::IsLive(g_totem);
+        }
+
+        bool OnBeacon()
+        {
+            if (!PremonitionLed()) return false;
+            ToggleLookBeacon();
+            return true;
+        }
     }
 
     void TotemsFeature::Install()
@@ -313,13 +328,15 @@ namespace da::features
         hooks::OnScript(L"WBP_TotemInfoPage_C", L"PlayVideo", &OnMenuVision);
         hooks::OnScript(L"BatesTotemInspectPage", L"BP_OnReplayAction",
                         [](UObject* self, FFrame&) { log::Info(L"totems: the totems' menu replays the vision of {}", obj::ObjectName(self)); });
+        hotkeys::AddContext(&PremonitionLed);
+        hotkeys::OnCommand(hotkeys::Command::Beacon, &OnBeacon);
         gamethread::AddPoller(L"totems", &Poll);
     }
 
     void TotemsFeature::Help(std::vector<std::wstring>& out)
     {
-        if (!g_totem || !g_held || g_visionSaid || g_witnessed) return;
-        out.push_back(locale::Mod(L"help.totem"));
+        if (!PremonitionLed()) return;
+        out.push_back(locale::Mod(L"help.totem", hotkeys::SpokenKey(hotkeys::Command::Beacon)));
     }
 
     bool TotemInHand()

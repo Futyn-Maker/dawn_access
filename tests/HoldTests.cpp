@@ -48,6 +48,13 @@ namespace
         return f;
     }
 
+    hold::Frame Falling()
+    {
+        hold::Frame f = Free();
+        f.falling = true;
+        return f;
+    }
+
     hold::Frame GameWalks()
     {
         hold::Frame f = Free();
@@ -93,7 +100,8 @@ namespace
         const double dt = 1.0 / fps;
         if (startHeld)
         {
-            for (int i = 0; i < 30; ++i, now += dt)
+            // In play already, past the level's first moments.
+            for (int i = 0; i < static_cast<int>(fps * (hold::kLevelSettle + 0.5)) && !h.Control(); ++i, now += dt)
                 h.Update(now, Free());
             REQUIRE(h.Control());
         }
@@ -124,12 +132,26 @@ TEST_CASE("hold: the game's moments of seeming freedom hand nothing over")
             // handing over at 16.267 and a taking back at 16.417.
             const auto changes = Play({{4.0, Loading()}, {0.55, Covered()}, {0.21, Free()}, {3.0, Bound(1)}}, fps);
             CHECK(changes.empty());
-            // The film not counted, as it was not then: the handing over and the taking back heard.
+            // The film not counted, as it was not then: a level's first moments hand nothing over
+            // all the same.
             const auto missed = Play({{4.0, Loading()}, {0.76, Free()}, {3.0, Bound(1)}}, fps);
-            REQUIRE(missed.size() == 2);
-            CHECK(missed[0].control);
-            CHECK_FALSE(missed[1].control);
-            CHECK(missed[1].why == Why::Bound);
+            CHECK(missed.empty());
+        }
+        SUBCASE("chapter one's start after its film was skipped, 2026-11-01")
+        {
+            // 17:04:57.161 the game turned to play from loading; Sam unbound from 57.203, the camera
+            // free, the controller taking movement input; the bus film, skipped at 56.937, still on
+            // the screen's list until 58.808 but never seen to cover the picture; 58.459 bound to the
+            // chapter's opening sequence. The hold sounded a handing over at 58.174 (58.371) and a
+            // taking back at 58.459.
+            const auto changes = Play({{4.0, Loading()}, {0.04, Bound(0)}, {1.26, Free()}, {3.0, Bound(1)}, {2.0, Free()}}, fps);
+            REQUIRE(changes.size() == 1);
+            // The hand-over comes after the opening scene, settled as usual.
+            CHECK(changes[0].control);
+            CHECK(changes[0].at - (4.0 + 0.04 + 1.26 + 3.0) == doctest::Approx(hold::kHandOverSettle).epsilon(0.1));
+            // With the film seen for part of the gap, the same.
+            const auto filmed = Play({{4.0, Loading()}, {0.7, Covered()}, {0.56, Free()}, {3.0, Bound(1)}}, fps);
+            CHECK(filmed.empty());
         }
         SUBCASE("the prologue's start under the loading screen and the fade, 2026-10-24")
         {
@@ -216,10 +238,28 @@ TEST_CASE("hold: what keeps the character from the player takes her back")
 
 TEST_CASE("hold: a real hand-over, once everything has stood half a second")
 {
-    const auto changes = Play({{2.0, Loading()}, {2.0, Free()}});
+    // After the level's first scene let her go.
+    const auto changes = Play({{2.0, Loading()}, {0.3, Free()}, {2.0, Bound(1)}, {2.0, Free()}});
     REQUIRE(changes.size() == 1);
     CHECK(changes[0].control);
-    CHECK(changes[0].at - 2.0 == doctest::Approx(hold::kHandOverSettle).epsilon(0.08));
+    CHECK(changes[0].at - 4.3 == doctest::Approx(hold::kHandOverSettle).epsilon(0.08));
+}
+
+TEST_CASE("hold: a level whose first moments are the player's hands her over once they have stood a while")
+{
+    // A level loaded straight into play (a save resumed at a door): no scene binds her first.
+    const auto changes = Play({{2.0, Loading()}, {5.0, Free()}});
+    REQUIRE(changes.size() == 1);
+    CHECK(changes[0].control);
+    CHECK(changes[0].at - 2.0 == doctest::Approx(hold::kLevelSettle).epsilon(0.03));
+    // A frozen screen (a character's card) is a level's first moments again.
+    const auto card = Play({{2.0, Loading()}, {4.0, Free()}, {3.0, Loading()}, {4.0, Free()}});
+    REQUIRE(card.size() == 3);
+    CHECK_FALSE(card[1].control);
+    CHECK(card[2].at - 9.0 == doctest::Approx(hold::kLevelSettle).epsilon(0.03));
+    // A pause is not: the hold comes back as it stood.
+    const auto paused = Play({{3.0, Paused()}, {2.0, Free()}}, 30.0, true);
+    CHECK(paused.empty());
 }
 
 TEST_CASE("hold: a pause freezes the hold and plays no tone")
@@ -246,5 +286,105 @@ TEST_CASE("hold: a pause freezes the hold and plays no tone")
     {
         const auto changes = Play({{2.0, Loading()}, {0.3, Free()}, {5.0, Paused()}, {0.3, Free()}, {2.0, Bound(1)}});
         CHECK(changes.empty());
+    }
+}
+
+TEST_CASE("hold: a character the game lets drop through the air is no one's, 2026-11-01")
+{
+    SUBCASE("the cable car's end at chapter one")
+    {
+        // 23:47:30.7 Chris's last line on the ride; 33.5 the ride's sequence let him go on the
+        // navigation camera, unbound, the controller taking movement input, with no ground under
+        // him (each new reach map a metre lower, a tenth of a second apart); 34.6 the next level's
+        // loading. The hold sounded a handing over at 34.03 and a taking back at 34.59.
+        const auto changes = Play({{3.0, Loading()}, {10.0, Bound(1)}, {1.08, Falling()}, {2.0, Loading()}});
+        CHECK(changes.empty());
+    }
+    SUBCASE("Matt put in the player's hands at act2_1")
+    {
+        // 23:58:46.6 the player's character became Matt, unbound by the world's origin and
+        // dropping; 48.68 the walk with Emily bound him. The hold sounded at 47.08 and 48.68, and
+        // the list's lesson was spoken between.
+        const auto changes = Play({{3.0, Loading()}, {5.0, Bound(1)}, {2.1, Falling()}, {3.0, Bound(1)}});
+        CHECK(changes.empty());
+    }
+    SUBCASE("a step off a kerb in the player's hands takes nothing back")
+    {
+        const auto changes = Play({{0.3, Falling()}, {3.0, Free()}}, 30.0, true);
+        CHECK(changes.empty());
+    }
+    SUBCASE("a fall that lasts takes her back, and she is handed over once she stands")
+    {
+        const auto changes = Play({{1.5, Falling()}, {1.0, Free()}}, 30.0, true);
+        REQUIRE(changes.size() == 2);
+        CHECK_FALSE(changes[0].control);
+        CHECK(changes[0].why == Why::Falling);
+        CHECK(changes[0].at == doctest::Approx(hold::kSoftTakeBack).epsilon(0.05));
+        CHECK(changes[1].control);
+        CHECK(changes[1].at == doctest::Approx(1.5 + hold::kHandOverSettle).epsilon(0.05));
+    }
+}
+
+TEST_CASE("hold: the way back from the collectibles is the pause's, 2026-11-01")
+{
+    // Jessica on act2_1's path with the collectibles opened and closed: at 23:54:53.09 the game ran
+    // again with the menu's camera still up (layer 15, the front end), the controller taking
+    // movement input, until 53.63; at 23:56:30.06 the same for 0.38 s. The hold was handed over
+    // anew at 54.13 and 30.96, a tone each time.
+    hold::Frame menuCamera = Free();
+    menuCamera.cameraFree = false;
+    SUBCASE("the menu's camera turns back to the scene: nothing changes")
+    {
+        for (const double back : {0.38, 0.54})
+        {
+            CAPTURE(back);
+            const auto changes = Play({{2.0, Free()}, {5.0, Paused()}, {back, menuCamera}, {3.0, Free()}}, 30.0, true);
+            CHECK(changes.empty());
+        }
+    }
+    SUBCASE("a camera that does not come back ends the hold without a tone")
+    {
+        const auto changes = Play({{5.0, Paused()}, {3.0, menuCamera}}, 30.0, true);
+        REQUIRE(changes.size() == 1);
+        CHECK_FALSE(changes[0].control);
+        CHECK(changes[0].silent);
+        CHECK(changes[0].why == Why::Camera);
+        CHECK(changes[0].at == doctest::Approx(5.0 + hold::kPauseReturn).epsilon(0.02));
+    }
+    SUBCASE("a scene that binds her as the game runs again ends the hold at once, without a tone")
+    {
+        const auto changes = Play({{5.0, Paused()}, {2.0, Bound(1)}}, 30.0, true);
+        REQUIRE(changes.size() == 1);
+        CHECK(changes[0].silent);
+        CHECK(changes[0].at == doctest::Approx(5.0).epsilon(0.01));
+    }
+    SUBCASE("a camera taken away later in play takes her back as ever, with its tone")
+    {
+        const auto changes = Play({{5.0, Paused()}, {2.0, Free()}, {1.0, menuCamera}}, 30.0, true);
+        REQUIRE(changes.size() == 1);
+        CHECK_FALSE(changes[0].silent);
+        CHECK(changes[0].at == doctest::Approx(7.0).epsilon(0.01));
+    }
+}
+
+TEST_CASE("hold: a character the scene has just made the player's waits out the scene's own pause, 2026-11-02")
+{
+    // act2_1 (s39): at 10:26:12.31 the camera turned free and Ashley went unbound, at 12.36
+    // Jessica was the player, unbound on the exploration camera, and at 14.38 her scene bound her.
+    // The snowball fight's script had made her the player and waited its SceneTransitionFadeWaitTime
+    // of 2 s before starting the scene; the hold handed her over at 12.81 and took her back at 14.38.
+    hold::Frame waits = Free();
+    waits.sceneWaits = true;
+    SUBCASE("the scene takes her as its wait ends: nothing changes")
+    {
+        const auto changes = Play({{3.0, Loading()}, {20.0, Bound(1)}, {2.0, waits}, {0.02, Free()}, {5.0, Bound(1)}});
+        CHECK(changes.empty());
+    }
+    SUBCASE("a scene that leaves her to the player hands her over once its wait is out")
+    {
+        const auto changes = Play({{3.0, Loading()}, {20.0, Bound(1)}, {2.0, waits}, {3.0, Free()}});
+        REQUIRE(changes.size() == 1);
+        CHECK(changes[0].control);
+        CHECK(changes[0].at == doctest::Approx(23.0 + 2.0 + hold::kHandOverSettle).epsilon(0.01));
     }
 }

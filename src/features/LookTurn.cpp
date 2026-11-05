@@ -106,4 +106,28 @@ namespace da::look
         const double radians = bearing * std::numbers::pi / 180.0;
         return Push{std::cos(radians), std::sin(radians)};
     }
+
+    bool StretchKeeps(bool offered, bool begun, double fromSpot, double wayLeft)
+    {
+        return offered || ((begun || wayLeft < kStepWay) && fromSpot <= kStretchReach);
+    }
+
+    Vec StepSpot(const std::optional<Vec>& mapped, const std::optional<Vec>& felt, const Vec& spot)
+    {
+        if (mapped) return *mapped;
+        if (felt) return *felt;
+        return spot;
+    }
+
+    bool Rest::Update(double now, bool still)
+    {
+        if (m_readySince < 0.0) m_readySince = now;
+        if (!still)
+        {
+            m_stillSince = -1.0;
+            return now - m_readySince >= kRestMax;
+        }
+        if (m_stillSince < 0.0) m_stillSince = now;
+        return now - m_stillSince >= kRestFor;
+    }
 }

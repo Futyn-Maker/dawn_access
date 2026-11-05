@@ -23,6 +23,13 @@ namespace da::gamestate
     };
 
     State Current();
+    // Asks the game now, unless it was asked at this frame. The game pauses as the pause menu's
+    // fade to black begins (ABatesGameState::ProcessNewGameState pauses and sets the state in one
+    // call, and the fade answers the pause), and the hold, which reads the fade at every frame,
+    // saw it up to five frames before the pause and took it for a scene's: a taking back as the
+    // collectibles opened and a handing over as they closed (2026-11-01, the fade 27 and 48 ms
+    // before the pause was read). Game thread only.
+    State Refresh();
     std::wstring Name(State state);
     // The player is in the game proper, playing or watching it.
     bool InPlay();

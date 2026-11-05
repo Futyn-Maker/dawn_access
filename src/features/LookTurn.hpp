@@ -4,10 +4,14 @@
 // walk turns the character toward the thing, as the game's own locomotion lets a player turn her
 // on the spot.
 
+#include "features/Vec.hpp"
+
 #include <optional>
 
 namespace da::look
 {
+    using Vec = features::world::Vec;
+
     // ---- what is missing ---------------------------------------------------------------------
 
     // The press test's parts the guidance weighs (Exploration's PressTest).
@@ -107,6 +111,51 @@ namespace da::look
     {
         double forward = 0.0;
         double right = 0.0;
+    };
+
+    // Whether the walk's last stretch keeps her: while the game offers the thing, and once it has
+    // begun, while she stands within kStretchReach of the spot the game made for her, though out of
+    // the place. Let go as the place takes her, she slides on, and out of a small place: at the
+    // lodge's family portrait on 2026-11-04 she was in it for half a second, slid out 60 cm on, and
+    // the walk took her round it at full stick for fourteen seconds and gave up 70 cm from it;
+    // at the missing axe she walked past it twice and "could not get there" beside it. Out of the
+    // place, the last stretch steps her back in with flicks; farther off, the walk goes on.
+    constexpr double kStretchReach = 150.0;
+    // A walk whose way left is shorter than a step begins its last stretch there and then, with
+    // single steps, rather than at full stick: at the lodge's patio door on 2026-11-05 a walk began
+    // 11 cm from the end of its way, pushed full stick toward it and ran Sam 125 cm past the door.
+    constexpr double kStepWay = 60.0;
+    bool StretchKeeps(bool offered, bool begun, double fromSpot, double wayLeft = 1e9);
+
+    // Where the last stretch steps her while she is out of the place: a cell of the place the ground
+    // was proven to carry her to (the reach map's, `mapped`, else the end of the way felt out to it,
+    // `felt`), and only failing both the spot the game starts the interaction from, which may stand
+    // past furniture: the lodge's music box has its start arrow behind the dresser's slanted edge, and
+    // nine flicks toward it moved Sam nowhere, "could not get there" a metre from it (2026-11-05).
+    Vec StepSpot(const std::optional<Vec>& mapped, const std::optional<Vec>& felt, const Vec& spot);
+
+    // The walk ends where the press is taken only once she has come to rest there, still for
+    // kRestFor on end: let go, she takes a stopping step, and at the lodge's patio door on 2026-11-05
+    // the walk ended 0.4 s after the press would be taken, the moment her speed first read still,
+    // and the step carried her out of the door's place. Moving on for kRestMax she is let go as she
+    // is. A look at which the press would not be taken starts the rest over (Reset).
+    constexpr double kRestFor = 0.5;
+    constexpr double kRestMax = 2.0;
+    class Rest
+    {
+    public:
+        void Reset()
+        {
+            m_readySince = -1.0;
+            m_stillSince = -1.0;
+        }
+        // A look at which the press would be taken; `still`, her speed reads still. True: the walk
+        // ends.
+        bool Update(double now, bool still);
+
+    private:
+        double m_readySince = -1.0;
+        double m_stillSince = -1.0;
     };
 
     class Flicker

@@ -13,10 +13,13 @@ namespace da::gamestate
     {
         UObject* g_actor = nullptr;
         State g_state = State::Unknown;
+        unsigned long long g_askedAt = ~0ull; // the frame the game was last asked at
 
-        void Poll(float)
+        void Ask()
         {
-            if (gamethread::FrameCount() % 5 != 0) return;
+            const auto frame = gamethread::FrameCount();
+            if (frame == g_askedAt) return;
+            g_askedAt = frame;
             if (!g_actor || !obj::IsLive(g_actor)) g_actor = obj::FindFirstLive(L"BatesGameState");
             if (!g_actor) return;
             int64_t value = -1;
@@ -31,10 +34,21 @@ namespace da::gamestate
             log::Info(L"game: state {} -> {}", Name(g_state), Name(state));
             g_state = state;
         }
+
+        void Poll(float)
+        {
+            if (gamethread::FrameCount() % 5 == 0) Ask();
+        }
     }
 
     State Current()
     {
+        return g_state;
+    }
+
+    State Refresh()
+    {
+        Ask();
         return g_state;
     }
 

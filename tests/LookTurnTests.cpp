@@ -1,13 +1,19 @@
 // features/LookTurn: which turn a thing's press waits for, when it is said, and the walk's turn
 // on the spot, played against a model of the game's own locomotion input.
 #include "Support.hpp"
+#include "features/GridPath.hpp"
+#include "features/GroundFile.hpp"
 #include "features/LookTurn.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <deque>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <numbers>
 #include <optional>
+#include <string>
 
 using namespace da;
 using look::Lead;
@@ -576,4 +582,118 @@ TEST_CASE("look: a push is let go at once when nothing is to be turned, or from 
     flicker.Release(now + dt);
     CHECK_FALSE(flicker.Pushing());
     CHECK_FALSE(flicker.Update(now + 2.0 * dt, -90.0, 0.0, 0.0).has_value());
+}
+
+TEST_CASE("the walk's last stretch keeps her near her spot after she slides out of a small place")
+{
+    // The lodge's family portrait, 2026-11-04 00:13:33 to 00:13:47 (research/sessions/s41.log): her
+    // spot at (-819, -7595); the place took her 126 cm from it and she slid out 97 cm from it half a
+    // second later. The old walk went on at full stick from there, round and round, and gave up.
+    const auto from = [](double x, double y) { return std::hypot(x - -819.0, y - -7595.0); };
+    // The place offers the thing: kept, begun or not.
+    CHECK(look::StretchKeeps(true, false, from(-826, -7469)));
+    // Slid out, 97 cm from the spot: still the last stretch's, to be stepped back in.
+    CHECK(look::StretchKeeps(false, true, from(-904, -7547)));
+    // Two metres off: the walk takes her again.
+    CHECK_FALSE(look::StretchKeeps(false, true, from(-939, -7432)));
+    // On her way, never in the place: the walk's.
+    CHECK_FALSE(look::StretchKeeps(false, false, from(-904, -7547)));
+}
+
+TEST_CASE("out of the music box's place the last stretch steps her toward ground of the place, not toward the start arrow past the dresser, 2026-11-05")
+{
+    // Hannah's music box, 23:11:25 to 23:11:33 (research/sessions/s45-full.log): the walk brought Sam
+    // into the place at (5035, -8068), the camera's look alone missing; resting, she slid out to
+    // (5051, -8040), and nine flicks toward the box's start arrow (5165, -8016) turned her to it and
+    // moved her nowhere: "could not get there", a metre from it. Pushed again at full stick she stood
+    // two seconds against the dresser, then a lean took her round its slanted edge and in. The fixture
+    // is the ground the session's record reached from where she slid to, within (4900, -8200) to
+    // (5300, -7900) (research/dumps/ground-20261105-230156.tsv, grid 1, research/tools/cut_ground.py).
+    std::ifstream in(std::filesystem::path(DA_REPO_ROOT) / "tests" / "fixtures" / "ground-musicbox.tsv");
+    REQUIRE(in);
+    const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    ground::Record record;
+    REQUIRE(record.Parse(text));
+    const ground::Anchor a = record.anchors.back();
+    const auto cellOf = [&](double x, double y) { return std::pair{static_cast<int>(std::floor((x - a.x) / a.cell)), static_cast<int>(std::floor((y - a.y) / a.cell))}; };
+    const auto [sx, sy] = cellOf(5051, -8040);
+    const grid::Cell start{sx, sy, 69};
+    grid::Flood flood(start, 500, 100000);
+    while (flood.Step(1000, record.Passable()) == grid::Flood::State::Running)
+    {
+    }
+    // The start arrow stands past what the ground carries her to: no cell of its column is reached.
+    const auto [ax, ay] = cellOf(5165, -8016);
+    for (int level = 66; level <= 72; ++level)
+        CHECK_FALSE(flood.Reached(grid::Cell{ax, ay, level}));
+    // Every single step from her cell straight toward it (+x, the box's way) is refused: the dresser.
+    const ground::Step* toward = record.Find(start, sx + 1, sy);
+    CHECK((toward == nullptr || !toward->free));
+    // Where the place took her, the end of the way the walk had felt out, is ground she walks to.
+    const auto [mx, my] = cellOf(5037, -8050);
+    const grid::Cell placed{mx, my, 69};
+    CHECK(flood.Reached(placed));
+    // So the step heads there: a spot of the place the ground carries her to wins over the arrow,
+    // the map's over the way felt out.
+    const look::Vec arrow{5165, -8016, 3479};
+    const look::Vec mapped{5037, -8050, 3479};
+    const look::Vec felt{5035, -8068, 3479};
+    const look::Vec chosen = look::StepSpot(mapped, felt, arrow);
+    CHECK(chosen.x == mapped.x);
+    CHECK(chosen.y == mapped.y);
+    CHECK(look::StepSpot(std::nullopt, felt, arrow).y == felt.y);
+    CHECK(look::StepSpot(std::nullopt, std::nullopt, arrow).x == arrow.x);
+    // From there she is within the stretch's reach of it, out of the place.
+    CHECK(look::StretchKeeps(false, true, std::hypot(5051.0 - 5037.0, -8040.0 + 8050.0)));
+}
+
+TEST_CASE("a walk begun within a step of the end of its way takes it in single steps, 2026-11-05")
+{
+    // The lodge's patio door, 23:25:48 (research/sessions/s45-full.log): Sam stood 43 cm from the door,
+    // out of its place by a hair, and the way felt out was 11 cm to a cell behind her. The walk pushed
+    // full stick toward it and ran her 125 cm past the door before it turned her back.
+    CHECK(look::StretchKeeps(false, false, 11.0, 11.0));
+    // A way longer than a step is walked as before.
+    CHECK_FALSE(look::StretchKeeps(false, false, 11.0, 80.0));
+    // A step's way to a spot too far for the stretch (a place round a wall): walked.
+    CHECK_FALSE(look::StretchKeeps(false, false, 400.0, 40.0));
+    // No way felt out yet: walked.
+    CHECK_FALSE(look::StretchKeeps(false, false, 30.0));
+}
+
+TEST_CASE("the walk ends where the press is taken once she has come to rest, not at the first still reading, 2026-11-05")
+{
+    // The lodge's patio door, 23:25:38 (research/sessions/s45-full.log): the press would be taken at
+    // 38.011 while she moved; her speed first read still at 38.425 and the walk ended there; her
+    // stopping step then took her on, the press was refused at 38.899 (she no longer faced the door)
+    // and she was out of its place by 39.338.
+    look::Rest rest;
+    rest.Reset();
+    CHECK_FALSE(rest.Update(38.011, false));
+    CHECK_FALSE(rest.Update(38.2, false));
+    CHECK_FALSE(rest.Update(38.425, true)); // ended here before
+    CHECK_FALSE(rest.Update(38.5, false));  // the stopping step
+    CHECK_FALSE(rest.Update(38.7, false));
+    CHECK_FALSE(rest.Update(38.85, true));
+    // 38.899: the press refused; the rest starts over and the stretch steps her back in.
+    rest.Reset();
+    // 23:25:58.9, back in, facing the door: she slows and stands.
+    CHECK_FALSE(rest.Update(58.9, false));
+    CHECK_FALSE(rest.Update(59.2, true));
+    CHECK_FALSE(rest.Update(59.6, true));
+    CHECK(rest.Update(59.75, true));
+    // Moving on and on, she is let go as she is.
+    rest.Reset();
+    CHECK_FALSE(rest.Update(10.0, false));
+    CHECK_FALSE(rest.Update(11.9, false));
+    CHECK(rest.Update(12.0, false));
+    // A still reading, a stopping step, and still again a little later with the press still taken:
+    // the rest counts from the second still reading, not the first.
+    rest.Reset();
+    CHECK_FALSE(rest.Update(20.0, false));
+    CHECK_FALSE(rest.Update(20.1, true));
+    CHECK_FALSE(rest.Update(20.3, false));
+    CHECK_FALSE(rest.Update(20.65, true));
+    CHECK_FALSE(rest.Update(21.1, true));
+    CHECK(rest.Update(21.2, true));
 }

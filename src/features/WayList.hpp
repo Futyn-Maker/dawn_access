@@ -10,6 +10,8 @@
 
 #include <cstddef>
 #include <functional>
+#include <optional>
+#include <string>
 #include <vector>
 
 namespace da::ways
@@ -48,6 +50,10 @@ namespace da::ways
         // came, and the index of the target whose road it lies on, or -1.
         bool passed = false;
         int onRoadOf = -1;
+        // The hold the verdict was given in (Lister::NewHold), and whether it stands as it is at this
+        // judgement (Lister::Judge sets it): a verdict of the hold given before the list froze.
+        int epoch = -1;
+        bool kept = false;
     };
 
     // Whether the road the walk to target `other` takes runs through the volume of way `way`
@@ -60,8 +66,9 @@ namespace da::ways
     // that two ways never leave each other out, nor a road that is itself left out leaves a way
     // out. A way behind, unreachable, unjudged, reached or chosen is not judged; a road counts only
     // from a target listed and not closed off (the road to a closed-off thing ends short of it, a
-    // dead end no walk gets through). Returns, for each entry, the index of the target whose road
-    // it lies on, or -1.
+    // dead end no walk gets through). An entry whose verdict is `kept` keeps it, and counts as a
+    // road as it stands. Returns, for each entry, the index of the target whose road it lies on, or
+    // -1.
     std::vector<int> RowRule(const std::vector<Entry>& entries, const Enters& enters);
 
     // A way's volume as a box turned about the upright: its middle, its sides along its own axes,
@@ -81,6 +88,71 @@ namespace da::ways
     // the walk there sets the volume off. Exploration asks the engine for the distance to the
     // volume itself (GetClosestPointOnCollision), which comes out the same for a box.
     bool RoadEntersBox(const Box& box, const std::vector<Vec>& road, double radius, double halfHeight, double step = 25.0);
+
+    // Whether the character standing at `feet` sets a volume off, over the ground: the game sets a
+    // volume off once her capsule, `radius` around her, overlaps it. The cable car's doorway at
+    // chapter one is 51 cm deep, and the platform's ground ends at the car's threshold 49 cm from
+    // its middle, where her capsule already overlaps it; judged by a cell within the volume's own
+    // half width of its middle, the doorway was found closed off and never offered (2026-11-01).
+    bool CapsuleOverlaps(const Box& box, const Vec& feet, double radius);
+
+    // A circle about a volume's middle every cell of which sets it off, in cells, for the searches
+    // that head for a circle: the volume's own half width (the narrower of its two) and the
+    // capsule's radius, and no less than a cell and a half.
+    double VolumeGoalRadius(const Box& box, double capsuleRadius, double cell);
+
+    // ---- doors -------------------------------------------------------------------------------
+
+    // Whether a door is one the character only tries: every animation the door would bind her
+    // with, one per body (the door interaction's GenericBoundCharacter), is the one that rattles
+    // a locked door (ABP_Door_Locked_*). Those doors are of the same blueprint family as the doors
+    // that open, and the animation is the one thing that tells them apart: the station's front
+    // door at chapter one binds Sam to ABP_Door_Locked_Right_Female and never opens (2026-11-01),
+    // the lodge's doors bind ABP_Door_Push_Right_Open_Female and the like. What lies behind a
+    // door she only tries is closed off for now. A door naming no animation is not known locked.
+    bool OnlyTried(const std::vector<std::wstring>& animations);
+
+    // ---- who may use a use location ------------------------------------------------------------
+
+    // Whether the player's character may use a use location, as the game decides it
+    // (ABatesUseLocation::CanCharacterUseUseLocation): one that requires a valid animation for her
+    // takes her only when its interaction has one (her own entry among its bound characters, else
+    // a generic interaction's for her body); then anyone may, or only the character it names. A
+    // photo of the lodge has two use locations at one spot, one for each body
+    // (I_hannah_and_beth_beach_photo and its _female twin, 2026-11-02): Chris was offered both.
+    struct UseRule
+    {
+        bool requiresAnimation = false; // bRequireValidCharacterABP
+        bool animated = false;          // the interaction has an animation for her
+        bool anyone = false;            // bCanAnyoneInteract
+        bool hers = false;              // CharacterToInteract is the player's character
+    };
+    bool UsableBy(const UseRule& rule);
+
+    // ---- what the game offers ------------------------------------------------------------------
+
+    // Which of the use locations on the game's list of those at hand she stands in: the list is her
+    // interaction component's AvailableUseLocations, to which a use location adds itself as she walks
+    // into its volume and from which it takes itself off as she walks out
+    // (ABatesUseLocation::OnCharacterVolumeStateChanged, 0x44e6bb0). The list can keep one she has
+    // left: after the vista's telescope on 2026-11-05 it kept the telescope while Mike went through
+    // the gate and down to the loss totem 14 m off, and taken as offered, the telescope was said to be
+    // where he stood and the walk to the totem stopped 2 m short of it, "near, but the game offers
+    // Telescope". The game's own press never takes such a one: it goes to the nearest one on the list
+    // she can use (UPlayerInteractionComponent::FindClosestInteractableUseLocation, 0x46132e0), whose
+    // test asks first whether she stands in its volume (her trigger component's
+    // IsInsideTriggerVolume). `inside` says that of each entry; returns the indices of those she
+    // stands in, in the list's order.
+    std::vector<size_t> StoodIn(const std::vector<bool>& inside);
+
+    // ---- how far the list reaches ---------------------------------------------------------------
+
+    // A target comes into the list within the range of the settings and leaves it only kRangeMargin
+    // beyond: at the mine on 2026-11-05 the vista's telescope, info board and gate stood 99 to 101 m
+    // off while Mike walked about below, and came and went from the list six times in fourteen
+    // minutes, said as news at each coming.
+    constexpr double kRangeMargin = 3000.0;
+    bool InRange(double distance, double range, bool listedBefore);
 
     // ---- settling ----------------------------------------------------------------------------
 
@@ -126,6 +198,11 @@ namespace da::ways
         {
             return m_startedAt;
         }
+        // A map has begun since the hold began.
+        bool Begun() const
+        {
+            return m_begun;
+        }
 
     private:
         bool m_settled = false;
@@ -143,6 +220,13 @@ namespace da::ways
     // judges the list at the look it settles, before anything is listed or said (the woods' start
     // on 2026-10-28 listed four ways at the look it settled and left three out at the next), then
     // once a second, and at the first look after Again().
+    //
+    // Once the first map of a hold has run out its verdicts stand for the rest of the hold (Freeze):
+    // the roads it judged by are those from where she stood, and judged again from where she walks
+    // they took ways off the list and put them back as she went (the mine on 2026-11-05: two ways on
+    // listed, left out and listed again within five seconds as Mike walked to the totem). After the
+    // freeze only a target that came since, or one whose road-giver has left the list, is judged; a
+    // new hold, or the story moving on, judges every one afresh.
     class Lister
     {
     public:
@@ -158,8 +242,146 @@ namespace da::ways
         {
             m_judgedAt = -10.0;
         }
+        // A hold begun afresh, or the story moved on: every verdict is given anew.
+        void NewHold()
+        {
+            ++m_epoch;
+            m_frozen = false;
+            Again();
+        }
+        // The hold's first map has run out: its verdicts stand.
+        void Freeze()
+        {
+            m_frozen = true;
+        }
+        bool Frozen() const
+        {
+            return m_frozen;
+        }
 
     private:
         double m_judgedAt = -10.0;
+        int m_epoch = 0;
+        bool m_frozen = false;
     };
+
+    // ---- the ground changes under a list that stands ------------------------------------------
+
+    // A list stands for the ground its map judged, and that ground changes at doors, at gates and
+    // where a scene carries her on: at the lodge on 2026-11-05 Sam opened the landing door in a short
+    // exchange, the hold took up the list it had left, and the way on at the head of the stairs, judged
+    // while it lay beyond the door, kept its verdict for four minutes, though the road down to the
+    // answerphone runs through it; at the end of chapter 2 Matt was dropped down a slope, and the
+    // list from the ledge above stood for a minute, the ledge's way on with it.
+    //
+    // A short exchange (the game took the character back for a moment and hands her back where she
+    // was) takes up the list it left only while she stands on the ground the last map reached;
+    // carried off it, through a door, down a drop, the hold begins afresh.
+    bool ResumesList(bool shortExchange, bool onMappedGround);
+    // A target the list stood on as out of reach when its verdicts were frozen (`reachWhenFrozen`:
+    // 2 closed off, 3 beyond a door, as Exploration's reach map judges; 0 not judged, 1 reached) that
+    // a later map reaches (`reachNow` 1): the ground has grown, a door has opened beside her, and
+    // every verdict is given anew (Lister::NewHold).
+    bool Reopened(int reachWhenFrozen, int reachNow);
+
+    // ---- news --------------------------------------------------------------------------------
+
+    // A target joining the list is news only where the game has just turned it on: a thing to use
+    // it enables, a volume a scene begins to wait on. One that only comes within the list's range as
+    // she walks was there all along: on Matt's trail on 2026-11-05 "New: Drop Down Emily, 120 m" and
+    // two ways on were said as news as he walked down toward them, though the game had had them on
+    // since the level began, and the player took them for things a trigger had just enabled.
+    // `turnedOnAt`: when the game turned it on, if it was seen off before; news within kNewsWithin of
+    // that (its ground may take a while to be known).
+    constexpr double kNewsWithin = 30.0;
+    bool IsNews(std::optional<double> turnedOnAt, double now);
+
+    // ---- a path the game holds her to ---------------------------------------------------------
+
+    // How far off a path the game holds her to she can stray: the game takes the stick only within
+    // `coneDegrees` of the path's forward, so over the `ahead` cm she has left to walk she comes at
+    // most ahead·tan(cone) from its line (the basement path of the lodge took it within 0 degrees;
+    // others within 10). A thing whose place lies farther from the path than that and her own width
+    // is seen from the path and never reached on it: the lodge's dollhouse and picture beside the
+    // basement path were listed, and each walk to one stopped level with it, "could not get there"
+    // (2026-11-05). No more than kPathStrayMax.
+    constexpr double kPathStrayMax = 300.0;
+    double PathStray(double ahead, double coneDegrees);
+
+    // ---- following a road -------------------------------------------------------------------
+
+    // The stretch of a road the character is on, by the corner that ends it (0 for the road's first
+    // corner itself), or -1 when none lies within `reach` of her over the ground among the first
+    // `count` corners. A road can pass over itself (a stair that turns back under its own landing):
+    // a stretch at another height than hers, by more than `rise`, is not hers however near it lies
+    // over the ground. Walking back from the danger totem on 2026-11-04, Mike came down the stairs
+    // onto the walkway under the platform the road had begun on, and was turned back up 391 cm, the
+    // platform's first stretch lying nearer over the ground than the walkway's, until the walk gave
+    // up. The road's heights and hers are taken alike (the corners at the height of her middle).
+    int StretchOn(const std::vector<Vec>& corners, size_t count, const Vec& here, double reach, double rise);
+    constexpr double kStretchRise = 150.0;
+
+    // ---- the game's passages ----------------------------------------------------------------
+
+    // A guidance passage of the game's (ABatesGuidancePassageVolume: the doorways' BP_Doorway): a
+    // line through a doorway from one entry point to the other, along which the game takes the
+    // character when she walks into it. The doorway is often too tight for the ground's cells, whose
+    // steps are swept from their middles: the generator shed's doorway in Act2_2 lets a capsule of
+    // 42 cm through only near its line, and the reach map found the way in when its cells happened to
+    // lie on it (a grid laid in the lodge, 2026-11-04 01:35) and never under a grid laid nearer by
+    // (01:40 on, and every map of the next session): the generator, the very thing the objective
+    // named, was left out as closed off 248 cm short. A passage the character's capsule gets along
+    // (PassageWalk), with no door's leaf across the way it took, links the ground at its two ends.
+    struct Passage
+    {
+        std::string name;
+        Vec a, b;          // the entry points, on the floor
+        bool free = false; // walked from one to the other
+    };
+
+    // A sweep of the character's capsule from one point to another, as the engine answers it: whether
+    // it met something, how far it got before it did, the normal of the contact pointing back at the
+    // capsule, and whether it began already pressed into something.
+    struct SweepHit
+    {
+        bool hit = false;
+        double distance = 0.0;
+        Vec normal;
+        bool penetrating = false;
+        double depth = 0.0; // how far in, when it began pressed in
+    };
+    using Sweep = std::function<SweepHit(const Vec& from, const Vec& to)>;
+
+    // How the capsule is walked through a passage, as the character's movement takes her through a
+    // doorway: straight on until she touches something, then along the surface she touched (the rest
+    // of the move with its part into the surface taken away), and on for the far end again, at most
+    // kPassageTouches times; she has got there within kPassageArrive of it. A straight sweep along the
+    // game's line does not do: at the generator shed on 2026-11-05 it stopped 41 cm in, at an invisible
+    // wall the line grazes (BP_SplineCollisionActor_C_3), while the cells a grid laid from the totem
+    // that day went through 2 to 12 cm to one side of the line. So the line is walked, and lines beside
+    // it, kPassageShift apart up to kPassageShiftMax either way, nearest first.
+    constexpr int kPassageTouches = 4;
+    constexpr double kPassageArrive = 20.0;
+    constexpr double kPassageShift = 3.0;
+    constexpr double kPassageShiftMax = 18.0;
+    struct PassageWay
+    {
+        bool passed = false;
+        double shift = 0.0; // the line walked, to the right of the game's line looking from a to b
+        int touches = 0;    // the surfaces she slid along on it
+        Vec reached;        // where the walk on the game's own line got to, when nothing passed
+    };
+    // Walks the capsule from `a` to `b` (its middle, at the sweep's height) as above.
+    PassageWay PassageWalk(const Sweep& sweep, const Vec& a, const Vec& b);
+    // One walk along a line: where it got, and how many touches it took.
+    Vec SlideWalk(const Sweep& sweep, const Vec& from, const Vec& to, int& touches);
+    // How near an entry point a cell's middle must lie, over the ground and in height, to take the
+    // passage: within a cell and a half, on its floor or a step off it.
+    constexpr double kPassageReach = 30.0;
+    constexpr double kPassageRise = 60.0;
+    // The links the passages give a cell whose middle on its floor is `middle`: to the cell of the
+    // other end of each passage it lies at, by `cellAt` (false when that end's floor is not known),
+    // the cost being the distance between the two middles in cells of `cellSize`.
+    void PassageLinks(const std::vector<Passage>& passages, const Vec& middle, double cellSize,
+                      const std::function<bool(const Vec& end, grid::Cell& cell, Vec& cellMiddle)>& cellAt, std::vector<grid::Link>& out);
 }

@@ -3,6 +3,7 @@
 #include <charconv>
 #include <cmath>
 #include <cstdio>
+#include <limits>
 #include <sstream>
 #include <string_view>
 
@@ -87,6 +88,30 @@ namespace da::ground
     std::string PositionLine(const Position& p)
     {
         return "P " + Num(p.x) + " " + Num(p.y) + " " + Num(p.z);
+    }
+
+    std::vector<std::string> VolumeLines(const std::string& name, const shapes::Shape& shape)
+    {
+        std::vector<std::string> lines;
+        const auto point = [](const shapes::Vec& p) { return " " + Num(p.x) + " " + Num(p.y) + " " + Num(p.z); };
+        for (const auto& hull : shape.hulls)
+        {
+            std::string line = "V " + name + " H";
+            for (const auto& p : hull.points)
+                line += point(p);
+            lines.push_back(line);
+        }
+        for (const auto& ball : shape.balls)
+            lines.push_back("V " + name + " B" + point(ball.middle) + " " + Num(ball.radius));
+        for (const auto& pill : shape.pills)
+            lines.push_back("V " + name + " C" + point(pill.a) + point(pill.b) + " " + Num(pill.radius));
+        return lines;
+    }
+
+    std::string PassageLine(const ways::Passage& p)
+    {
+        return "G " + p.name + " " + Num(p.a.x) + " " + Num(p.a.y) + " " + Num(p.a.z) + " " + Num(p.b.x) + " " + Num(p.b.y) + " " + Num(p.b.z) +
+               (p.free ? " 1" : " 0");
     }
 
     bool Record::Parse(const std::string& text)
@@ -189,6 +214,39 @@ namespace da::ground
                 Position p;
                 if (ToDouble(f[1], p.x) && ToDouble(f[2], p.y) && ToDouble(f[3], p.z)) positions.push_back(p);
             }
+            else if (f[0] == "G" && f.size() >= 9)
+            {
+                ways::Passage p;
+                p.name = std::string(f[1]);
+                if (ToDouble(f[2], p.a.x) && ToDouble(f[3], p.a.y) && ToDouble(f[4], p.a.z) && ToDouble(f[5], p.b.x) && ToDouble(f[6], p.b.y) &&
+                    ToDouble(f[7], p.b.z))
+                {
+                    p.free = f[8] == "1";
+                    passages.push_back(p);
+                }
+            }
+            else if (f[0] == "V" && f.size() >= 4)
+            {
+                std::vector<double> n;
+                for (size_t i = 3; i < f.size(); ++i)
+                {
+                    double v = 0.0;
+                    if (!ToDouble(f[i], v)) break;
+                    n.push_back(v);
+                }
+                auto& shape = volumes[std::string(f[1])];
+                if (f[2] == "H" && n.size() >= 3 && n.size() % 3 == 0)
+                {
+                    shapes::Hull hull;
+                    for (size_t i = 0; i + 2 < n.size(); i += 3)
+                        hull.points.push_back({n[i], n[i + 1], n[i + 2]});
+                    shape.hulls.push_back(hull);
+                }
+                else if (f[2] == "B" && n.size() == 4)
+                    shape.balls.push_back({{n[0], n[1], n[2]}, n[3]});
+                else if (f[2] == "C" && n.size() == 7)
+                    shape.pills.push_back({{n[0], n[1], n[2]}, {n[3], n[4], n[5]}, n[6]});
+            }
         }
         return header;
     }
@@ -205,6 +263,40 @@ namespace da::ground
             }
             to.level = it->second;
             return true;
+        };
+    }
+
+    grid::Links Record::Links() const
+    {
+        if (anchors.empty() || passages.empty()) return {};
+        const Anchor a = anchors.back();
+        return [this, a](grid::Cell from, std::vector<grid::Link>& out)
+        {
+            const auto floor = floors.find(std::tuple<int, int, int>{from.x, from.y, from.level});
+            if (floor == floors.end()) return;
+            // A cell's middle as Exploration places it (WorldOf): half a cell in from its corner.
+            const ways::Vec middle{a.x + (from.x + 0.5) * a.cell, a.y + (from.y + 0.5) * a.cell, floor->second};
+            ways::PassageLinks(
+                passages, middle, a.cell,
+                [&](const ways::Vec& end, grid::Cell& cell, ways::Vec& cellMiddle)
+                {
+                    const int x = static_cast<int>(std::floor((end.x - a.x) / a.cell));
+                    const int y = static_cast<int>(std::floor((end.y - a.y) / a.cell));
+                    bool found = false;
+                    double best = ways::kPassageRise;
+                    for (auto it = floors.lower_bound(std::tuple<int, int, int>{x, y, std::numeric_limits<int>::min()});
+                         it != floors.end() && std::get<0>(it->first) == x && std::get<1>(it->first) == y; ++it)
+                    {
+                        const double off = std::fabs(it->second - end.z);
+                        if (off > best) continue;
+                        best = off;
+                        cell = grid::Cell{x, y, std::get<2>(it->first)};
+                        cellMiddle = ways::Vec{a.x + (x + 0.5) * a.cell, a.y + (y + 0.5) * a.cell, it->second};
+                        found = true;
+                    }
+                    return found;
+                },
+                out);
         };
     }
 

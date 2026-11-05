@@ -14,12 +14,26 @@
 //   Q fx fy flevel tx ty tlevel radius levels        a search begins
 //   R found|failed cells sweeps nx ny nlevel         a search ends, with the cell that got nearest the goal
 //   P x y z                                          where the character stands
+//   V name H x y z x y z ...                         a piece of a volume's collision, in the world, by the
+//   V name B x y z radius                            name the level's scripts call it: a convex piece's
+//   V name C ax ay az bx by bz radius                points, a ball, a capsule (features/Shapes)
+//   G name ax ay az bx by bz free                    a guidance passage of the game's: its two entry
+//                                                    points on the floor, and whether the character's
+//                                                    capsule was walked from one to the other (1) or
+//                                                    not (0) (ways::PassageWalk)
+//   K name ax ay az bx by bz along bits              a row of where her capsule fits in a passage too
+//                                                    tight for every way tried, its middle `along` cm
+//                                                    from the near end, one bit each 2 cm across from
+//                                                    40 cm left of the line to 40 right, '1' free; the
+//                                                    ends at the height of her middle (not read back)
 //   T x y level floor steps                          a cell's floor and the eight steps out of it, in a
 //                                                    test fixture cut from a record: one character per
 //                                                    neighbour (dy -1 to 1, dx -1 to 1, the cell itself
 //                                                    left out), '.' not free, '-' '0' '+' free onto the
 //                                                    level below, the same or above
 #include "features/GridPath.hpp"
+#include "features/Shapes.hpp"
+#include "features/WayList.hpp"
 
 #include <map>
 #include <string>
@@ -74,6 +88,9 @@ namespace da::ground
     std::string SearchLine(const Search& s);
     std::string ResultLine(const Search& s);
     std::string PositionLine(const Position& p);
+    // A volume's collision, a line for each piece.
+    std::vector<std::string> VolumeLines(const std::string& name, const shapes::Shape& shape);
+    std::string PassageLine(const ways::Passage& p);
 
     using StepKey = std::tuple<int, int, int, int, int>;
 
@@ -87,6 +104,8 @@ namespace da::ground
         std::vector<Position> positions;
         std::map<StepKey, int> stepLevels;                  // the level a free step lands on
         std::map<std::tuple<int, int, int>, double> floors; // the floor of a cell (x, y, level), where known
+        std::map<std::string, shapes::Shape> volumes;       // the collision of the volumes the ways on were, by name
+        std::vector<ways::Passage> passages;                // the game's guidance passages, as swept
 
         // Reads a whole record; unknown lines are skipped. False when no header was found.
         bool Parse(const std::string& text);
@@ -95,5 +114,8 @@ namespace da::ground
         grid::Passable Passable(int* unknown = nullptr) const;
         // The step recorded from a cell into a column, if any.
         const Step* Find(grid::Cell from, int bx, int by) const;
+        // The links the recorded passages give the cells of the last anchor's grid, the cell of an
+        // end found by the floor recorded at its column nearest the end's height.
+        grid::Links Links() const;
     };
 }
