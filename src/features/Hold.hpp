@@ -27,6 +27,7 @@ namespace da::hold
         bool falling = false;    // she is in the air, the game letting her drop (MovementMode Falling)
         bool sceneWaits = false; // the scene that made her the player waits a moment before it goes on (scripts::Switch)
         bool covered = false;    // the loading screen, a film or the fade to black covers the picture
+        bool offered = false;    // the game offers a thing to use where she stands: a press is hers to make
     };
 
     // Why the character was taken back, the first of the reasons that holds.
@@ -94,6 +95,11 @@ namespace da::hold
     // Jessica the player, waits its SceneTransitionFadeWaitTime of 2 s on the exploration camera
     // and then starts her scene, and the hold sounded a handing over and a taking back in between
     // (2026-11-02). The wait is a soft reason, as falling is; it lasts only as long as the script's.
+    //
+    // Ignored movement is no reason at all where the game offers a thing she stands in: at the cabin of
+    // chapter 3 the game stops the character at Jessica's phone and at the shutters (a volume that
+    // ignores movement on entering, BatesSetMoveInputTriggerAction), and only a press there goes on; a
+    // hold taken back after kSoftTakeBack would leave that press unread.
 
     class Hold
     {

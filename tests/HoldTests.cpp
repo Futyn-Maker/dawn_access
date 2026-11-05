@@ -388,3 +388,25 @@ TEST_CASE("hold: a character the scene has just made the player's waits out the 
         CHECK(changes[0].at == doctest::Approx(23.0 + 2.0 + hold::kHandOverSettle).epsilon(0.01));
     }
 }
+
+TEST_CASE("hold: where the game stops her at a thing it offers, the press is hers and the hold stands")
+{
+    // The cabin of chapter 3 (research/inventory/act2_5.md): the volumes at Jessica's phone and beside
+    // the shutters ignore movement as she enters (BatesSetMoveInputTriggerAction) and the story goes on
+    // only by the press there. Taken back after a second, the hold would leave the press unread.
+    const auto stopped = [] {
+        hold::Frame f = InputIgnored();
+        f.offered = true;
+        return f;
+    };
+    const auto changes = Play({{1.0, Free()}, {6.0, stopped()}, {1.0, Bound(2)}}, 30.0, true);
+    REQUIRE(changes.size() == 1);
+    CHECK_FALSE(changes[0].control);
+    CHECK(changes[0].why == Why::Bound);
+    CHECK(changes[0].at == doctest::Approx(7.0).epsilon(0.01));
+    // With nothing offered the same stop takes her back after a second, as on the woods' path.
+    const auto plain = Play({{1.0, Free()}, {6.0, InputIgnored()}}, 30.0, true);
+    REQUIRE(plain.size() == 1);
+    CHECK(plain[0].why == Why::InputIgnored);
+    CHECK(plain[0].at == doctest::Approx(1.0 + hold::kSoftTakeBack).epsilon(0.05));
+}

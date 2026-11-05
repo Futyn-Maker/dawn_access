@@ -5789,6 +5789,8 @@ namespace da::features
             frame.gameWalks = gameWalks;
             frame.falling = falling;
             frame.sceneWaits = sceneWaits;
+            // A thing the game offers where she stands: the press is hers though it ignores movement.
+            frame.offered = pawn && !OfferedUseLocations(pawn).empty();
             frame.covered = !cover.empty();
             const bool changed = g_hold.Update(now, frame);
             const bool control = g_hold.Control();
