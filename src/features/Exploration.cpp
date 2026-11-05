@@ -5203,7 +5203,8 @@ namespace da::features
         // for her, which turn her that way and then step her there. A look the camera must give is
         // the player's, which the aim sound leads once the walk is over.
         double g_arriveSince = -1.0; // since when the walk is on its last stretch
-        look::Rest g_rest; // she comes to rest where the press would be taken, the keys let go
+        look::Rest g_rest;     // she comes to rest where the press would be taken, the keys let go
+        look::Rest g_lookRest; // she comes to rest where only the camera's look is missing
         look::Flicker g_flicker;
         unsigned long long g_flickFrame = 0; // the frame a flick's push was given on
         std::wstring g_arriveLogged;
@@ -5248,6 +5249,7 @@ namespace da::features
             {
                 g_arriveSince = now;
                 g_rest.Reset();
+                g_lookRest.Reset();
                 g_flicker.Reset(now);
                 g_arriveLogged.clear();
                 if (!t.inside)
@@ -5316,16 +5318,19 @@ namespace da::features
                 input::ReleaseWalkKeys();
                 return true;
             }
-            // Only the camera's look is missing: that turn is the player's.
+            // Only the camera's look is missing: that turn is the player's, once she has come to
+            // rest in the place (look::Rest); a stopping step that takes her out of it hands her
+            // back to the steps below.
             if (p.inside && p.characterOk)
             {
                 g_flicker.Hold(now, facing);
                 input::ReleaseWalkKeys();
-                if (!still) return true;
-                log::Info(L"explore: the walk to \"{}\" ends there, the camera to look at it", t.label);
+                if (!g_lookRest.Update(now, still)) return true;
+                log::Info(L"explore: the walk to \"{}\" ends there, she at rest, the camera to look at it", t.label);
                 StopWalk(nullptr, false);
                 return true;
             }
+            g_lookRest.Reset();
             // The press asks for a glint and the thing has none: no turn of hers wins it.
             if (p.inside && p.needGlint && (p.needCamera || p.needCharacter) && !p.glint)
             {
