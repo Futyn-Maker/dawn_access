@@ -153,6 +153,7 @@ namespace
         GameLoco loco;
         look::Flicker flicker;
         int flicksWhileTurning = 0;
+        look::Vec here{0.0, 0.0, 0.0}; // where she stands
         int walksInStretch = 0;
         int pivotsInStretch = 0;
         int stepsInStretch = 0;
@@ -187,10 +188,10 @@ namespace
                         stepsInStretch = -loco.steps;
                         pivots = loco.pivots;
                     }
-                    if (flicker.Pushing() && frame != flickFrame) flicker.Release(now);
+                    if (flicker.Pushing() && frame != flickFrame && !flicker.Holding(now)) flicker.Release(now);
                     const bool turning = std::fabs(Normalize(turnTo - facing)) > 0.01;
                     if (std::fabs(Normalize(target - facing)) > 110.0)
-                        push = flicker.Update(now, target, facing, speed);
+                        push = flicker.Update(now, target, facing, speed, here);
                     else
                         flicker.Hold(now, facing);
                     if (push) flickFrame = frame;
@@ -203,7 +204,13 @@ namespace
                 pipe.pop_front();
                 const auto [right, forward] = seen ? Given(*seen, keys) : std::pair<double, double>{0.0, 0.0};
                 const int before = loco.pivots;
+                const int stepsBefore = loco.steps;
                 loco.Frame(dt, right, forward, !keys, facing);
+                // A step carries her about a stride; a walk at a walk's pace.
+                const double radiansFacing = facing * std::numbers::pi / 180.0;
+                const double carried = (loco.steps > stepsBefore ? 30.0 : 0.0) + (loco.walking ? 105.0 * dt : 0.0);
+                here.x += std::cos(radiansFacing) * carried;
+                here.y += std::sin(radiansFacing) * carried;
                 if (loco.pivots > before)
                 {
                     const double wanted = Normalize(loco.pivotBearing - facing);
@@ -518,7 +525,7 @@ TEST_CASE("look: the flick waits for her to stand, one frame long")
     flicker.Reset(0.0);
     // She is still sliding to a stop: no flick.
     for (int frame = 0; frame < 30; ++frame)
-        CHECK_FALSE(flicker.Update(frame * dt, 90.0, 0.0, 40.0).has_value());
+        CHECK_FALSE(flicker.Update(frame * dt, 90.0, 0.0, 40.0, {}).has_value());
     CHECK(flicker.Count() == 0);
     // Standing, her facing settled: one frame's push, then let go.
     double began = -1.0;
@@ -527,7 +534,7 @@ TEST_CASE("look: the flick waits for her to stand, one frame long")
     for (int frame = 30; frame < 60; ++frame)
     {
         const double now = frame * dt;
-        const auto push = flicker.Update(now, 90.0, 0.0, 0.0);
+        const auto push = flicker.Update(now, 90.0, 0.0, 0.0, {});
         if (push && began < 0.0) began = now;
         if (!push && began >= 0.0 && released < 0.0) released = now;
         if (flicker.Began() && released >= 0.0 && again < 0.0) again = now;
@@ -551,7 +558,7 @@ TEST_CASE("look: a first flick is not waited for past the settling time")
     for (int frame = 0; frame < 90 && began < 0.0; ++frame)
     {
         const double now = frame / 30.0;
-        if (flicker.Update(now, 90.0, frame * 2.0, 40.0)) began = now;
+        if (flicker.Update(now, 90.0, frame * 2.0, 40.0, {})) began = now;
     }
     REQUIRE(began >= 0.0);
     CHECK(began >= look::kSettleMax - 1e-9);
@@ -566,7 +573,7 @@ TEST_CASE("look: a push is let go at once when nothing is to be turned, or from 
     double now = 0.0;
     for (; now < 1.0; now += dt)
         flicker.Hold(now, 0.0);
-    auto push = flicker.Update(now, -90.0, 0.0, 0.0);
+    auto push = flicker.Update(now, -90.0, 0.0, 0.0, {});
     REQUIRE(push.has_value());
     CHECK(push->right == doctest::Approx(-1.0));
     CHECK(std::fabs(push->forward) < 1e-9);
@@ -574,14 +581,14 @@ TEST_CASE("look: a push is let go at once when nothing is to be turned, or from 
     flicker.Hold(now + dt, 0.0);
     CHECK_FALSE(flicker.Pushing());
     // Let go: the next frame wanting a turn waits for the push to leave the input buffer.
-    CHECK_FALSE(flicker.Update(now + 2.0 * dt, -90.0, 0.0, 0.0).has_value());
+    CHECK_FALSE(flicker.Update(now + 2.0 * dt, -90.0, 0.0, 0.0, {}).has_value());
     // A frame on which the stretch is not reached lets it go from outside (Exploration's PollImpl).
     now += 2.0;
-    push = flicker.Update(now, -90.0, 0.0, 0.0);
+    push = flicker.Update(now, -90.0, 0.0, 0.0, {});
     REQUIRE(push.has_value());
     flicker.Release(now + dt);
     CHECK_FALSE(flicker.Pushing());
-    CHECK_FALSE(flicker.Update(now + 2.0 * dt, -90.0, 0.0, 0.0).has_value());
+    CHECK_FALSE(flicker.Update(now + 2.0 * dt, -90.0, 0.0, 0.0, {}).has_value());
 }
 
 TEST_CASE("the walk's last stretch keeps her near her spot after she slides out of a small place")
@@ -696,4 +703,91 @@ TEST_CASE("the walk ends where the press is taken once she has come to rest, not
     CHECK_FALSE(rest.Update(20.65, true));
     CHECK_FALSE(rest.Update(21.1, true));
     CHECK(rest.Update(21.2, true));
+}
+
+TEST_CASE("look: flicks that move her nowhere give way to a held push, the library's guidance totem, 2026-11-06")
+{
+    // research/sessions/s47-full.log, 22:35:31.8 to 22:35:39.8: the last stretch to the guidance totem
+    // flicked ten times toward a spot of its place 30 cm off, +5 degrees in the stick's frame, and
+    // Ashley neither turned (she faced +3 degrees off the glint at every flick) nor stepped; the walk
+    // ended "could not get there". A flick that did nothing counts; after kDeadFlicks of them the push
+    // is held kPulse, past the 0.16 s Into needs at full stick, so a walk starts and carries her.
+    constexpr double dt = 1.0 / 30.0;
+    look::Flicker flicker;
+    flicker.Reset(0.0);
+    const look::Vec stuck{-1632.0, -7374.0, 3097.0};
+    std::vector<double> holds;
+    double now = 0.0;
+    for (int frame = 0; frame < 300 && holds.size() < 4; ++frame)
+    {
+        now = frame * dt;
+        if (flicker.Pushing() && !flicker.Holding(now))
+        {
+            flicker.Release(now);
+            continue;
+        }
+        const auto push = flicker.Update(now, 5.0, 91.0, 0.0, stuck);
+        if (flicker.Began()) holds.push_back(push->hold);
+    }
+    REQUIRE(holds.size() == 4);
+    CHECK(holds[0] == 0.0);
+    CHECK(holds[1] == 0.0);
+    CHECK(holds[2] == doctest::Approx(look::kPulse));
+    CHECK(holds[3] == doctest::Approx(look::kPulse));
+    CHECK(look::kPulse > 0.16);
+    // A held push stays on, frame after frame, until its time is up.
+    look::Flicker held;
+    held.Reset(0.0);
+    double t = 0.0;
+    int began = 0;
+    for (; began < 3 && t < 10.0; t += dt)
+    {
+        if (held.Pushing() && !held.Holding(t))
+        {
+            held.Release(t);
+            continue;
+        }
+        held.Update(t, 5.0, 91.0, 0.0, stuck);
+        if (held.Began()) ++began;
+    }
+    REQUIRE(held.Holding(t));
+    int framesHeld = 0;
+    for (; held.Holding(t); t += dt)
+    {
+        REQUIRE(held.Update(t, 5.0, 91.0, 0.0, stuck).has_value());
+        ++framesHeld;
+    }
+    CHECK(framesHeld * dt == doctest::Approx(look::kPulse).epsilon(0.2));
+    // A flick that stepped her, or turned her, is no dead one: the next is a flick again.
+    look::Flicker moving;
+    moving.Reset(0.0);
+    look::Vec there = stuck;
+    std::vector<double> movingHolds;
+    for (int frame = 0; frame < 300 && movingHolds.size() < 4; ++frame)
+    {
+        now = frame * dt;
+        if (moving.Pushing())
+        {
+            moving.Release(now);
+            there.x += 20.0; // each flick's step carries her on
+            continue;
+        }
+        const auto push = moving.Update(now, 5.0, 91.0, 0.0, there);
+        if (moving.Began()) movingHolds.push_back(push->hold);
+    }
+    REQUIRE(movingHolds.size() == 4);
+    for (const double h : movingHolds)
+        CHECK(h == 0.0);
+}
+
+TEST_CASE("look: a map begun far off is begun again from where the last stretch finds her, 2026-11-06")
+{
+    // research/sessions/s47-full.log: the map the walk to the guidance totem judged by was begun at
+    // the glasses case upstairs, (-1017, -7812), and touched the totem's place where the stairs' road
+    // came to it, at (-1656, -7356); Ashley's last stretch found her at (-1632, -7374), on the near
+    // side. Walked to again, a map begun from there touched the place 18 cm from her.
+    CHECK(look::FreshSpotMap(std::hypot(-1017.0 - -1632.0, -7812.0 - -7374.0)));
+    // A map begun where she stands, or within the stretch's reach, is kept.
+    CHECK_FALSE(look::FreshSpotMap(0.0));
+    CHECK_FALSE(look::FreshSpotMap(look::kStretchReach));
 }

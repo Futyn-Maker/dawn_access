@@ -84,12 +84,14 @@ namespace da::look
         Release(now);
     }
 
-    std::optional<Push> Flicker::Update(double now, double bearing, double facing, double speed)
+    std::optional<Push> Flicker::Update(double now, double bearing, double facing, double speed, const Vec& here)
     {
         Watch(now, facing);
         m_began = false;
         if (m_pushing)
         {
+            // A held push stays on until its time is up; a flick's is let go at once.
+            if (now - m_pushedAt < m_push.hold) return m_push;
             Release(now);
             return std::nullopt;
         }
@@ -100,11 +102,22 @@ namespace da::look
         const bool waited = now - m_releasedAt >= kAfterPush;
         const bool overdue = now - m_releasedAt >= kSettleMax;
         if (!(settled && waited) && !overdue) return std::nullopt;
+        // What the last push did: nothing, or a step or a turn.
+        if (m_count > 0)
+        {
+            const bool moved = std::hypot(here.x - m_flickedFrom.x, here.y - m_flickedFrom.y) >= kDeadMove;
+            const bool turned = std::fabs(Normalize(facing - m_flickedFacing)) >= kDeadTurn;
+            m_dead = moved || turned ? 0 : m_dead + 1;
+        }
         m_pushing = true;
         ++m_count;
         m_began = true;
+        m_pushedAt = now;
+        m_flickedFrom = here;
+        m_flickedFacing = facing;
         const double radians = bearing * std::numbers::pi / 180.0;
-        return Push{std::cos(radians), std::sin(radians)};
+        m_push = Push{std::cos(radians), std::sin(radians), m_dead >= kDeadFlicks ? kPulse : 0.0};
+        return m_push;
     }
 
     bool StretchKeeps(bool offered, bool begun, double fromSpot, double wayLeft)
@@ -117,6 +130,11 @@ namespace da::look
         if (mapped) return *mapped;
         if (felt) return *felt;
         return spot;
+    }
+
+    bool FreshSpotMap(double mapOriginDistance)
+    {
+        return mapOriginDistance > kStretchReach;
     }
 
     bool Rest::Update(double now, bool still)

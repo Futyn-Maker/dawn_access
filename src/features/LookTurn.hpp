@@ -111,7 +111,19 @@ namespace da::look
     {
         double forward = 0.0;
         double right = 0.0;
+        double hold = 0.0; // seconds the push is held: 0 for a flick, let go at the next frame
     };
+
+    // A flick that left her where she stood, facing as she faced (moved less than kDeadMove, turned
+    // less than kDeadTurn), did nothing; after kDeadFlicks of them the push is held kPulse, past the
+    // 0.16 s at full stick Into needs, so that a walk starts and carries her a step. In the library
+    // on 2026-11-06 ten flicks toward a spot of the totem's place 30 cm off turned Ashley nowhere and
+    // stepped her nowhere, and the walk said "could not get there"; walked to again, one step took her
+    // in.
+    constexpr double kDeadMove = 3.0;
+    constexpr double kDeadTurn = 3.0;
+    constexpr int kDeadFlicks = 2;
+    constexpr double kPulse = 0.25;
 
     // Whether the walk's last stretch keeps her: while the game offers the thing, and once it has
     // begun, while she stands within kStretchReach of the spot the game made for her, though out of
@@ -133,6 +145,15 @@ namespace da::look
     // past furniture: the lodge's music box has its start arrow behind the dresser's slanted edge, and
     // nine flicks toward it moved Sam nowhere, "could not get there" a metre from it (2026-11-05).
     Vec StepSpot(const std::optional<Vec>& mapped, const std::optional<Vec>& felt, const Vec& spot);
+
+    // The map's spot of a place is the cell where it first touched the place, on its road from
+    // wherever it began, and that may lie on the far side of the place from her: in the library on
+    // 2026-11-06 the map begun upstairs touched the guidance totem's place where the stairs' road
+    // came to it, and Ashley stood 30 cm off on its near side, stepped toward that cell to no effect.
+    // A map begun more than kStretchReach from where the last stretch finds her is begun again from
+    // there; its first touch is the place's nearest ground to her (walked to again, the new map's spot
+    // was 18 cm off and one step took her in).
+    bool FreshSpotMap(double mapOriginDistance);
 
     // The walk ends where the press is taken only once she has come to rest there, still for
     // kRestFor on end: let go, she takes a stopping step, and at the lodge's patio door on 2026-11-05
@@ -165,9 +186,14 @@ namespace da::look
         void Reset(double now);
         // A frame on which she must turn toward `bearing` (degrees right of the stick's forward,
         // the control rotation's) or step that way: the push to give on this frame, if any; a
-        // flick's push is let go at the next call. `facing` is her own yaw, `speed` how fast she
-        // moves.
-        std::optional<Push> Update(double now, double bearing, double facing, double speed);
+        // flick's push is let go at the next call, a held one once its time is up. `facing` is her
+        // own yaw, `speed` how fast she moves, `here` where she stands.
+        std::optional<Push> Update(double now, double bearing, double facing, double speed, const Vec& here);
+        // The flicks in a row that did nothing.
+        int Dead() const
+        {
+            return m_dead;
+        }
         // A frame on which nothing is to be turned: a push still on is let go.
         void Hold(double now, double facing);
         // Lets a flick's push go on a frame the last stretch is not reached on.
@@ -176,6 +202,11 @@ namespace da::look
         bool Pushing() const
         {
             return m_pushing;
+        }
+        // A held push is on and its time is not up: not to be let go from outside yet.
+        bool Holding(double now) const
+        {
+            return m_pushing && now - m_pushedAt < m_push.hold;
         }
         // The flicks given since Reset.
         int Count() const
@@ -196,5 +227,10 @@ namespace da::look
         int m_count = 0;
         bool m_pushing = false;
         bool m_began = false;
+        Push m_push;               // the push on now
+        double m_pushedAt = 0.0;   // when it began
+        Vec m_flickedFrom;         // where she stood at the last push
+        double m_flickedFacing = 0.0;
+        int m_dead = 0;
     };
 }

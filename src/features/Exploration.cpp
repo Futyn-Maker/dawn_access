@@ -5317,6 +5317,8 @@ namespace da::features
         // for her, which turn her that way and then step her there. A look the camera must give is
         // the player's, which the aim sound leads once the walk is over.
         double g_arriveSince = -1.0; // since when the walk is on its last stretch
+        double g_stretchMapAt = -1.0; // when a map was begun from where the last stretch found her (look::FreshSpotMap)
+        constexpr double kStretchMapWait = 1.5; // how long the stretch waits for that map to reach the place
         look::Rest g_rest;     // she comes to rest where the press would be taken, the keys let go
         look::Rest g_lookRest; // she comes to rest where only the camera's look is missing
         look::Flicker g_flicker;
@@ -5362,13 +5364,26 @@ namespace da::features
             if (g_arriveSince < 0.0)
             {
                 g_arriveSince = now;
+                g_stretchMapAt = -1.0;
                 g_rest.Reset();
                 g_lookRest.Reset();
                 g_flicker.Reset(now);
                 g_arriveLogged.clear();
                 if (!t.inside)
+                {
                     log::Info(L"explore: the walk's last stretch to \"{}\" begins {:.0f} cm from a spot of its place the ground carries her to", t.label,
                               fromSpot);
+                    // The spot is where the map first touched the place, on its road from wherever it
+                    // began; a map begun from where she stands touches it nearest her
+                    // (look::FreshSpotMap).
+                    if (pawn && g_reach.flood && !ReachRunning() && look::FreshSpotMap(FlatDistance(g_reach.origin, here)))
+                    {
+                        log::Info(L"explore: the map was begun {:.0f} cm off; a new one from where she stands finds the place's nearest ground",
+                                  FlatDistance(g_reach.origin, here));
+                        StartReachMap(pawn, now);
+                        g_stretchMapAt = now;
+                    }
+                }
             }
             const double facing = FacingYaw(pawn);
             // The walk's own measures of getting nearer start over while the last stretch has it,
@@ -5454,11 +5469,22 @@ namespace da::features
             }
             // Her turn toward the glint, or a step further in toward her spot: flicks, in the frame
             // the stick works in.
+            // A map begun for the stretch has yet to reach the place from where she stands: its spot
+            // is the one to step toward, and it comes within a moment.
+            if (g_stretchMapAt >= 0.0 && !JudgedByMap(t) && ReachRunning() && now - g_stretchMapAt < kStretchMapWait)
+            {
+                g_flicker.Hold(now, facing);
+                input::ReleaseWalkKeys();
+                return true;
+            }
             const double bearing = BearingDegrees(here, p.inside ? LookAtPoint(t) : spot, yaw);
-            const auto push = g_flicker.Update(now, bearing, facing, CharacterSpeed(pawn));
+            const auto push = g_flicker.Update(now, bearing, facing, CharacterSpeed(pawn), here);
             if (g_flicker.Began())
-                log::Info(L"explore: the walk's last stretch to \"{}\": flick {} toward {:+.0f} deg, to {} (she faces {:+.0f} deg off the glint)", t.label,
-                          g_flicker.Count(), bearing, p.inside ? L"turn her to the glint" : L"step her toward her spot", p.characterTurn);
+                log::Info(L"explore: the walk's last stretch to \"{}\": {} {} toward {:+.0f} deg, to {} (she faces {:+.0f} deg off the glint; at ({:.0f}, {:.0f}), "
+                          L"{:.0f} cm from her spot at ({:.0f}, {:.0f}){})",
+                          t.label, push && push->hold > 0.0 ? L"held push" : L"flick", g_flicker.Count(), bearing,
+                          p.inside ? L"turn her to the glint" : L"step her toward her spot", p.characterTurn, here.x, here.y, fromSpot, spot.x, spot.y,
+                          g_flicker.Dead() > 0 ? std::format(L"; {} flick(s) before it did nothing", g_flicker.Dead()) : std::wstring());
             if (push)
             {
                 input::HoldWalkKeys(push->forward, push->right);
@@ -6845,8 +6871,9 @@ namespace da::features
             const double now = gamethread::NowSeconds();
             TickPlayClock(now);
             // A flick is one frame's push: let go here, before anything else, whatever the walk does
-            // this frame, since one held longer starts a walk (look::Flicker).
-            if (g_flicker.Pushing() && gamethread::FrameCount() != g_flickFrame)
+            // this frame, since one held longer starts a walk (look::Flicker); a push held on purpose
+            // is let go once its time is up, or the walk is over.
+            if (g_flicker.Pushing() && gamethread::FrameCount() != g_flickFrame && (!g_flicker.Holding(now) || !g_walking))
             {
                 g_flicker.Release(now);
                 input::ReleaseWalkKeys();
