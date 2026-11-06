@@ -213,6 +213,14 @@ namespace da::speech
         OutputNow(text, true, L"urgent");
     }
 
+    void Replace(std::wstring_view raw)
+    {
+        const std::wstring text = Clean(raw);
+        if (text.empty() || !Says(text)) return;
+        fault::Guard lock(g_mutex, L"speech");
+        OutputNow(text, true, L"replace");
+    }
+
     void Stop()
     {
         fault::Guard lock(g_mutex, L"speech");

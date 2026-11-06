@@ -67,6 +67,7 @@ namespace da::features
         std::vector<Tracked> g_tracked;
         std::set<std::wstring> g_classesSeen; // for the log: each kind of element once
         lines::Echo g_echo;                   // the same words through two elements at once
+        lines::Reading g_reading;             // a document read page by page while she is held by it
 
         // The lines an element shows: the texts it draws now (not the ones still fading in,
         // nor the ones faded out), a row of pieces side by side as one line (the camcorder's
@@ -129,6 +130,7 @@ namespace da::features
         {
             if (gamethread::FrameCount() % 6 != 0) return;
             const double now = gamethread::NowSeconds();
+            if (ExplorationActive()) g_reading.Ended();
             bool settling = false;
             for (auto it = g_tracked.begin(); it != g_tracked.end();)
             {
@@ -156,7 +158,14 @@ namespace da::features
                     {
                         const auto text = str::JoinSentences(fresh);
                         log::Info(L"hud: {} says \"{}\"", obj::ClassName(it->instance), text);
-                        if (g_echo.Says(text, now)) speech::Announce(text);
+                        if (g_echo.Says(text, now))
+                        {
+                            // A document's page in place of the one before cuts it short (lines::Reading).
+                            if (obj::IsA(it->instance, L"BatesReadingWidget") && g_reading.Interrupts())
+                                speech::Replace(text);
+                            else
+                                speech::Announce(text);
+                        }
                         g_saidAt = now;
                     }
                 }

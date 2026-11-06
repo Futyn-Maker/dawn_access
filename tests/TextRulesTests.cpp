@@ -355,3 +355,19 @@ TEST_CASE("a HUD hint shown with a control's prompt is still to be said until it
     // Nothing shown is nothing to wait for.
     CHECK_FALSE(hint.Unsaid({}, 5.0));
 }
+
+TEST_CASE("a document's page put in place of the one before cuts it short, 2026-11-06")
+{
+    // research/sessions/s46-full.log, the cabin's book of native tales (21:07:22 to 21:08:51): its cover
+    // came first, then the she-bear's page once Mike opened it, the signs' page with the stick left, and
+    // back and forth; each was queued behind the last, the whole of the one before said first.
+    lines::Reading reading;
+    CHECK_FALSE(reading.Interrupts()); // the cover: after what is being said
+    CHECK(reading.Interrupts());       // the she-bear
+    CHECK(reading.Interrupts());       // the signs
+    CHECK(reading.Interrupts());       // the she-bear again
+    // Handed back and on to the Kamasutra at 21:12:26: its cover waits its turn again.
+    reading.Ended();
+    CHECK_FALSE(reading.Interrupts());
+    CHECK(reading.Interrupts());
+}

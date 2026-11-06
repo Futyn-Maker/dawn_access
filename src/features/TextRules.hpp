@@ -86,6 +86,32 @@ namespace da::lines
         double m_since = -1.0; // since when the card has been shown
     };
 
+    // A document read page by page (a book turned with the stick, its transcript shown a page at
+    // a time): a page's text put in place of the one before interrupts what is still being said
+    // of that one, which is no longer on the screen; the first transcript of a reading waits its
+    // turn after what is being said. A reading lasts while the character is held by its
+    // interaction and ends when she is handed back. Turning the cabin's books back and forth on
+    // 2026-11-06 queued page after page behind one another (Andrey asked that a new page cut the
+    // old one short as its text comes, not as the stick moves).
+    class Reading
+    {
+    public:
+        // A transcript's text is to be said now: whether it cuts short what is being said.
+        bool Interrupts()
+        {
+            const bool turned = m_open;
+            m_open = true;
+            return turned;
+        }
+        void Ended()
+        {
+            m_open = false;
+        }
+
+    private:
+        bool m_open = false;
+    };
+
     // The same words can arrive through two elements at once: said once within kSameWords.
     constexpr double kSameWords = 5.0;
     class Echo
