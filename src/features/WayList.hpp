@@ -274,10 +274,14 @@ namespace da::ways
     // answerphone runs through it; at the end of chapter 2 Matt was dropped down a slope, and the
     // list from the ledge above stood for a minute, the ledge's way on with it.
     //
-    // A short exchange (the game took the character back for a moment and hands her back where she
-    // was) takes up the list it left only while she stands on the ground the last map reached;
-    // carried off it, through a door, down a drop, the hold begins afresh.
-    bool ResumesList(bool shortExchange, bool onMappedGround);
+    // A hold the game hands back takes up the list it left while she stands on the ground the last
+    // map reached, however long the scene between took and however far it moved her on that ground:
+    // the ground is what the list's verdicts stand on. Carried off it, through a door, down a drop,
+    // the hold begins afresh. A pause moves nobody (`paused`). Only a scene of half a minute or less
+    // was taken up until 2026-11-06, and on Mike's trail the heart carving's talk (59 s) and the bush
+    // throw handed him back where he had stood with every thing behind him gone quiet for the new
+    // map to prove again, up to 25 s: "objects appearing and disappearing".
+    bool ResumesList(bool paused, bool onMappedGround);
     // A target the list stood on as out of reach when its verdicts were frozen (`reachWhenFrozen`:
     // 2 closed off, 3 beyond a door, as Exploration's reach map judges; 0 not judged, 1 reached) that
     // a later map reaches (`reachNow` 1): the ground has grown, a door has opened beside her, and
@@ -307,6 +311,20 @@ namespace da::ways
     // (2026-11-05). No more than kPathStrayMax.
     constexpr double kPathStrayMax = 300.0;
     double PathStray(double ahead, double coneDegrees);
+
+    // ---- a way on beside a thing --------------------------------------------------------------
+
+    // A way on beside a thing to use (within kTwinAcross over the ground and kTwinUp in height of
+    // the thing's spot) is the thing's own way: the player who goes to the thing sets the volume
+    // off, and the way is left out. Not when the player cannot go to the thing (`thingGoneTo`
+    // false: the path the game holds her to passes it by, it lies behind her on the path, the
+    // map found it closed off): then the way is the road there and it stays. In the cabin's
+    // bedroom on 2026-11-06 the phone lay inside the volume at the path's end (the phone's camera,
+    // which turns Mike to it and holds him there for the press); the phone was left out as beside
+    // the path, the volume as the phone's twin, and the list stood empty.
+    constexpr double kTwinAcross = 250.0;
+    constexpr double kTwinUp = 200.0;
+    bool LeftForThing(const Vec& thing, const Vec& way, bool thingGoneTo);
 
     // ---- following a road -------------------------------------------------------------------
 

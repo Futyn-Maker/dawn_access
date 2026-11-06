@@ -206,9 +206,9 @@ namespace da::ways
         return turnedOnAt && now - *turnedOnAt <= kNewsWithin;
     }
 
-    bool ResumesList(bool shortExchange, bool onMappedGround)
+    bool ResumesList(bool paused, bool onMappedGround)
     {
-        return shortExchange && onMappedGround;
+        return paused || onMappedGround;
     }
 
     bool Reopened(int reachWhenFrozen, int reachNow)
@@ -220,6 +220,12 @@ namespace da::ways
     {
         const double cone = std::clamp(std::fabs(coneDegrees), 0.0, 60.0) * std::numbers::pi / 180.0;
         return std::clamp(std::max(0.0, ahead) * std::tan(cone), 0.0, kPathStrayMax);
+    }
+
+    bool LeftForThing(const Vec& thing, const Vec& way, bool thingGoneTo)
+    {
+        if (!thingGoneTo) return false;
+        return std::hypot(thing.x - way.x, thing.y - way.y) < kTwinAcross && std::fabs(thing.z - way.z) < kTwinUp;
     }
 
     double VolumeGoalRadius(const Box& box, double capsuleRadius, double cell)

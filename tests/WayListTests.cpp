@@ -1223,7 +1223,7 @@ TEST_CASE("a door opened in a short exchange gives every verdict anew: the way o
     lister.Freeze();
     const int wayThen = 3, phoneThen = 3; // how the map judged them at the freeze
     // The door opens; she stands where she stood, so the hold takes its list up again.
-    CHECK(ways::ResumesList(true, true));
+    CHECK(ways::ResumesList(false, true));
     // The new map reaches the answerphone and the way: out of reach then, reached now.
     e[0].unreachable = false;
     e[1].unreachable = false;
@@ -1248,11 +1248,42 @@ TEST_CASE("a hold handed back off the ground the last map reached begins afresh:
     // for a minute while the new map ran: the ledge's way on, T_rescue_emily, out of reach from below and
     // walked to twice, "could not get there"; the way on short of the note, judged while it lay beyond
     // the slope, never weighed against the note's road.
-    CHECK_FALSE(ways::ResumesList(true, false));
+    CHECK_FALSE(ways::ResumesList(false, false));
     // On the ground it left (a talk, a clue picked up and put down), the list is taken up again.
-    CHECK(ways::ResumesList(true, true));
-    // No short exchange (gone long, or far): afresh.
-    CHECK_FALSE(ways::ResumesList(false, true));
+    CHECK(ways::ResumesList(false, true));
+    // A pause moves nobody.
+    CHECK(ways::ResumesList(true, false));
+}
+
+TEST_CASE("a scene of any length on the ground the map reached takes the list up again: Mike's trail, 2026-11-06")
+{
+    // research/sessions/s46-full.log. The heart carving's talk held Mike from 20:40:51 to 20:41:50 (59 s)
+    // and handed him back where he had stood. Only a scene of 30 s or less was taken up then: the hold
+    // began afresh, every thing behind him waited for the new map, and they came back one by one over
+    // 24 s (the guidance totem 51.8, the baseball 53.6, the tractor 42:03, the hunger totem 42:06, the
+    // mask 42:14). After the bush throw (20:48:46) the same, for 27 s.
+    CHECK(ways::ResumesList(false, true));
+    // Carried off the ground (a drop, a door gone through in the scene), afresh still.
+    CHECK_FALSE(ways::ResumesList(false, false));
+}
+
+TEST_CASE("a way on beside a thing she cannot go to stays: the cabin's bedroom, 2026-11-06")
+{
+    // research/sessions/s46-full.log, 21:22:19 to 21:24:14. Walking toward the phone, Mike set off the
+    // bedroom's volume and the game held him to BP_BatesSplineActor_C_9, the stick taken within 0 degrees
+    // of it. The phone's spot (38386, -7068, 7576) lies inside the volume at the path's end, the phone's
+    // camera (BP_CharacterTriggerVolume_C_42, within (38276, -7304, 7459) to (38633, -6947, 7715)), which
+    // turns him to the phone and holds him for the press. The phone was left out as beside the path, the
+    // volume as the phone's twin: the list stood empty, "nothing nearby to walk to".
+    const Vec phone{38386.0, -7068.0, 7576.0};
+    const Vec camera{(38276.0 + 38633.0) / 2.0, (-7304.0 + -6947.0) / 2.0, (7459.0 + 7715.0) / 2.0};
+    // A thing she can go to: the volume beside it is its own way, and left out.
+    CHECK(ways::LeftForThing(phone, camera, true));
+    // One she cannot go to: the volume is the road there, and stays.
+    CHECK_FALSE(ways::LeftForThing(phone, camera, false));
+    // A volume farther off is no twin either way.
+    CHECK_FALSE(ways::LeftForThing(phone, Vec{phone.x + 300.0, phone.y, phone.z}, true));
+    CHECK_FALSE(ways::LeftForThing(phone, Vec{phone.x, phone.y, phone.z + 250.0}, true));
 }
 
 TEST_CASE("a path the game holds her to reaches only what lies by it: the lodge's basement path, 2026-11-05")

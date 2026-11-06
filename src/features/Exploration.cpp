@@ -2406,7 +2406,7 @@ namespace da::features
                                 !RoadEnters(t.actor, t.boxLow, t.boxHigh, pathAhead, radius + stray, halfHeight);
                     if (t.offPath != wasOffPath)
                         log::Info(L"explore: \"{}\" {} {:.0f} cm off is {}", t.label, obj::ObjectName(t.actor), t.distance,
-                                  t.offPath ? std::format(L"left out: the path the game holds her to passes it by, {:.0f} cm left of it", pathLeft)
+                                  t.offPath ? std::format(L"left out: the path the game holds her to passes it by over the {:.0f} cm of it left to walk", pathLeft)
                                             : std::wstring(L"listed again: the path runs into it, or holds her no longer"));
                     const bool reachable = !t.way || rooms::WayOffered(t.gridEnclosed, JudgedByMap(t) ? t.reach : 0, t.pathReach);
                     t.unreachable = !reachable;
@@ -6479,21 +6479,20 @@ namespace da::features
                 g_luaScannedAt = -10.0;
                 g_settle.Reset();
             }
-            // A short exchange in the middle of a scene leaves everything where it was, so
-            // the list is not said again; only what the level has added is. Carried off the ground
-            // the last map reached (through a door, down a drop), she begins afresh
-            // (ways::ResumesList).
+            // A scene that hands her back on the ground the last map reached, however long it
+            // took, leaves everything where it was, so the list is not said again; only what the
+            // level has added is. Carried off that ground (through a door, down a drop), she begins
+            // afresh (ways::ResumesList).
             else if (!g_exploring && !g_targets.empty())
             {
-                const bool shortExchange = FlatDistance(here, g_leftAtPosition) < 2000.0 && (g_leftForPause || now - g_leftAt < 30.0);
                 Vec middle;
                 double halfHeight = 0.0;
-                // A pause moves nobody.
-                const bool onGround = g_leftForPause || (CapsuleSpan(pawn, middle, halfHeight) && OnLastMappedGround(middle, halfHeight));
-                if (ways::ResumesList(shortExchange, onGround))
+                const bool onGround = CapsuleSpan(pawn, middle, halfHeight) && OnLastMappedGround(middle, halfHeight);
+                if (ways::ResumesList(g_leftForPause, onGround))
                     g_exploring = true;
-                else if (shortExchange)
-                    log::Info(L"explore: the hold begins afresh: the scene left the character off the ground the last map reached");
+                else
+                    log::Info(L"explore: the hold begins afresh: the scene left the character off the ground the last map reached ({:.0f} s, {:.0f} cm on)",
+                              now - g_leftAt, FlatDistance(here, g_leftAtPosition));
             }
             // A hold begun afresh lists no way before its first map has settled the list; a resumed
             // one keeps the list it left while its map settles.
@@ -6520,26 +6519,33 @@ namespace da::features
             for (const auto& t : g_targets)
                 before.emplace_back(t.actor, t.actor == g_selected && !g_autoChosen && !t.way);
             auto fresh = Gather(pawn, here, yaw, now);
-            // A way on beside a named thing (within 250 cm of its spot) is left out: the thing
-            // is the way, and the player who goes to it sets the volume off. One on the road
-            // to a listed target is told apart once the roads are known (ChooseListed).
-            std::vector<Vec> things;
+            // A way on beside a named thing is left out: the thing is the way, and the player who
+            // goes to it sets the volume off; not beside a thing she cannot go to, as the list last
+            // judged it (ways::LeftForThing). One on the road to a listed target is told apart once
+            // the roads are known (ChooseListed).
+            std::vector<std::pair<Vec, bool>> things;
             for (const auto& u : fresh)
             {
-                if (!u.way) things.push_back(Aim(u));
+                if (u.way) continue;
+                const auto judged = std::find_if(g_targets.begin(), g_targets.end(), [&](const Target& t) { return t.actor == u.actor; });
+                const bool goneTo = judged == g_targets.end() ||
+                                    !(judged->offPath || judged->behind || judged->unreachable || judged->room == rooms::Verdict::Apart);
+                things.emplace_back(Aim(u), goneTo);
             }
             std::erase_if(fresh,
                           [&](const Target& w)
                           {
                               if (!w.way) return false;
                               const wchar_t* why = nullptr;
-                              for (const Vec& thing : things)
+                              for (const auto& [thing, goneTo] : things)
                               {
-                                  if (FlatDistance(thing, w.position) < 250.0 && std::fabs(thing.z - w.position.z) < 200.0) why = L"beside a thing listed";
+                                  if (ways::LeftForThing(thing, w.position, goneTo)) why = L"beside a thing listed";
                               }
                               if (!why)
                               {
-                                  g_wayNote.erase(w.actor);
+                                  if (g_wayNote.erase(w.actor))
+                                      log::Info(L"explore: trigger {} is kept: no thing beside it is one she can go to",
+                                                w.coreName.empty() ? obj::ObjectName(w.actor) : w.coreName);
                                   return false;
                               }
                               if (g_wayNote[w.actor] != why)
