@@ -7,6 +7,7 @@
 #include "core/Log.hpp"
 #include "core/ObjectUtil.hpp"
 #include "core/ParamReader.hpp"
+#include "core/Symbols.hpp"
 #include "hooks/HookDispatcher.hpp"
 #include "hotkeys/Hotkeys.hpp"
 #include "input/InputNames.hpp"
@@ -16,6 +17,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <format>
 #include <numbers>
 #include <string>
 
@@ -180,6 +182,36 @@ namespace da::features
             log::Info(L"totems: the vision of {} ends", TotemName(self));
         }
 
+        // Where the stick has sent the totem's turn, for the log: the game adds the stick, through
+        // its speed curves, to a pose of two numbers held within the totem's limits
+        // (ABatesInteractionTotem::CalculateExamineInput: CumulativeInspectionInput clamped to
+        // HorizontalBlendspaceLimits and VerticalBlendspaceLimits), which the pose drawn eases
+        // towards (CurrentInspectionInput, at InputInterpRate); a totem may turn against the stick
+        // (bInvertHorizontalMovement, bInvertVerticalMovement).
+        std::wstring TurnState(UObject* totem)
+        {
+            const auto* sent = static_cast<const double*>(sym::MemberOf(totem, L"ABatesInteractionTotem.CumulativeInspectionInput"));
+            const auto* drawn = static_cast<const double*>(sym::MemberOf(totem, L"ABatesInteractionTotem.CurrentInspectionInput"));
+            const auto* invertH = static_cast<const bool*>(sym::MemberOf(totem, L"ABatesInteractionTotem.bInvertHorizontalMovement"));
+            const auto* invertV = static_cast<const bool*>(sym::MemberOf(totem, L"ABatesInteractionTotem.bInvertVerticalMovement"));
+            if (!sent || !drawn || !invertH || !invertV) return L"";
+            // An FFloatRange: each bound a kind (int) and a value (float).
+            const auto range = [&](const wchar_t* name, float& low, float& high)
+            {
+                auto* prop = obj::FindProperty(totem, name);
+                const auto* at = prop ? static_cast<const uint8_t*>(obj::ValuePtr(totem, prop)) : nullptr;
+                if (!at) return false;
+                low = *reinterpret_cast<const float*>(at + 4);
+                high = *reinterpret_cast<const float*>(at + 12);
+                return true;
+            };
+            float hLow = 0, hHigh = 0, vLow = 0, vHigh = 0;
+            const bool limits = range(L"HorizontalBlendspaceLimits", hLow, hHigh) && range(L"VerticalBlendspaceLimits", vLow, vHigh);
+            return std::format(L"; the turn sent to ({:+.2f}, {:+.2f}){}, drawn at ({:+.2f}, {:+.2f}){}{}", sent[0], sent[1],
+                               limits ? std::format(L" of {:+.2f}..{:+.2f} by {:+.2f}..{:+.2f}", hLow, hHigh, vLow, vHigh) : std::wstring(), drawn[0], drawn[1],
+                               *invertH ? L", across inverted" : L"", *invertV ? L", up and down inverted" : L"");
+        }
+
         // Leads the view to the premonition with the aim sound: the blip on the side the
         // point lies from the point under the view, higher or lower by their difference up
         // the totem, quicker as the game's own closeness grows, muffled while the point is
@@ -215,9 +247,9 @@ namespace da::features
                 g_loggedAt = now;
                 const auto pad = input::ReadPad();
                 log::Info(L"totems: the point lies {:+.0f} cm across, {:+.0f} up and {:+.0f} deep of the view's point{}; closeness {:.2f}, time {:.0f}%, {}; "
-                          L"stick ({}, {})",
+                          L"stick ({}, {}){}",
                           lateral, vertical, depth, hitKnown ? L"" : L" (the view misses the totem)", closeness, progress * 100.0,
-                          onPoint ? L"on the point" : L"off it", pad.valid ? pad.leftX : 0, pad.valid ? pad.leftY : 0);
+                          onPoint ? L"on the point" : L"off it", pad.valid ? pad.leftX : 0, pad.valid ? pad.leftY : 0, TurnState(g_totem));
             }
             if (!LookBeaconOn()) return;
             const double interval = onPoint ? 0.12 : 0.09 + 0.4 * std::clamp(1.0 - closeness, 0.0, 1.0);

@@ -101,6 +101,13 @@ namespace da::sym
             // player's stick (GetAndUpdateWorldInput, 0x45e1590). A trigger's auto-walk sets it
             // for the jog to the deer, a stair for the step onto its start.
             {L"UBatesCharacterMovementComponent.AutoLocoState.IsSet", 0x13e0}, // bool
+            // A totem held for its inspection: where the stick has sent its turn (two doubles, held
+            // within its blendspace limits), where the pose drawn has got to, and whether it turns
+            // against the stick (ABatesInteractionTotem::CalculateExamineInput).
+            {L"ABatesInteractionTotem.CumulativeInspectionInput", 0x1158}, // TVector2<double>
+            {L"ABatesInteractionTotem.CurrentInspectionInput", 0x1148},    // TVector2<double>
+            {L"ABatesInteractionTotem.bInvertHorizontalMovement", 0x10fc}, // bool
+            {L"ABatesInteractionTotem.bInvertVerticalMovement", 0x10fd},   // bool
             // An anim graph's class lists the struct properties of its nodes; the index the game's
             // GetCurrentStateName takes counts them from the last.
             {L"UAnimBlueprintGeneratedClass.AnimNodeProperties", 0x3f8}, // TArray<FStructProperty*>
