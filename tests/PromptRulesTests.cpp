@@ -204,3 +204,17 @@ TEST_CASE("an anim graph's state machines are asked by the index the game's own 
     CHECK(prompt::MachineIndices({}).empty());
     CHECK(prompt::MachineIndices({true}) == std::vector<int>{0});
 }
+
+TEST_CASE("a stage on a clock has run out only while nothing is in hand, 2026-11-06")
+{
+    // Jessica's phone in the cabin (research/sessions/s47-full.log): its stage gave 5 s from 22:28:19.75;
+    // Mike reached for it, took hold at 22:28:21.7 and the interaction wound down until 22:28:24.6, its
+    // own count going on.
+    CHECK_FALSE(prompt::StageRanOut(4.9, 5.0, false, false));
+    CHECK_FALSE(prompt::StageRanOut(5.2, 5.0, true, false));
+    CHECK_FALSE(prompt::StageRanOut(5.2, 5.0, false, true));
+    // Past its seconds with nothing taken hold of: the clock ran out.
+    CHECK(prompt::StageRanOut(5.01, 5.0, false, false));
+    // A stage with no clock never runs out.
+    CHECK_FALSE(prompt::StageRanOut(30.0, 0.0, false, false));
+}

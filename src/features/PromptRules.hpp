@@ -72,6 +72,12 @@ namespace da::prompt
     // states that read nothing.
     std::vector<int> MachineIndices(const std::vector<bool>& nodeIsMachine);
 
+    // Whether a stage on a clock has run out as its answer: its own count past its seconds
+    // (UBatesInteractionStageBase::UpdateStage raises bHasTimedOut then, whatever she does) while she
+    // has not taken hold of the item. Picking Jessica's phone up at 4.9 of its 5 s, Mike held it as
+    // the stage's count went on past them (2026-11-06): no time's up.
+    bool StageRanOut(double spent, double limit, bool grabbing, bool holding);
+
     // The first question an interaction asks waits a moment for a hint the game shows with it, so
     // that the hint comes first and its keys after, whichever the game draws first: at the danger
     // totem on 2026-11-04 (on the pad) the inspection's hint came 0.4 s before its stick, at the

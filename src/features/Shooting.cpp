@@ -320,6 +320,7 @@ namespace da::features
             if (s.timed) sounds::Play(sounds::Cue::Timer);
             std::vector<std::wstring> parts;
             if (cfg::Detailed()) parts.push_back(locale::Mod(L"shoot.aim"));
+            if (cfg::Detailed() && s.timed) parts.push_back(locale::Mod(L"cue.timer"));
             if (!s.aimingOnly && !s.targetsHidden)
             {
                 const auto key = input::KeyForAction(L"IA_SequenceShoot");
@@ -375,6 +376,7 @@ namespace da::features
             case shoot::Verdict::AimReached:
                 log::Info(L"shooting: {} ended: the aim reached what the stage asked after {:.2f} s ({})", s.name, now - s.startedAt, why);
                 sounds::Play(sounds::Cue::Confirm);
+                if (cfg::Detailed()) speech::Announce(locale::Mod(L"result.success"));
                 break;
             case shoot::Verdict::TimedOut:
                 log::Info(L"shooting: {} ended: the time ran out after {:.2f} s, the clock at {:.2f} of {:.1f} s ({})", s.name, now - s.startedAt, e.seconds,

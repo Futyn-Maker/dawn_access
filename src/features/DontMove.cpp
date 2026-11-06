@@ -293,7 +293,10 @@ namespace da::features
                     break;
                 case calm::Sound::Kind::Steer: sounds::Steer(sound.right, sound.up, sound.beyond); break;
                 case calm::Sound::Kind::Blip: sounds::Marker(sound.right, sound.up, false, sound.beyond); break;
-                case calm::Sound::Kind::Clock: sounds::Play(sounds::Cue::Timer); break;
+                case calm::Sound::Kind::Clock:
+                    sounds::Play(sounds::Cue::Timer);
+                    if (cfg::Detailed()) speech::Announce(locale::Mod(step.clockStep == 2 ? L"dontmove.clock.most" : L"dontmove.clock.half"));
+                    break;
                 }
             }
         }

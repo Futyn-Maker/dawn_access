@@ -72,6 +72,11 @@ namespace da::prompt
         return out;
     }
 
+    bool StageRanOut(double spent, double limit, bool grabbing, bool holding)
+    {
+        return limit > 0.0 && spent > limit && !grabbing && !holding;
+    }
+
     void HintFirst::Interaction(bool in)
     {
         if (in && !m_in)

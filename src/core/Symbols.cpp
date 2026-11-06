@@ -132,7 +132,10 @@ namespace da::sym
             // no ramp of its own moves it (UBatesInteractionStageExamine::UpdateMovementInput,
             // 0x4659600): the share of the turn, and whether it is past the reveal (both handed to
             // the item's anim instances every frame as InteractionEvaluation and bIsRevealing).
+            {L"UBatesInteractionStageBase.bIsGrabbing", 0x1c9},                    // bool
             {L"UBatesInteractionStageBase.bIsFullyHolding", 0x1ce},                // bool
+            // The time a stage has run, which a stage on a clock times out by (SecondsUntilTimeout).
+            {L"UBatesInteractionStageBase.TimeSpentInStage", 0x1d4},               // float
             {L"UBatesInteractionStageExamine.bIsRampingIK", 0x2a8},                // bool
             {L"UBatesInteractionStageExamine.bIsRevealing", 0x2a9},                // bool
             {L"UBatesInteractionStageExamine.IKRampSpeed", 0x2b0},                 // float

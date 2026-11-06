@@ -6,6 +6,7 @@
 #include "features/Prompts.hpp"
 #include "features/WorldRead.hpp"
 
+#include "core/Config.hpp"
 #include "core/GameThread.hpp"
 #include "core/Log.hpp"
 #include "core/ObjectUtil.hpp"
@@ -301,13 +302,20 @@ namespace da::features
         // sighted player sees the countdown the game draws; the Timer cue sounds once as such a
         // stage begins: Jessica's phone in chapter 3 gives 5 s, a lever later on decides who lives
         // in 30 (research/mechanics/gaps.md).
-        std::map<int64_t, double> g_timedStages;
-        int64_t g_timedCued = -1; // the stage the cue sounded for
+        struct TimedStage
+        {
+            double seconds = 0.0;
+            obj::ObjectKey component;
+        };
+        std::map<int64_t, TimedStage> g_timedStages;
+        int64_t g_timedCued = -1;    // the stage the cue sounded for
+        int64_t g_timedOutSaid = -1; // the stage whose running out was said
 
         void FindTimedStages(UObject* interaction)
         {
             g_timedStages.clear();
             g_timedCued = -1;
+            g_timedOutSaid = -1;
             std::vector<UObject*> components;
             obj::ReadObjectArray(interaction, L"BlueprintCreatedComponents", components);
             for (UObject* component : components)
@@ -320,7 +328,7 @@ namespace da::features
                 obj::ReadFloat(component, L"SecondsUntilTimeout", seconds);
                 obj::ReadInt(component, L"Stage", index);
                 if (!timed || seconds <= 0.0) continue;
-                g_timedStages[index] = seconds;
+                g_timedStages[index] = TimedStage{seconds, obj::KeyOf(component)};
                 log::Info(L"interactions: {} runs its stage {} ({}) on a clock of {:.1f} s", obj::ObjectName(interaction), index + 1,
                           obj::ObjectName(component), seconds);
             }
@@ -332,18 +340,59 @@ namespace da::features
             int64_t current = -1;
             if (g_timedStages.empty() || !obj::IsLive(interaction) || !obj::ReadInt(interaction, L"CurrentStage", current)) return 0.0;
             const auto it = g_timedStages.find(current);
-            return it == g_timedStages.end() ? 0.0 : it->second;
+            return it == g_timedStages.end() ? 0.0 : it->second.seconds;
+        }
+
+        // A stage on a clock sounds the Timer cue as it begins, with the word at the detailed level;
+        // the clock running out while the stage still stands is said as every clock that runs out is
+        // (the Fail cue, "Time's up."), whatever running out leads to: whether letting it run is the
+        // answer the scene wanted is not the mod's to say (Andrey, 2026-11-06). The stage counts its
+        // own time (TimeSpentInStage) against SecondsUntilTimeout.
+        // The timed stage last seen standing, to be asked once more as it goes: a clock that runs out
+        // may end its stage, or the interaction, before a look of the mod's sees it run out.
+        int64_t g_timedWatched = -1;
+
+        // Whether the stage's clock has run out, by its own count; said once a stage.
+        void CheckRanOut(int64_t index)
+        {
+            const auto it = g_timedStages.find(index);
+            if (index < 0 || index == g_timedOutSaid || it == g_timedStages.end() || !obj::IsSame(it->second.component)) return;
+            UObject* stage = it->second.component.object;
+            const auto* spent = static_cast<const float*>(sym::MemberOf(stage, L"UBatesInteractionStageBase.TimeSpentInStage"));
+            if (!spent || *spent <= it->second.seconds) return;
+            // The game raises the timeout on the stage's anim graphs once its time is over
+            // (UBatesInteractionStageBase::UpdateStage: bHasTimedOut), whatever she does; it is the
+            // answer only while she has not taken hold, as the phone she picks up at 4.9 of its 5 s.
+            const auto* grabbing = static_cast<const bool*>(sym::MemberOf(stage, L"UBatesInteractionStageBase.bIsGrabbing"));
+            const auto* holding = static_cast<const bool*>(sym::MemberOf(stage, L"UBatesInteractionStageBase.bIsFullyHolding"));
+            if (!prompt::StageRanOut(*spent, it->second.seconds, grabbing && *grabbing, holding && *holding))
+            {
+                g_timedOutSaid = index;
+                log::Info(L"interactions: the stage's clock ran out with the item in hand ({:.1f} of {:.1f} s): no time's up", *spent, it->second.seconds);
+                return;
+            }
+            g_timedOutSaid = index;
+            log::Info(L"interactions: the stage's clock ran out: {:.1f} of {:.1f} s", *spent, it->second.seconds);
+            sounds::Play(sounds::Cue::Fail);
+            if (cfg::Detailed()) speech::Announce(locale::Mod(L"result.timeout"));
         }
 
         void PollTimedStage(UObject* interaction)
         {
             int64_t current = -1;
-            if (g_timedStages.empty() || !obj::ReadInt(interaction, L"CurrentStage", current) || current == g_timedCued) return;
+            if (g_timedStages.empty() || !obj::ReadInt(interaction, L"CurrentStage", current)) return;
+            if (g_timedWatched >= 0 && g_timedWatched != current) CheckRanOut(g_timedWatched);
             const auto it = g_timedStages.find(current);
+            g_timedWatched = it == g_timedStages.end() ? -1 : current;
             if (it == g_timedStages.end()) return;
-            g_timedCued = current;
-            log::Info(L"interactions: the stage on a clock begins: {:.1f} s", it->second);
-            sounds::Play(sounds::Cue::Timer);
+            if (current != g_timedCued)
+            {
+                g_timedCued = current;
+                log::Info(L"interactions: the stage on a clock begins: {:.1f} s", it->second.seconds);
+                sounds::Play(sounds::Cue::Timer);
+                if (cfg::Detailed()) speech::Announce(locale::Mod(L"cue.timer"));
+            }
+            CheckRanOut(current);
         }
 
         // ---- the states its anim graphs stand in -------------------------------------------------
@@ -687,6 +736,7 @@ namespace da::features
             {
                 log::Info(L"interactions: the boiler's lamp comes on: a press now is taken");
                 sounds::Ping();
+                if (cfg::Detailed()) speech::Announce(locale::Mod(L"interact.lamp"));
             }
             else if (was && !lit)
             {
@@ -717,6 +767,9 @@ namespace da::features
                     if (bound) log::Info(L"interactions: the character uses {} ({})", obj::ObjectName(bound), obj::ClassName(bound));
                     if (bound && obj::IsA(bound, L"BatesInteractionComplex") && !obj::IsA(bound, L"BatesInteractionComplexCameraNudge"))
                         FindExamineStages(bound);
+                    // The stage on a clock that stood as the interaction ended is asked once more.
+                    if (g_timedWatched >= 0) CheckRanOut(g_timedWatched);
+                    g_timedWatched = -1;
                     if (bound) FindTimedStages(bound);
                     else g_timedStages.clear();
                     g_statesSeen.clear();

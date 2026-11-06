@@ -6,6 +6,7 @@
 #include "features/Exploration.hpp"
 #include "features/PromptRules.hpp"
 
+#include "core/Config.hpp"
 #include "core/GameThread.hpp"
 #include "core/Log.hpp"
 #include "core/ObjectUtil.hpp"
@@ -295,6 +296,7 @@ namespace da::features
             {
                 log::Info(L"phone: unlocked");
                 sounds::Play(sounds::Cue::Confirm);
+                if (cfg::Detailed()) speech::Announce(locale::Mod(L"result.success"));
             }
             if (state != 2 || target <= 0.0f) return;
             const double level = step.level;
