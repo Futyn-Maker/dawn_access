@@ -89,6 +89,9 @@ namespace da::sym
             // player's stick (GetAndUpdateWorldInput, 0x45e1590). A trigger's auto-walk sets it
             // for the jog to the deer, a stair for the step onto its start.
             {L"UBatesCharacterMovementComponent.AutoLocoState.IsSet", 0x13e0}, // bool
+            // An anim graph's class lists the struct properties of its nodes; the index the game's
+            // GetCurrentStateName takes counts them from the last.
+            {L"UAnimBlueprintGeneratedClass.AnimNodeProperties", 0x3f8}, // TArray<FStructProperty*>
             // The camera layer the controller's navigation camera stands on.
             {L"UBatesNavigationCameraControllerComponent.CameraLayer", 0xcc}, // uint8 EBatesCameraLayer
             // What a level load waits for before the game state turns to Game and the loading

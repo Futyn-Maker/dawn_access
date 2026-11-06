@@ -348,8 +348,30 @@ namespace da::features
 
         // ---- the states its anim graphs stand in -------------------------------------------------
 
+        // The indices UAnimInstance::GetCurrentStateName takes for an anim graph's state machines,
+        // from its class's nodes (prompt::MachineIndices).
+        std::vector<int> MachineIndices(UObject* instance)
+        {
+            UClass* cls = instance ? instance->GetClassPrivate() : nullptr;
+            if (!cls || obj::ClassName(static_cast<UObject*>(cls)) != L"AnimBlueprintGeneratedClass") return {};
+            const auto* nodes = static_cast<const uint8_t*>(sym::MemberOf(cls, L"UAnimBlueprintGeneratedClass.AnimNodeProperties"));
+            if (!nodes) return {};
+            auto* const* data = *reinterpret_cast<FProperty* const* const*>(nodes);
+            const int32_t count = *reinterpret_cast<const int32_t*>(nodes + 8);
+            if (!data || count <= 0 || count > 4096) return {};
+            std::vector<bool> machine(static_cast<size_t>(count), false);
+            for (int32_t j = 0; j < count; ++j)
+            {
+                FProperty* node = data[j];
+                if (!node || obj::PropertyTypeName(node) != L"StructProperty") continue;
+                RC::Unreal::UScriptStruct* type = static_cast<RC::Unreal::FStructProperty*>(node)->GetStruct();
+                machine[static_cast<size_t>(j)] = type && type->GetName() == L"AnimNode_StateMachine";
+            }
+            return prompt::MachineIndices(machine);
+        }
+
         // The states the interaction's anim graphs stand in now: the current state of each of their
-        // state machines (UAnimInstance::GetCurrentStateName), the machines counted from 0.
+        // state machines (UAnimInstance::GetCurrentStateName).
         std::vector<std::wstring> CurrentStates(UObject* interaction)
         {
             std::vector<std::wstring> out;
@@ -357,7 +379,7 @@ namespace da::features
             {
                 auto* fn = obj::FindFunction(instance, L"GetCurrentStateName");
                 if (!fn) continue;
-                for (int machine = 0; machine < 4; ++machine)
+                for (const int machine : MachineIndices(instance))
                 {
                     std::wstring name;
                     obj::Call(

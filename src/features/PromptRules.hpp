@@ -63,6 +63,15 @@ namespace da::prompt
     // interaction's last prompt is said again.
     bool IdleAfterStep(std::wstring_view state);
 
+    // The indices UAnimInstance::GetCurrentStateName takes for the state machines of an anim graph,
+    // given which of its class's nodes are machines, in the class's order (AnimNodeProperties). The
+    // index counts the nodes from the last (FAnimInstanceProxy::GetStateMachineInstance reads node
+    // Num - 1 - index as a machine without asking), so only these may be passed: asking 0 to 3 of
+    // every graph read other nodes as machines and faulted at every look of the interactions on
+    // 2026-11-06 (FAnimNode_StateMachine::GetCurrentStateName, 128 times in a session), and the
+    // states that read nothing.
+    std::vector<int> MachineIndices(const std::vector<bool>& nodeIsMachine);
+
     // The first question an interaction asks waits a moment for a hint the game shows with it, so
     // that the hint comes first and its keys after, whichever the game draws first: at the danger
     // totem on 2026-11-04 (on the pad) the inspection's hint came 0.4 s before its stick, at the

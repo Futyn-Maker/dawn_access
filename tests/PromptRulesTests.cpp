@@ -193,3 +193,14 @@ TEST_CASE("prompts: an idle an interaction comes back to after a step takes its 
     CHECK_FALSE(prompt::IdleAfterStep(L"door_idle_1a"));
     CHECK_FALSE(prompt::IdleAfterStep(L"door_idle_"));
 }
+
+TEST_CASE("an anim graph's state machines are asked by the index the game's own call takes, 2026-11-06")
+{
+    // GetCurrentStateName reads node Num - 1 - index of the graph's class as a state machine without
+    // asking. A graph of five nodes whose second and fifth are machines: indices 3 and 0, nothing else.
+    CHECK(prompt::MachineIndices({false, true, false, false, true}) == std::vector<int>{3, 0});
+    // No machine, no index: 0 to 3 asked of every graph faulted 128 times in the session of 2026-11-06.
+    CHECK(prompt::MachineIndices({false, false, false, false}).empty());
+    CHECK(prompt::MachineIndices({}).empty());
+    CHECK(prompt::MachineIndices({true}) == std::vector<int>{0});
+}

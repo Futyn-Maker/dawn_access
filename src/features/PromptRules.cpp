@@ -61,6 +61,17 @@ namespace da::prompt
         return number != L"0";
     }
 
+    std::vector<int> MachineIndices(const std::vector<bool>& nodeIsMachine)
+    {
+        std::vector<int> out;
+        const int count = static_cast<int>(nodeIsMachine.size());
+        for (int j = 0; j < count; ++j)
+        {
+            if (nodeIsMachine[j]) out.push_back(count - 1 - j);
+        }
+        return out;
+    }
+
     void HintFirst::Interaction(bool in)
     {
         if (in && !m_in)
