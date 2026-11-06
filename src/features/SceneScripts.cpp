@@ -341,8 +341,11 @@ namespace da::scripts
             }
         }
 
-        // Everything a machine can do from `start`, every condition taken either way.
-        void Reach(const Machine& machine, int start, Path& path)
+        // Everything a machine can do from `start`, every condition taken either way; or, given
+        // the variables, a comparison that does not hold now leaves its link out, and one that does
+        // and jumps takes the machine past its registered next state (M_JumpToState puts its own
+        // in place of it).
+        void Reach(const Machine& machine, int start, Path& path, const Variables* variables = nullptr)
         {
             std::vector<int> todo{start};
             std::set<int> seen;
@@ -354,14 +357,32 @@ namespace da::scripts
                 const auto found = machine.states.find(state);
                 if (found == machine.states.end()) continue;
                 Take(path, found->second.direct);
+                bool jumpsSurely = false;
                 for (const auto& block : found->second.blocks)
                 {
+                    const auto holds = variables ? Holds(block.condition, *variables) : std::nullopt;
+                    if (holds == false) continue;
                     Take(path, block.text);
-                    for (const int jump : JumpsIn(block.text))
+                    const auto jumps = JumpsIn(block.text);
+                    for (const int jump : jumps)
                         todo.push_back(jump);
+                    if (holds == true && !jumps.empty()) jumpsSurely = true;
                 }
-                if (const auto next = machine.next.find(state); next != machine.next.end()) todo.push_back(next->second);
+                if (const auto next = machine.next.find(state); next != machine.next.end() && !jumpsSurely) todo.push_back(next->second);
             }
+        }
+
+        // The variables a script's comparisons read.
+        std::vector<std::wstring> ComparedVariables(const std::wstring& script)
+        {
+            static const std::wregex read(LR"re(number[12]\s*=\s*gVariables\.([A-Za-z0-9_]+))re");
+            std::vector<std::wstring> names;
+            for (auto it = std::wsregex_iterator(script.begin(), script.end(), read); it != std::wsregex_iterator(); ++it)
+            {
+                const auto name = (*it)[1].str();
+                if (std::find(names.begin(), names.end(), name) == names.end()) names.push_back(name);
+            }
+            return names;
         }
 
         Path Follow(const Machine& machine, int from, const std::wstring& link)
@@ -374,6 +395,32 @@ namespace da::scripts
                 WalkFrom(machine, target, path, seen);
             }
             return path;
+        }
+
+        // Whether every state the way on from a question comes to rest in leads straight back to that
+        // question, moving nothing of the story on the way: a gag the scene plays each time she walks
+        // in and then waits for again. The library's security camera (act3_11's
+        // Scene02_spookylibrary_cctv) asks whether she is in T_Cam_Library_50, plays the camera's
+        // look, waits for her to leave it, turns the look off and asks again; a tarantula is started
+        // on the way only when Hill's spider was chosen. It stood listed as a way on through the rest
+        // of the level, said reached and never gone (2026-11-06).
+        bool ComesBack(const Machine& machine, int question, const Path& way)
+        {
+            if (way.waits.empty()) return false;
+            for (const int rest : way.waits)
+            {
+                if (rest == question) continue;
+                const auto found = machine.states.find(rest);
+                if (found == machine.states.end() || found->second.blocks.empty()) return false;
+                for (const auto& block : found->second.blocks)
+                {
+                    if (JumpsIn(block.text).empty()) return false;
+                    const Path back = Follow(machine, rest, block.text);
+                    if (MovesOn(back.calls, back.activities, true)) return false;
+                    if (back.waits.empty() || std::any_of(back.waits.begin(), back.waits.end(), [&](int w) { return w != question; })) return false;
+                }
+            }
+            return true;
         }
 
         // Whether a state registered with a next state comes back to itself on its own: the
@@ -424,9 +471,66 @@ namespace da::scripts
         }
     }
 
+    struct Script
+    {
+        std::map<std::wstring, Machine> machines;
+        int start = 1;
+    };
+
     bool StoryCall(std::wstring_view call)
     {
         return std::find(std::begin(kStoryCalls), std::end(kStoryCalls), call) != std::end(kStoryCalls);
+    }
+
+    std::optional<bool> Compare(std::wstring_view operation, const Number& a, const Number& b)
+    {
+        using Kind = Number::Kind;
+        if (a.kind == Kind::Unknown || b.kind == Kind::Unknown) return std::nullopt;
+        const bool known = operation == L"Equal" || operation == L"NotEqual" || operation == L"GreaterThan" || operation == L"GreaterThanOrEqual" ||
+                           operation == L"LessThan" || operation == L"LessThanOrEqual";
+        if (!known) return std::nullopt;
+        // Misc.lua's Compare: a nil on the left equals only a nil, and orders nothing; a nil on the
+        // right differs from a number and orders nothing.
+        if (a.kind == Kind::Nil)
+        {
+            if (operation == L"NotEqual") return b.kind != Kind::Nil;
+            if (operation.find(L"Equal") != std::wstring_view::npos) return b.kind == Kind::Nil;
+            return false;
+        }
+        if (b.kind == Kind::Nil) return operation == L"NotEqual";
+        if (operation == L"Equal") return a.value == b.value;
+        if (operation == L"NotEqual") return a.value != b.value;
+        if (operation == L"GreaterThan") return a.value > b.value;
+        if (operation == L"GreaterThanOrEqual") return a.value >= b.value;
+        if (operation == L"LessThan") return a.value < b.value;
+        return a.value <= b.value;
+    }
+
+    std::optional<bool> Holds(const std::wstring& condition, const Variables& variables)
+    {
+        static const std::wregex call(LR"re(^(not\s+)?SF_Comparison\s*\(\s*sm\s*,\s*\{([^}]*)\}\s*\)$)re");
+        static const std::wregex type(LR"re(type\s*=\s*"([^"]*)")re");
+        static const std::wregex operation(LR"re(operation\s*=\s*"([^"]*)")re");
+        static const std::wregex operand1(LR"re(number1\s*=\s*([^,}\s]+))re");
+        static const std::wregex operand2(LR"re(number2\s*=\s*([^,}\s]+))re");
+        static const std::wregex literal(LR"re(^-?[0-9]+(?:\.[0-9]+)?$)re");
+        const auto text = str::Trim(condition);
+        std::wsmatch m;
+        if (!std::regex_match(text, m, call)) return std::nullopt;
+        const bool negated = m[1].matched;
+        const auto args = m[2].str();
+        std::wsmatch t, op, n1, n2;
+        if (!std::regex_search(args, t, type) || t[1].str() != L"Number") return std::nullopt;
+        if (!std::regex_search(args, op, operation) || !std::regex_search(args, n1, operand1) || !std::regex_search(args, n2, operand2)) return std::nullopt;
+        const auto operand = [&](const std::wstring& token) -> Number
+        {
+            if (std::regex_match(token, literal)) return Number{Number::Kind::Value, std::stod(token)};
+            if (str::StartsWith(token, L"gVariables.") && variables) return variables(token.substr(11));
+            return Number{};
+        };
+        const auto holds = Compare(op[1].str(), operand(n1[1].str()), operand(n2[1].str()));
+        if (!holds) return std::nullopt;
+        return negated ? !*holds : *holds;
     }
 
     bool StoryActivity(std::wstring_view activity)
@@ -446,7 +550,7 @@ namespace da::scripts
         // condition taken either way: a state nothing leads to is no part of it (the totem
         // plaque's trigger at chapter one still holds the start of a look its designers cut off).
         Path path;
-        const auto machines = ParseMachines(script);
+        auto machines = ParseMachines(script);
         if (machines.empty())
         {
             Take(path, script);
@@ -457,6 +561,11 @@ namespace da::scripts
             const int start = std::regex_search(script, m, startState) ? std::stoi(m[1].str()) : 1;
             for (const auto& [name, machine] : machines)
                 Reach(machine, start, path);
+            auto kept = std::make_shared<Script>();
+            kept->machines = std::move(machines);
+            kept->start = start;
+            out.script = std::move(kept);
+            out.variables = ComparedVariables(script);
         }
         for (const auto& name : path.calls)
         {
@@ -467,6 +576,20 @@ namespace da::scripts
         // in (most of these every time), and progress never waits on it.
         out.story = MovesOn(out.calls, out.activities, false);
         return true;
+    }
+
+    bool StoryNow(const EnterEvent& event, const Variables& variables)
+    {
+        if (!event.story || !event.script || event.variables.empty()) return event.story;
+        Path path;
+        for (const auto& [name, machine] : event.script->machines)
+            Reach(machine, event.script->start, path, &variables);
+        std::vector<std::wstring> calls;
+        for (const auto& name : path.calls)
+        {
+            if (name != L"SF_End") calls.push_back(name);
+        }
+        return MovesOn(calls, path.activities, false);
     }
 
     std::vector<Poll> ParsePolls(const std::wstring& script, const std::wstring& source)
@@ -501,7 +624,7 @@ namespace da::scripts
                         p.leaves = leaves;
                         p.calls = path.calls;
                         p.activities = path.activities;
-                        p.story = !q.negated && waits && leaves && MovesOn(path.calls, path.activities, true);
+                        p.story = !q.negated && waits && leaves && MovesOn(path.calls, path.activities, true) && !ComesBack(machine, number, path);
                         polls.push_back(std::move(p));
                         restsIn.push_back(path.waits);
                     }
@@ -527,6 +650,60 @@ namespace da::scripts
             }
         }
         return polls;
+    }
+
+    std::vector<MoveWait> ParseMoveWaits(const std::wstring& script, const std::wstring& source)
+    {
+        std::vector<MoveWait> waits;
+        if (script.find(L"SF_IsCharacterMoving") == std::wstring::npos) return waits;
+        static const std::wregex ask(LR"re((not\s+)?SF_IsCharacterMoving\s*\(\s*sm\s*,\s*\{([^}]*)\}\s*\))re");
+        static const std::wregex character(LR"re(character\s*=\s*"([^"]*)")re");
+        const auto machines = ParseMachines(script);
+        for (const auto& [name, machine] : machines)
+        {
+            for (const auto& [number, state] : machine.states)
+            {
+                const bool waitsHere = !machine.next.count(number) || Loops(machine, number);
+                const auto visit = [&](const auto& self, const std::vector<Block>& blocks) -> void
+                {
+                    for (const auto& block : blocks)
+                    {
+                        for (auto it = std::wsregex_iterator(block.condition.begin(), block.condition.end(), ask); it != std::wsregex_iterator(); ++it)
+                        {
+                            MoveWait w;
+                            w.source = source;
+                            w.machine = name;
+                            w.state = number;
+                            w.negated = (*it)[1].matched;
+                            const auto args = (*it)[2].str();
+                            std::wsmatch m;
+                            if (std::regex_search(args, m, character)) w.who = str::Trim(m[1].str());
+                            w.waits = waitsHere;
+                            const Path path = Follow(machine, number, block.text);
+                            w.story = !w.negated && waitsHere && !JumpsIn(block.text).empty() && MovesOn(path.calls, path.activities, true) &&
+                                      !ComesBack(machine, number, path);
+                            waits.push_back(std::move(w));
+                        }
+                        self(self, block.blocks);
+                    }
+                };
+                visit(visit, state.blocks);
+            }
+        }
+        return waits;
+    }
+
+    bool WaitsToMove(const std::vector<MoveWait>& waits, const std::vector<std::pair<std::wstring, int>>& machines, const std::wstring& character)
+    {
+        for (const auto& w : waits)
+        {
+            if (!w.story || !(str::EqualsNoCase(w.who, character) || str::EqualsNoCase(w.who, L"Player"))) continue;
+            for (const auto& [machine, state] : machines)
+            {
+                if (machine == w.machine && state == w.state) return true;
+            }
+        }
+        return false;
     }
 
     void Waits::SetPolls(std::vector<Poll> polls)

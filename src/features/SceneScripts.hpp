@@ -12,7 +12,10 @@
 // where Jessica is led on volume by volume); a trigger's script that does so does not, since it
 // runs whenever she walks in and the story never waits on it (act2_3's Emily, act2_11's Josh).
 
+#include <functional>
 #include <map>
+#include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <string_view>
@@ -25,8 +28,36 @@ namespace da::scripts
     bool StoryCall(std::wstring_view call);
     bool StoryActivity(std::wstring_view activity);
 
+    // A number the scripts keep in gVariables, as their comparison (SF_Comparison of type
+    // "Number", the library's Compare) sees it: nothing yet (nil), a number, or not known to the
+    // mod, when a condition on it is taken either way.
+    struct Number
+    {
+        enum class Kind
+        {
+            Unknown,
+            Nil,
+            Value,
+        };
+        Kind kind = Kind::Unknown;
+        double value = 0.0;
+    };
+    using Variables = std::function<Number(const std::wstring& name)>;
+
+    // The library's Compare(operation, value1, value2) for numbers or nil, its nil cases first;
+    // no answer for an operation it does not know.
+    std::optional<bool> Compare(std::wstring_view operation, const Number& a, const Number& b);
+    // A condition of a state that is one comparison of numbers ("SF_Comparison(sm, {number2 = 1,
+    // number1 = gVariables.bAllowLostPhone, type = "Number", operation = "Equal"})", "not" before
+    // it or not), weighed with the variables now; no answer for any other condition, or one on a
+    // variable not known.
+    std::optional<bool> Holds(const std::wstring& condition, const Variables& variables);
+
+    struct Script; // a trigger script's state machines, as read
+
     // A trigger's script: the trigger it answers, how many times (-1 every time), the calls it
-    // makes and the activities it names.
+    // makes and the activities it names, every condition taken either way; and the variables its
+    // conditions compare.
     struct EnterEvent
     {
         std::wstring trigger;
@@ -34,8 +65,17 @@ namespace da::scripts
         std::vector<std::wstring> calls;
         std::vector<std::wstring> activities;
         bool story = false;
+        std::vector<std::wstring> variables;
+        std::shared_ptr<const Script> script;
     };
     bool ParseEnterEvent(const std::wstring& script, EnterEvent& out);
+
+    // Whether walking in moves the scene on now: what the script's machine reaches from its
+    // start with its comparisons weighed as the game weighs them with `variables`, the other
+    // conditions either way. T_EnteredLounge starts Jessica's lost-phone talk only while
+    // gVariables.bAllowLostPhone is 1 and sets it to 0 as it does; it stood listed as a way on in
+    // the cabin long after the talk, said reached and never gone (2026-11-06).
+    bool StoryNow(const EnterEvent& event, const Variables& variables);
 
     // The trigger scripts the player's character has set off, for as long as the level's scripts
     // run: a script's limit counts its runs whoever walks in (the game's own gEvents entry, by the
@@ -89,6 +129,29 @@ namespace da::scripts
 
     // Every question of the state machines in a script, judged. `source` names the script.
     std::vector<Poll> ParsePolls(const std::wstring& script, const std::wstring& source);
+
+    // A state's question whether a character is moving (SF_IsCharacterMoving, the game's
+    // UBatesGameScriptInterface::IsCharacterMoving) and whether walking on moves the scene on: after
+    // Jessica is taken in the cabin, act2_5's Scene08_insidethecabin asks in its state 51 whether Mike
+    // moves at 0.1 m/s for 0.75 s, then starts A_JessicaGrabbed. The mod handed him over with nothing
+    // to walk to and he stood half a minute (2026-11-06). Other scenes wait for stillness with the
+    // same call (act5_2's security light: "not moving").
+    struct MoveWait
+    {
+        std::wstring source;
+        std::wstring machine;
+        int state = 0;
+        std::wstring who;
+        bool negated = false;
+        bool waits = false;
+        bool story = false;
+    };
+    std::vector<MoveWait> ParseMoveWaits(const std::wstring& script, const std::wstring& source);
+
+    // Whether a scene's machine stands now in a state that waits for `character` (or the player) to
+    // walk on and moves the scene on once she does, by the machines' own record of where each stands
+    // (`machines`: the machine's name, its state).
+    bool WaitsToMove(const std::vector<MoveWait>& waits, const std::vector<std::pair<std::wstring, int>>& machines, const std::wstring& character);
 
     // The numbers the level's scripts keep in gVariables ("gVariables.SceneTransitionFadeWaitTime
     // = 2", act2_1's MainFlow), by name.

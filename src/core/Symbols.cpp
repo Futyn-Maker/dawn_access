@@ -34,6 +34,18 @@ namespace da::sym
             // The engine's count of shader pipelines still to compile (static, no arguments),
             // which the game's shader cache reads every tick; a loading screen waits for it.
             {L"FShaderPipelineCache::NumPrecompilesRemaining", 0x224f130},
+            // The Lua 5.1 library the game's scripts run on (LuaRuntime), linked into the
+            // executable: enough of it to read a field of a global table and leave the stack as
+            // it was. Each begins as the library's own does (lua_gettop: top - base, >> 4).
+            {L"lua_gettop", 0x393df50},
+            {L"lua_settop", 0x393ed40},
+            {L"lua_checkstack", 0x393d9d0},
+            {L"lua_getfield", 0x393de10},
+            {L"lua_type", 0x393efa0},
+            {L"lua_tonumber", 0x393eeb0},
+            {L"lua_toboolean", 0x393eda0},
+            {L"lua_rawgeti", 0x393e8b0},
+            {L"lua_tolstring", 0x393ee10},
         };
 
         struct Member
@@ -92,6 +104,10 @@ namespace da::sym
             // An anim graph's class lists the struct properties of its nodes; the index the game's
             // GetCurrentStateName takes counts them from the last.
             {L"UAnimBlueprintGeneratedClass.AnimNodeProperties", 0x3f8}, // TArray<FStructProperty*>
+            // The game's scripts run in a Lua state of their own, kept by the script the updater
+            // runs (ULuaScriptUpdater::RunningScript), behind a lock for the threads that load.
+            {L"UScript.mScriptData", 0x1b0},        // lua_State*
+            {L"UScript.mScriptAccessMutex", 0x1b8}, // FWindowsCriticalSection (a CRITICAL_SECTION)
             // The camera layer the controller's navigation camera stands on.
             {L"UBatesNavigationCameraControllerComponent.CameraLayer", 0xcc}, // uint8 EBatesCameraLayer
             // What a level load waits for before the game state turns to Game and the loading

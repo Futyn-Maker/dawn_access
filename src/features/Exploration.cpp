@@ -17,6 +17,7 @@
 
 #include "core/Config.hpp"
 #include "core/GameThread.hpp"
+#include "core/GameLua.hpp"
 #include "core/Gate.hpp"
 #include "core/Log.hpp"
 #include "core/ObjectUtil.hpp"
@@ -172,6 +173,64 @@ namespace da::features
         // from the script asset the game loads for it (scripts::ParseEnterEvent).
         using LuaEvent = scripts::EnterEvent;
 
+        // The scenes' waits for a character to walk on, read with the level's scripts
+        // (scripts::ParseMoveWaits), and the box the way on at the end of a held path is given.
+        std::vector<scripts::MoveWait> g_moveWaits;
+        constexpr double kPathEndHalf = 40.0;
+
+        // Whether a scene's machine stands now in a state waiting for `character` to walk on, by
+        // the machines' own record in the game's Lua state, read at most twice a second.
+        bool ScenesWaitToMove(const std::wstring& character)
+        {
+            if (g_moveWaits.empty()) return false;
+            static double s_readAt = -10.0;
+            static std::vector<std::pair<std::wstring, int>> s_machines;
+            const double now = gamethread::NowSeconds();
+            if (now - s_readAt >= 0.5)
+            {
+                s_readAt = now;
+                s_machines.clear();
+                std::vector<lua::Machine> machines;
+                if (lua::Machines(machines))
+                {
+                    for (auto& m : machines)
+                        s_machines.emplace_back(std::move(m.name), m.state);
+                }
+            }
+            return scripts::WaitsToMove(g_moveWaits, s_machines, character);
+        }
+
+        // A number of the scripts' gVariables as the game's Lua state holds it now (lua::Global),
+        // read once a frame whatever the number of conditions asking, and logged when it changes.
+        scripts::Number ScriptVariable(const std::wstring& name)
+        {
+            static unsigned long long s_frame = 0;
+            static std::map<std::wstring, scripts::Number> s_read;
+            static std::map<std::wstring, std::wstring> s_logged;
+            if (gamethread::FrameCount() != s_frame)
+            {
+                s_frame = gamethread::FrameCount();
+                s_read.clear();
+            }
+            if (const auto it = s_read.find(name); it != s_read.end()) return it->second;
+            const auto value = lua::Global("gVariables", str::WideToUtf8(name));
+            scripts::Number number;
+            if (value.kind == lua::Value::Kind::Nil)
+                number.kind = scripts::Number::Kind::Nil;
+            else if (value.kind == lua::Value::Kind::Number)
+                number = scripts::Number{scripts::Number::Kind::Value, value.number};
+            s_read[name] = number;
+            const std::wstring said = number.kind == scripts::Number::Kind::Value ? std::format(L"{}", number.value)
+                                      : number.kind == scripts::Number::Kind::Nil ? L"nil"
+                                                                                   : L"not read";
+            if (s_logged[name] != said)
+            {
+                s_logged[name] = said;
+                log::Info(L"explore: the scripts' gVariables.{} is {}", name, said);
+            }
+            return number;
+        }
+
         // The use location's own flags, as last read, for a log line when they change.
         struct UseState
         {
@@ -253,6 +312,7 @@ namespace da::features
         // The scenes' state machines' questions whether a character stands in a volume, read once
         // per script asset, and the game asking them as its scenes run (scripts::Waits).
         std::map<UObject*, std::vector<scripts::Poll>> g_pollsByAsset;
+        std::map<UObject*, std::vector<scripts::MoveWait>> g_moveWaitsByAsset;
         scripts::Waits g_waits;
         // The scenes' switches of the player's character and the waits that follow them
         // (scripts::Switch), read from the same scripts with the numbers they keep in gVariables.
@@ -460,6 +520,9 @@ namespace da::features
         constexpr double kLevelOnPath = 50.0;
         std::vector<Vec> PathRoad(const Vec& here, const Vec& point);
         std::vector<Vec> PathRoadToEnd(const Vec& here);
+        UObject* PathSplineComponent();
+        bool SplineLength(UObject* component, double& length);
+        bool SplineLocation(UObject* component, double distance, Vec& out);
         double PathBearing(double yaw);
 
         // Facing the thing: the game takes the press only once the character, or the camera,
@@ -1301,11 +1364,27 @@ namespace da::features
                 std::wstring script;
                 obj::ReadString(asset, L"Script", script);
                 g_pollsByAsset[asset] = scripts::ParsePolls(script, obj::FullName(asset));
+                g_moveWaitsByAsset[asset] = scripts::ParseMoveWaits(script, obj::FullName(asset));
                 g_scriptByAsset[asset] = std::move(script);
                 pollsChanged = true;
             }
             pollsChanged |=
                 std::erase_if(g_pollsByAsset, [&](const auto& item) { return std::find(level.begin(), level.end(), item.first) == level.end(); }) > 0;
+            std::erase_if(g_moveWaitsByAsset, [&](const auto& item) { return std::find(level.begin(), level.end(), item.first) == level.end(); });
+            if (pollsChanged)
+            {
+                g_moveWaits.clear();
+                std::vector<std::wstring> lines;
+                for (const auto& [asset, waits] : g_moveWaitsByAsset)
+                {
+                    for (const auto& w : waits)
+                    {
+                        lines.push_back(std::format(L"{} {} {}{}{}", w.machine, w.state, w.negated ? L"not " : L"", w.who, w.story ? L"; moves the scene on" : L""));
+                        g_moveWaits.push_back(w);
+                    }
+                }
+                log::Info(L"explore: the scenes wait for a character to walk on: {}", lines.empty() ? L"nowhere" : str::Join(lines, L"; "));
+            }
             std::erase_if(g_scriptByAsset, [&](const auto& item) { return std::find(level.begin(), level.end(), item.first) == level.end(); });
             if (pollsChanged)
             {
@@ -1841,7 +1920,10 @@ namespace da::features
                 const auto lua = name.empty() ? g_luaEvents.end() : g_luaEvents.find(name);
                 const bool luaStory = lua != g_luaEvents.end() && lua->second.story;
                 const bool spent = lua != g_luaEvents.end() && g_setOff.Spent(lua->second);
-                const bool luaLive = luaStory && !spent;
+                // What the script does now, its comparisons weighed with the game's own variables
+                // (scripts::StoryNow).
+                const bool luaNow = luaStory && !spent && scripts::StoryNow(lua->second, ScriptVariable);
+                const bool luaLive = luaNow;
                 // A scene's machine asking at every update whether she stands in it, and moving
                 // on once she does (scripts::Waits).
                 using Kind = scripts::Waits::Kind;
@@ -1864,6 +1946,7 @@ namespace da::features
                 else if (!nativeNow && !luaLive && !pollLive)
                     why = nativeStory && !nativeLeft ? L"already set off"
                           : nativeStory              ? L"its condition is not met now"
+                          : luaStory && !spent       ? L"its script's condition is not met now"
                           : luaStory                 ? L"already walked into"
                                                      : L"the scene does not wait on it now";
                 const auto verdict =
@@ -1923,6 +2006,37 @@ namespace da::features
                 if (t.hasBox) InsideVolume(pawn, volume, t.boxLow, t.boxHigh, t.storey);
                 t.inside = Overlapping(pawn, volume);
                 ways.push_back(std::move(t));
+            }
+            // A scene that waits for her to walk on (scripts::WaitsToMove) while the game holds her
+            // to a path: the path's end is the way on, walked along the path.
+            if (pawn && g_path.set && obj::IsLive(g_pathSpline) && !character.empty() && ScenesWaitToMove(character))
+            {
+                UObject* component = PathSplineComponent();
+                double length = 0.0;
+                Vec end;
+                if (component && g_pathSign != 0 && SplineLength(component, length) && SplineLocation(component, g_pathSign > 0 ? length : 0.0, end))
+                {
+                    Target t;
+                    t.actor = g_pathSpline;
+                    t.way = true;
+                    t.hasBox = true;
+                    t.boxLow = Vec{end.x - kPathEndHalf, end.y - kPathEndHalf, end.z - 200.0};
+                    t.boxHigh = Vec{end.x + kPathEndHalf, end.y + kPathEndHalf, end.z + 200.0};
+                    t.position = end;
+                    t.label = locale::Mod(L"explore.wayon");
+                    if (g_wayVerdict[g_pathSpline].empty())
+                    {
+                        g_wayVerdict[g_pathSpline] = L"the scene waits for her to walk on";
+                        g_turnedOnAt[g_pathSpline] = gamethread::NowSeconds();
+                        log::Info(L"explore: a scene waits for {} to walk on: the end of the path the game holds her to, {:.0f} cm off, is the way on", character,
+                                  FlatDistance(here, end));
+                    }
+                    ways.push_back(std::move(t));
+                }
+            }
+            else if (g_pathSpline && !g_wayVerdict[g_pathSpline].empty())
+            {
+                g_wayVerdict.erase(g_pathSpline);
             }
             return ways;
         }

@@ -106,5 +106,20 @@ if(MSVC)
     target_compile_options(audit PRIVATE /W4 /utf-8 /permissive-)
 endif()
 
+# Every question the scenes' scripts ask about a character in a volume, as the parse judges it
+# (audit\ScriptsAudit.cpp): no test, a tool run by hand over the game's exported scripts.
+add_executable(scripts_audit
+    audit/ScriptsAudit.cpp
+    "${DA_SRC}/core/Strings.cpp"
+    "${DA_SRC}/features/SceneScripts.cpp")
+target_include_directories(scripts_audit PRIVATE "${DA_SRC}")
+target_compile_definitions(scripts_audit PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
+set_target_properties(scripts_audit PROPERTIES
+    CXX_STANDARD 23
+    CXX_STANDARD_REQUIRED ON)
+if(MSVC)
+    target_compile_options(scripts_audit PRIVATE /W4 /utf-8 /permissive-)
+endif()
+
 enable_testing()
 add_test(NAME tests COMMAND tests)

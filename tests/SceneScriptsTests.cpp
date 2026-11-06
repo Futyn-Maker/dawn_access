@@ -1022,3 +1022,440 @@ TEST_CASE("scripts: a volume the scenes waited on stays a way on while its machi
     CHECK_FALSE(held.Waiting(L"T_Runaway_cart", Kind::NoStory, false));
     CHECK_FALSE(held.Waiting(L"T_Runaway_cart", Kind::NotNow, false));
 }
+
+TEST_CASE("scripts: the lounge's trigger starts the lost-phone talk only while its variable allows it, 2026-11-06")
+{
+    // act2_5's T_EnteredLounge-Enter.lua as the game ships it. The talk is armed when the cold and dark
+    // scene ends (bAllowLostPhone = 1) and the script sets it to 0 as it starts the talk; it runs every
+    // time she walks in. In the cabin on 2026-11-06 (research/sessions/s46-full.log) Mike walked into it
+    // on his way to the matches at 21:00:48 and the talk ran; the volume stood listed as a way on for the
+    // next twenty minutes, said reached, walked into again and again, and never gone, and at the shutters
+    // it was the way on 4 m ahead that nothing came of.
+    const std::wstring script = LR"lua(
+if gEvents["EnterTrigger"] == nil then
+	gEvents["EnterTrigger"] = {}
+end
+gEvents["EnterTrigger"]["T_EnteredLounge"] = {
+	stateMachine = "Event_t_enteredlounge_enter",
+	triggerLimit = -1,
+	delay = 0,
+}
+function Event_T_EnteredLounge_Enter_State_1(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 5139)
+  SF_Start(sm, {})
+end
+
+function Event_T_EnteredLounge_Enter_State_2(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 5141)
+  SF_StartActivity(sm, {activities = "A_lostphone"})
+  gVariables.bAllowLostPhone = 0
+end
+
+function Event_T_EnteredLounge_Enter_State_3(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 5145)
+  --If there was anything after the following End-command in the statemachine, that
+  --was dropped since it's not allowed in lua to have anything after a return
+  SF_End(sm, {statemachine = nil})
+  return
+end
+
+function Event_T_EnteredLounge_Enter_State_4(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 5195)
+  if SF_Comparison(sm, {number2 = 1,
+      number1 = gVariables.bAllowLostPhone,
+      type = "Number",
+      operation = "Equal"}) then
+    -- Auto-generated JumpToState(), since the condition has a link
+    M_JumpToState(sm,2)
+    return
+  end
+end
+
+
+-- Register the statemachine with the SM handler
+gRegisteredStatemachines.Event_t_enteredlounge_enter = {
+    startState = 1,
+    name = 'Event_t_enteredlounge_enter',
+    states = {
+      {nextState = 4,	func = Event_T_EnteredLounge_Enter_State_1, 	funcList = 'Start'},
+      {nextState = 3,	func = Event_T_EnteredLounge_Enter_State_2, 	funcList = 'Start Activity A_lostphone, *bAllowLostPhone = 0'},
+      {nextState = nil,	func = Event_T_EnteredLounge_Enter_State_3, 	funcList = 'End '},
+      {nextState = 3,	func = Event_T_EnteredLounge_Enter_State_4, 	funcList = 'Is *bAllowLostPhone = 1'},
+    },
+  } -- Done registering the SM----
+)lua";
+    scripts::EnterEvent event;
+    REQUIRE(scripts::ParseEnterEvent(script, event));
+    CHECK(event.trigger == L"T_EnteredLounge");
+    CHECK(event.limit == -1);
+    // Every condition taken either way, the talk is what it can do.
+    CHECK(event.story);
+    CHECK(Has(event.activities, L"A_lostphone"));
+    REQUIRE(event.variables.size() == 1);
+    CHECK(event.variables.front() == L"bAllowLostPhone");
+    using Kind = scripts::Number::Kind;
+    const auto with = [](scripts::Number value) { return [value](const std::wstring& name) { return name == L"bAllowLostPhone" ? value : scripts::Number{}; }; };
+    // Armed: walking in starts the talk.
+    CHECK(scripts::StoryNow(event, with({Kind::Value, 1.0})));
+    // After the talk, and before it is armed (nothing set yet): nothing of the story happens there.
+    CHECK_FALSE(scripts::StoryNow(event, with({Kind::Value, 0.0})));
+    CHECK_FALSE(scripts::StoryNow(event, with({Kind::Nil, 0.0})));
+    // The game's state not read: either way, as before.
+    CHECK(scripts::StoryNow(event, with({})));
+}
+
+TEST_CASE("scripts: a comparison is weighed as the scripts' library weighs it")
+{
+    using Kind = scripts::Number::Kind;
+    const scripts::Number one{Kind::Value, 1.0}, zero{Kind::Value, 0.0}, nil{Kind::Nil, 0.0}, unknown{};
+    CHECK(scripts::Compare(L"Equal", one, one) == true);
+    CHECK(scripts::Compare(L"Equal", zero, one) == false);
+    CHECK(scripts::Compare(L"NotEqual", zero, one) == true);
+    CHECK(scripts::Compare(L"GreaterThanOrEqual", one, zero) == true);
+    CHECK(scripts::Compare(L"LessThan", one, zero) == false);
+    // Misc.lua's nil cases: a nil equals only a nil and orders nothing.
+    CHECK(scripts::Compare(L"Equal", nil, one) == false);
+    CHECK(scripts::Compare(L"Equal", nil, nil) == true);
+    CHECK(scripts::Compare(L"LessThanOrEqual", nil, nil) == true);
+    CHECK(scripts::Compare(L"NotEqual", nil, one) == true);
+    CHECK(scripts::Compare(L"LessThan", nil, one) == false);
+    CHECK(scripts::Compare(L"NotEqual", one, nil) == true);
+    CHECK(scripts::Compare(L"GreaterThan", one, nil) == false);
+    CHECK_FALSE(scripts::Compare(L"Equal", unknown, one).has_value());
+    CHECK_FALSE(scripts::Compare(L"Add", one, one).has_value());
+
+    const auto vars = [](const std::wstring& name) { return name == L"VisitsNOTE" ? scripts::Number{scripts::Number::Kind::Value, 2.0} : scripts::Number{}; };
+    // act1_3's graffiti line: number1 a variable, number2 a number.
+    CHECK(scripts::Holds(LR"(SF_Comparison(sm, {number2 = 1, number1 = gVariables.VisitsNOTE, type = "Number", operation = "LessThanOrEqual"}))", vars) ==
+          false);
+    CHECK(scripts::Holds(LR"(not SF_Comparison(sm, {number2 = 1, number1 = gVariables.VisitsNOTE, type = "Number", operation = "LessThanOrEqual"}))", vars) ==
+          true);
+    // Anything else is no answer: a string comparison, a variable not read, another call, two joined.
+    CHECK_FALSE(scripts::Holds(LR"(SF_Comparison(sm, {string2 = "inspect", string1 = sm.variables.name, type = "String"}))", vars).has_value());
+    CHECK_FALSE(scripts::Holds(LR"(SF_Comparison(sm, {number2 = 0, number1 = gVariables.Other, type = "Number", operation = "Equal"}))", vars).has_value());
+    CHECK_FALSE(scripts::Holds(LR"(SF_IsActivityComplete(sm, {activity = "A_x"}))", vars).has_value());
+    CHECK_FALSE(scripts::Holds(LR"(SF_Comparison(sm, {number2 = 1, number1 = gVariables.VisitsNOTE, type = "Number", operation = "Equal"}) and SF_Wait(sm, {seconds = 1}))",
+                               vars)
+                    .has_value());
+}
+
+TEST_CASE("scripts: a comparison that holds and jumps takes the machine past its next state")
+{
+    // A state that asks once and passes on: when the comparison holds it jumps, and the state its
+    // registered next one names is never run (M_JumpToState puts the jump in place of it).
+    const std::wstring script = LR"lua(
+gEvents["EnterTrigger"]["T_x"] = {
+	stateMachine = "Event_t_x_enter",
+	triggerLimit = -1,
+	delay = 0,
+}
+function Event_T_x_Enter_State_1(sm)
+  if SF_Comparison(sm, {number2 = 1,
+      number1 = gVariables.Done,
+      type = "Number",
+      operation = "Equal"}) then
+    M_JumpToState(sm,3)
+    return
+  end
+end
+function Event_T_x_Enter_State_2(sm)
+  SF_StartActivity(sm, {activities = "A_x"})
+end
+function Event_T_x_Enter_State_3(sm)
+  SF_End(sm, {statemachine = nil})
+  return
+end
+gRegisteredStatemachines.Event_t_x_enter = {
+    startState = 1,
+    name = 'Event_t_x_enter',
+    states = {
+      {nextState = 2,	func = Event_T_x_Enter_State_1, 	funcList = 'Is *Done = 1'},
+      {nextState = 3,	func = Event_T_x_Enter_State_2, 	funcList = 'Start Activity A_x'},
+      {nextState = nil,	func = Event_T_x_Enter_State_3, 	funcList = 'End '},
+    },
+  }
+)lua";
+    scripts::EnterEvent event;
+    REQUIRE(scripts::ParseEnterEvent(script, event));
+    CHECK(event.story);
+    using Kind = scripts::Number::Kind;
+    const auto done = [](double v) { return [v](const std::wstring&) { return scripts::Number{Kind::Value, v}; }; };
+    // Done: past the activity, nothing happens.
+    CHECK_FALSE(scripts::StoryNow(event, done(1.0)));
+    // Not done: on to the activity.
+    CHECK(scripts::StoryNow(event, done(0.0)));
+}
+
+TEST_CASE("scripts: a question whose way on always comes back to it moves nothing on: the library's security camera, 2026-11-06")
+{
+    // act3_11's scene02_spookylibrary_cctv.lua as the game ships it. Walking into T_Cam_Library_50 plays
+    // the camera's look (a tarantula with it, once per visit, only when Hill's spider was chosen), the
+    // machine waits for her to leave, turns the look off and asks again. In the library on 2026-11-06
+    // (research/sessions/s47-full.log) the volume stood a way on after "Find Josh", said reached and
+    // never gone.
+    const std::wstring script = LR"lua(-- State Machine Export
+-- Please do not edit this file directly but use SMED2 instead.
+-- This was exported from \dev_ps4\ud\assets\work_files\levels\game\act3_11\scripts\scene02_spookylibrary_cctv.sm2
+
+-------------------------------------
+-- Here there be state's functions --
+-------------------------------------
+
+function Scene02_spookylibrary_cctv_State_1(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 6066)
+  SF_Start(sm, {})
+end
+
+function Scene02_spookylibrary_cctv_State_2(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 6068)
+  SF_SendSoundEvent(sm, {value = "Postprocess_CCTV_On"})
+  SF_StartScreenEffect(sm, {resourceName = "CCTV_Effect"})
+  SF_SuppressCloseUpCamera(sm, {suppress = true})
+  SF_DebugText(sm, {text = "Hello, world!",
+      duration = 5.0})
+end
+
+function Scene02_spookylibrary_cctv_State_3(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 6073)
+  SF_SendSoundEvent(sm, {value = "Postprocess_CCTV_Off"})
+  SF_StopScreenEffect(sm, {resourceName = "CCTV_Effect"})
+  SF_SuppressCloseUpCamera(sm, {})
+  SF_DebugText(sm, {text = "Bye, world!",
+      duration = 5.0})
+end
+
+function Scene02_spookylibrary_cctv_State_4(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 6078)
+  if SF_IsInTrigger(sm, {gameObjects = "Player",
+      trigger = "T_Cam_Library_50"}) then
+    if SF_FirstTime(sm, {uniqueID = 1}) then
+      if SF_IsCallforwardEqualTo(sm, {callforward = "ChoseSpider",
+          dataType = "Bool",
+          type = "General"}) then
+        SF_StartActivity(sm, {activities = "A_cctv_tarantula"})
+      end
+    end
+    -- Auto-generated JumpToState(), since the condition has a link
+    M_JumpToState(sm,2)
+    return
+  end
+  if SF_IsActivityComplete(sm, {activity = "A_chrisrevelation"}) then
+    -- Auto-generated JumpToState(), since the condition has a link
+    M_JumpToState(sm,6)
+    return
+  end
+end
+
+function Scene02_spookylibrary_cctv_State_5(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 6080)
+  if not SF_IsInTrigger(sm, {gameObjects = "Player",
+      trigger = "T_Cam_Library_50"}) then
+    -- Auto-generated JumpToState(), since the condition has a link
+    M_JumpToState(sm,3)
+    return
+  end
+end
+
+function Scene02_spookylibrary_cctv_State_6(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 6084)
+  --If there was anything after the following End-command in the statemachine, that
+  --was dropped since it's not allowed in lua to have anything after a return
+  SF_End(sm, {statemachine = nil})
+  return
+end
+
+function Scene02_spookylibrary_cctv_State_7(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 8508)
+  SF_Comment(sm, {comment = "JM: Moved cockroach logic to coretext"})
+end
+
+
+-- Register the statemachine with the SM handler
+gRegisteredStatemachines.Scene02_spookylibrary_cctv = {
+    startState = 1,
+    name = 'Scene02_spookylibrary_cctv',
+    states = {
+      {nextState = 4,	func = Scene02_spookylibrary_cctv_State_1, 	funcList = 'Start'},
+      {nextState = 5,	func = Scene02_spookylibrary_cctv_State_2, 	funcList = 'Send Sound Event Postprocess_CCTV_On , Start CCTV_Effect effect, Suppress Close Up Camera, Debug Text - Hello, world! '},
+      {nextState = 4,	func = Scene02_spookylibrary_cctv_State_3, 	funcList = 'Send Sound Event Postprocess_CCTV_Off , Stop CCTV_Effect effect, Unsuppress Close Up Camera, Debug Text - Bye, world! '},
+      {nextState = nil,	func = Scene02_spookylibrary_cctv_State_4, 	funcList = 'Is Player In Trigger T_Cam_Library_50, Is Activity A_chrisrevelation Complete?'},
+      {nextState = nil,	func = Scene02_spookylibrary_cctv_State_5, 	funcList = 'NOT Is Player In Trigger T_Cam_Library_50'},
+      {nextState = nil,	func = Scene02_spookylibrary_cctv_State_6, 	funcList = 'End '},
+      {nextState = nil,	func = Scene02_spookylibrary_cctv_State_7, 	funcList = 'JM: Moved cockroach logic to coretext'},
+    },
+  } -- Done registering the SM)lua";
+    const auto polls = scripts::ParsePolls(script, L"scene02_spookylibrary_cctv");
+    const auto cam = std::find_if(polls.begin(), polls.end(), [](const Poll& p) { return p.trigger == L"T_Cam_Library_50" && !p.negated; });
+    REQUIRE(cam != polls.end());
+    CHECK(cam->waits);
+    CHECK(cam->leaves);
+    // The tarantula is on the way, but the scene stands where it stood, asking again.
+    CHECK(Has(cam->activities, L"A_cctv_tarantula"));
+    CHECK_FALSE(cam->story);
+    Waits waits;
+    waits.SetPolls(polls);
+    waits.Asked(10.0, L"T_Cam_Library_50", true);
+    CHECK(waits.Judge(10.2, L"T_Cam_Library_50", L"Chris").kind == Waits::Kind::NoStory);
+}
+
+TEST_CASE("scripts: the cabin's scene waits for Mike to walk on once Jessica is taken, 2026-11-06")
+{
+    // act2_5's scene08_insidethecabin.lua as the game ships it, its states 29, 50, 51 and 52. Mike was
+    // handed over on the outro path at 22:31:33 (research/sessions/s47-full.log) with nothing listed,
+    // "nothing nearby to walk to", until he happened to move at 22:32:21 and the scene went on.
+    const std::wstring script = LR"lua(
+function Scene08_insidethecabin_State_29(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 4154)
+  if SF_IsInTrigger(sm, {gameObjects = "Player",
+      trigger = "T_JessicaTaken"}) then
+    SF_SetCharacterInteractionDiscoveryParameters(sm, {discoveryParameters = "Head",
+        characters = "Player"})
+    -- Auto-generated JumpToState(), since the condition has a link
+    M_JumpToState(sm,51)
+    return
+  end
+end
+
+function Scene08_insidethecabin_State_50(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 6796)
+  SF_StartActivity(sm, {activities = "A_JessicaGrabbed"})
+  SF_TurnOffCurrentObjective(sm, {})
+end
+
+function Scene08_insidethecabin_State_51(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 8168)
+  if SF_IsCharacterMoving(sm, {character = "Mike",
+      threshold = 0.1}) then
+    if SF_Wait(sm, {seconds = 0.75,
+        uniqueID = 1}) then
+      -- Auto-generated JumpToState(), since the condition has a link
+      M_JumpToState(sm,50)
+      return
+    end
+  end
+end
+
+function Scene08_insidethecabin_State_52(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 8170)
+  SF_TurnOffCurrentObjective(sm, {})
+end
+
+gRegisteredStatemachines.Scene08_insidethecabin = {
+    startState = 1,
+    name = 'Scene08_insidethecabin',
+    states = {
+      {nextState = nil,	func = Scene08_insidethecabin_State_29, 	funcList = 'Is Player In Trigger T_JessicaTaken'},
+      {nextState = 40,	func = Scene08_insidethecabin_State_50, 	funcList = 'Start Activity A_JessicaGrabbed, Turn Off Current Objective'},
+      {nextState = nil,	func = Scene08_insidethecabin_State_51, 	funcList = 'Is Mike moving at a speed of at least 0.1'},
+      {nextState = nil,	func = Scene08_insidethecabin_State_52, 	funcList = 'Turn Off Current Objective'},
+    },
+  } -- Done registering the SM
+)lua";
+    const auto waits = scripts::ParseMoveWaits(script, L"scene08_insidethecabin");
+    REQUIRE(waits.size() == 1);
+    CHECK(waits[0].machine == L"Scene08_insidethecabin");
+    CHECK(waits[0].state == 51);
+    CHECK(waits[0].who == L"Mike");
+    CHECK_FALSE(waits[0].negated);
+    CHECK(waits[0].story);
+    // The machine stands in 51 (the scripts' own record): the scene waits for Mike to walk on.
+    CHECK(scripts::WaitsToMove(waits, {{L"Scene08_insidethecabin", 51}, {L"Dialogue_control", 4}}, L"Mike"));
+    // In 29, still waiting for the volume: not yet; and another character is not asked about.
+    CHECK_FALSE(scripts::WaitsToMove(waits, {{L"Scene08_insidethecabin", 29}}, L"Mike"));
+    CHECK_FALSE(scripts::WaitsToMove(waits, {{L"Scene08_insidethecabin", 51}}, L"Jessica"));
+}
+
+TEST_CASE("scripts: a wait for stillness is no wait to walk on")
+{
+    // act5_2's security light: the countdown starts once neither Emily nor Matt moves.
+    const std::wstring script = LR"lua(
+function Scene02_tower_ascent_securitylight_State_5(sm)
+  if not SF_IsCharacterMoving(sm, {character = "Emily",
+      threshold = 0.1}) then
+    if not SF_IsCharacterMoving(sm, {character = "Matt",
+        threshold = 0.1}) then
+      M_JumpToState(sm,8)
+      return
+    end
+  end
+end
+function Scene02_tower_ascent_securitylight_State_8(sm)
+  SF_StartActivity(sm, {activities = "A_security_lights_alone"})
+end
+gRegisteredStatemachines.Scene02_tower_ascent_securitylight = {
+    startState = 1,
+    name = 'Scene02_tower_ascent_securitylight',
+    states = {
+      {nextState = nil,	func = Scene02_tower_ascent_securitylight_State_5, 	funcList = 'NOT Is Emily moving'},
+      {nextState = nil,	func = Scene02_tower_ascent_securitylight_State_8, 	funcList = 'Start'},
+    },
+  }
+)lua";
+    const auto waits = scripts::ParseMoveWaits(script, L"securitylight");
+    REQUIRE(waits.size() == 2);
+    for (const auto& w : waits)
+    {
+        CHECK(w.negated);
+        CHECK_FALSE(w.story);
+    }
+    CHECK_FALSE(scripts::WaitsToMove(waits, {{L"Scene02_tower_ascent_securitylight", 5}}, L"Emily"));
+}
+
+TEST_CASE("scripts: a loop whose way back moves the story on is no gag")
+{
+    // Walking in starts one scene; leaving starts another before the machine asks again: each visit
+    // moves the story on, so the volume stays a way on.
+    const std::wstring script = LR"lua(
+function Scene_loop_State_2(sm)
+  SF_SendSoundEvent(sm, {value = "x"})
+end
+function Scene_loop_State_3(sm)
+  SF_SendSoundEvent(sm, {value = "y"})
+end
+function Scene_loop_State_4(sm)
+  if SF_IsInTrigger(sm, {gameObjects = "Player",
+      trigger = "T_x"}) then
+    SF_StartActivity(sm, {activities = "A_first"})
+    M_JumpToState(sm,2)
+    return
+  end
+end
+function Scene_loop_State_5(sm)
+  if not SF_IsInTrigger(sm, {gameObjects = "Player",
+      trigger = "T_x"}) then
+    SF_StartActivity(sm, {activities = "A_second"})
+    M_JumpToState(sm,3)
+    return
+  end
+end
+gRegisteredStatemachines.Scene_loop = {
+    startState = 4,
+    name = 'Scene_loop',
+    states = {
+      {nextState = 5,	func = Scene_loop_State_2, 	funcList = ''},
+      {nextState = 4,	func = Scene_loop_State_3, 	funcList = ''},
+      {nextState = nil,	func = Scene_loop_State_4, 	funcList = ''},
+      {nextState = nil,	func = Scene_loop_State_5, 	funcList = ''},
+    },
+  }
+)lua";
+    const auto polls = scripts::ParsePolls(script, L"loop");
+    const auto in = std::find_if(polls.begin(), polls.end(), [](const Poll& p) { return p.trigger == L"T_x" && !p.negated; });
+    REQUIRE(in != polls.end());
+    CHECK(in->story);
+}
