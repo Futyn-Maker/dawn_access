@@ -10,9 +10,13 @@
 //   Now(text)      - hard interrupt, for what the player asked for directly. No dedupe.
 //   Urgent(text)   - hard interrupt for what the game gives the player a moment to answer
 //                    (the button of a quick-time event): a queued word would come too late.
-//   Replace(text)  - hard interrupt for text the game puts in place of what it showed a
-//                    moment ago (a document's page turned): what is still being said of
-//                    the old one is no longer on the screen.
+//   Replace(previous, text)
+//                  - for text the game puts in place of what it showed a moment ago (a
+//                    document's page turned): what is still being said of the old one is no
+//                    longer on the screen, and is cut short; what the game said by itself
+//                    after it, queued behind it, is said again before the new one. Once the
+//                    reader is past the old one, the new one waits behind what it is saying
+//                    (rules::Turn): a clue's card is cut neither with the page nor by it.
 //   Hold()         - what the game says by itself waits while such a moment lasts:
 //                    Announce lines are kept in order and said at Release(). Focus lines
 //                    answer the player's own input and are never kept; Now, Urgent and
@@ -37,7 +41,7 @@ namespace da::speech
     void Announce(std::wstring_view text);
     void Now(std::wstring_view text);
     void Urgent(std::wstring_view text);
-    void Replace(std::wstring_view text);
+    void Replace(std::wstring_view previous, std::wstring_view text);
     void Hold();
     void Release();
     void Exclusive(std::wstring_view text);

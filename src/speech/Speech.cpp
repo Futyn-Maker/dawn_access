@@ -8,6 +8,7 @@
 #include "input/InputNames.hpp"
 #include "locale/Locale.hpp"
 #include "speech/Outputs.hpp"
+#include "speech/SpeechRules.hpp"
 
 #include <chrono>
 #include <deque>
@@ -30,6 +31,8 @@ namespace da::speech
         Clock::time_point g_lastOutputAt{};                              // when the reader was last given something to say
         std::deque<std::wstring> g_history;                              // for Repeat()
         std::deque<std::pair<Clock::time_point, std::wstring>> g_recent; // what was said lately, for the audit
+        std::deque<rules::Said> g_said;                                  // the last lines given to the reader, with their policies
+        constexpr size_t kSaidMost = 24;
         constexpr long long kRecentMs = 120'000;
         bool g_preferSapi = false;
 
@@ -53,6 +56,12 @@ namespace da::speech
         void Emit(const std::wstring& text, bool interrupt)
         {
             outputs::Say(text, interrupt, SapiSpeaks());
+        }
+
+        // Now in seconds of the steady clock, for the page-turn rule (rules::Said::at).
+        double Seconds()
+        {
+            return std::chrono::duration<double>(Clock::now().time_since_epoch()).count();
         }
 
         long long MsSince(Clock::time_point t)
@@ -79,6 +88,9 @@ namespace da::speech
             g_recent.emplace_back(Clock::now(), str::CollapseWhitespace(text));
             while (!g_recent.empty() && MsSince(g_recent.front().first) > kRecentMs)
                 g_recent.pop_front();
+            g_said.push_back(rules::Said{policy, std::wstring(text), Seconds()});
+            while (g_said.size() > kSaidMost)
+                g_said.pop_front();
             if (std::wstring_view(policy) != L"now") g_lastMessage = std::wstring(text);
         }
 
@@ -213,18 +225,32 @@ namespace da::speech
         OutputNow(text, true, L"urgent");
     }
 
-    void Replace(std::wstring_view raw)
+    void Replace(std::wstring_view previous, std::wstring_view raw)
     {
         const std::wstring text = Clean(raw);
         if (text.empty() || !Says(text)) return;
         fault::Guard lock(g_mutex, L"speech");
-        OutputNow(text, true, L"replace");
+        const auto plan = rules::Turn(std::vector<rules::Said>(g_said.begin(), g_said.end()), Clean(previous), Seconds());
+        if (!plan.cut)
+        {
+            OutputNow(text, false, L"replace-after");
+            return;
+        }
+        if (plan.kept.empty())
+        {
+            OutputNow(text, true, L"replace");
+            return;
+        }
+        for (size_t i = 0; i < plan.kept.size(); ++i)
+            OutputNow(plan.kept[i], i == 0, L"replace-kept");
+        OutputNow(text, false, L"replace");
     }
 
     void Stop()
     {
         fault::Guard lock(g_mutex, L"speech");
         outputs::Silence();
+        g_said.push_back(rules::Said{L"stop", L"", Seconds()});
         g_heldLines.clear();
         log::Info(L"speech: stopped");
     }
@@ -233,6 +259,7 @@ namespace da::speech
     {
         fault::Guard lock(g_mutex, L"speech");
         outputs::Silence();
+        g_said.push_back(rules::Said{L"stop", L"", Seconds()});
         log::Verbose(L"speech: stopped by {}", key);
     }
 
@@ -244,6 +271,9 @@ namespace da::speech
         log::Say(L"repeat", last);
         Emit(last, true);
         g_lastOutputAt = Clock::now();
+        g_said.push_back(rules::Said{L"repeat", last, Seconds()});
+        while (g_said.size() > kSaidMost)
+            g_said.pop_front();
     }
 
     std::wstring Last()
