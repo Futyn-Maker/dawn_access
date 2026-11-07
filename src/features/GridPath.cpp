@@ -167,6 +167,40 @@ namespace da::grid
         m_open.push(Open{0.0, start});
     }
 
+    std::optional<int> MirroredLanding(const KnownStep& known, Cell a, int bx, int by)
+    {
+        if (!known) return std::nullopt;
+        for (const int level : {a.level, a.level + 1, a.level - 1})
+        {
+            if (const auto back = known(Cell{bx, by, level}, a.x, a.y); back && *back == a.level) return level;
+        }
+        return std::nullopt;
+    }
+
+    Arrival PickArrival(const Flood& flood, Cell goal, int reach, const std::function<bool(Cell)>& deep, const std::function<bool(Cell)>& touches,
+                        const std::function<bool(Cell)>& off)
+    {
+        Arrival a;
+        const auto outside = [&](Cell c) { return !off || !off(c); };
+        if (deep && flood.BestWhere(goal, reach, -1, [&](Cell c) { return deep(c) && outside(c); }, a.cell))
+        {
+            a.found = true;
+            a.deep = true;
+            return a;
+        }
+        if (flood.BestWhere(goal, reach, -1, [&](Cell c) { return touches(c) && outside(c); }, a.cell))
+        {
+            a.found = true;
+            return a;
+        }
+        if (off && flood.BestWhere(goal, reach, -1, touches, a.cell))
+        {
+            a.found = true;
+            a.offInside = true;
+        }
+        return a;
+    }
+
     Flood::State Flood::Step(int steps, const Passable& passable)
     {
         while (m_state == State::Running && steps-- > 0)
@@ -200,6 +234,9 @@ namespace da::grid
                         m_radiusReached = true;
                         continue;
                     }
+                    // A step into a cell already reached takes the run nowhere new: where it lands
+                    // known, it is not asked (SetLanding).
+                    if (int land = 0; m_landing && m_landing(current.cell, next.x, next.y, land) && m_closed.count(Cell{next.x, next.y, land})) continue;
                     // A diagonal step only where both straight steps beside it are free too, so
                     // that no corner is cut: the steps of Search.
                     if (dx != 0 && dy != 0)

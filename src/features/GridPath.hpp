@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <functional>
 #include <map>
+#include <optional>
 #include <queue>
 #include <set>
 #include <utility>
@@ -30,6 +31,27 @@ namespace da::grid
     // a stair or down one is a step onto the cell of that other level. Asked once per step
     // from a cell; the caller may cache it.
     using Passable = std::function<bool(Cell from, Cell& to)>;
+
+    // Where a step from a cell into the neighbouring column would land, when that is known without
+    // asking the step itself (the floor there already probed): true with the level, false when not
+    // known. A run that has settled the cell it would land on asks nothing: the step could not
+    // take it anywhere new.
+    using Landing = std::function<bool(Cell from, int toX, int toY, int& level)>;
+
+    // A step as the step store knows it: the level a step from a cell into the neighbouring column
+    // lands on when it is known free, else none.
+    using KnownStep = std::function<std::optional<int>(Cell from, int toX, int toY)>;
+
+    // The landing of a step from `a` into the column (bx, by) that the step back proves: her capsule
+    // swept free from a cell of that column into `a` passes back along the same line, so the step is
+    // free, onto the level the step back began on (`a`'s own level first, then the one above and the
+    // one below). The sweep that tells a step is not even both ways where a passage is no wider than
+    // she is: one begun against a wall is pulled out of it first, one that ends against it stops short
+    // of the cell. In Sam's bathroom on 2026-11-07 the door's open leaf left such a channel to the hall:
+    // the map got out of the bathroom by it, and from the hall every step back was swept into the leaf
+    // or the hall's wall, so the sock 4 m off through the open door was left out as another room's
+    // (research/sessions/s56-full.log, 23:47:21). None when no step back is known free.
+    std::optional<int> MirroredLanding(const KnownStep& known, Cell a, int bx, int by);
 
     // A way from a cell to one that is not its neighbour, which no step between neighbours finds:
     // the game's guidance passage through a doorway too tight for the cells' middles, which it takes
@@ -149,6 +171,25 @@ namespace da::grid
     // reached is closed off from the start, unless the bound around the start cut it off
     // (RadiusReached); a run cut short by its budget proves nothing about the cells it has not
     // reached yet.
+    class Flood;
+
+    // Where a walk to a thing to use ends, over a run's reached cells within `reach` of `goal`: the
+    // cell of least cost with her middle well inside the thing's place (`deep`) and outside every
+    // volume the game turns it off in (`off`); else one her capsule touches the place from (`touches`)
+    // outside them; else one touching it at all, the thing then got at only from inside such a volume.
+    // In Sam's bathroom on 2026-11-07 the walks to her sock ended at the first cell whose capsule
+    // touched its place, 31 cm outside it: she crossed its corner, the game took the press for a
+    // quarter of a second, and her stop slid her out (research/sessions/s55-full.log).
+    struct Arrival
+    {
+        bool found = false;
+        Cell cell;
+        bool deep = false;       // her middle inside the place
+        bool offInside = false;  // only from inside a volume the thing is off in
+    };
+    Arrival PickArrival(const Flood& flood, Cell goal, int reach, const std::function<bool(Cell)>& deep, const std::function<bool(Cell)>& touches,
+                        const std::function<bool(Cell)>& off);
+
     class Flood
     {
     public:
@@ -167,6 +208,13 @@ namespace da::grid
         void SetLinks(Links links)
         {
             m_links = std::move(links);
+        }
+        // Where steps land without being asked: a step into a cell already reached is not asked.
+        // At the asylum's grounds on 2026-11-07 the first map swept 246078 times over 27710 cells
+        // and took 43 s; nearly half were steps back into cells the map had already settled.
+        void SetLanding(Landing landing)
+        {
+            m_landing = std::move(landing);
         }
         State Current() const
         {
@@ -235,6 +283,7 @@ namespace da::grid
         int m_maxRadius;
         int m_maxExpansions;
         Links m_links;
+        Landing m_landing;
         std::vector<Link> m_linked;
         int m_expanded = 0;
         bool m_radiusReached = false;

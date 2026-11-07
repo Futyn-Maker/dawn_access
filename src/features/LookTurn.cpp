@@ -1,5 +1,6 @@
 #include "features/LookTurn.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <numbers>
 
@@ -34,6 +35,13 @@ namespace da::look
         // The camera looks at it and the character does not: the character must turn. A fixed
         // shot is not the player's to turn: there she is.
         return p.cameraOk || (p.byGlint && !p.explorationView) ? Lead::Character : Lead::Camera;
+    }
+
+    bool Arrived(const Parts& p, bool autoStart, bool still, bool before)
+    {
+        if (p.verdict || autoStart) return true;
+        if (!p.atHand || !CanBeLed(p)) return false;
+        return still || before;
     }
 
     void Words::Reset()
@@ -137,6 +145,62 @@ namespace da::look
         return mapOriginDistance > kStretchReach;
     }
 
+    BeamLead LeadAlongBeam(double facing, double stickX, double stickY)
+    {
+        BeamLead lead;
+        const double radians = facing * std::numbers::pi / 180.0;
+        lead.pan = std::clamp(std::sin(radians), -1.0, 1.0);
+        lead.muffled = std::cos(radians) < 0.0;
+        if (std::hypot(stickX, stickY) > kBeamPush)
+        {
+            const double stick = std::atan2(stickX, stickY) * 180.0 / std::numbers::pi;
+            lead.locked = std::fabs(Normalize(stick - facing)) <= kBeamCone;
+        }
+        return lead;
+    }
+
+    void Motion::Update(double now, const Vec& here)
+    {
+        if (!m_samples.empty() && now < m_samples.back().first) m_samples.clear(); // another clock
+        m_samples.emplace_back(now, here);
+        while (m_samples.size() > 2 && now - m_samples[1].first > 2.0)
+            m_samples.pop_front();
+    }
+
+    double Motion::MovedWithin(double now, double seconds) const
+    {
+        if (m_samples.empty()) return 0.0;
+        // The farthest she has been, within the window, from where she stands last.
+        const Vec& last = m_samples.back().second;
+        double far = 0.0;
+        for (auto it = m_samples.rbegin(); it != m_samples.rend(); ++it)
+        {
+            if (now - it->first > seconds) break;
+            far = std::max(far, std::hypot(it->second.x - last.x, it->second.y - last.y));
+        }
+        return far;
+    }
+
+    double Motion::Speed(double now) const
+    {
+        if (m_samples.size() < 2) return 0.0;
+        const auto& last = m_samples.back();
+        const std::pair<double, Vec>* first = nullptr;
+        for (auto it = m_samples.rbegin(); it != m_samples.rend(); ++it)
+        {
+            if (now - it->first > kStillWindow) break;
+            first = &*it;
+        }
+        if (!first || last.first - first->first < 0.05) return 0.0;
+        return std::hypot(last.second.x - first->second.x, last.second.y - first->second.y) / (last.first - first->first);
+    }
+
+    bool Motion::Still(double now) const
+    {
+        if (m_samples.empty() || now - m_samples.front().first < kStillWindow) return false;
+        return MovedWithin(now, kStillWindow) < kStillCm;
+    }
+
     bool Rest::Update(double now, bool still)
     {
         if (m_readySince < 0.0) m_readySince = now;
@@ -147,5 +211,17 @@ namespace da::look
         }
         if (m_stillSince < 0.0) m_stillSince = now;
         return now - m_stillSince >= kRestFor;
+    }
+
+    LookBlip LookSound(double across, double rise, bool lookedAt)
+    {
+        LookBlip b;
+        b.pan = std::clamp(across / kLookPanSpan, -1.0, 1.0);
+        b.level = std::clamp(0.5 + 0.5 * rise / kLookRiseSpan, 0.0, 1.0);
+        const double off = std::hypot(across, rise);
+        b.interval = lookedAt ? 0.12 : 0.09 + 0.4 * std::clamp(off / kLookPaceSpan, 0.0, 1.0);
+        b.locked = lookedAt;
+        b.muffled = std::fabs(across) > 90.0;
+        return b;
     }
 }

@@ -47,6 +47,7 @@ add_executable(tests
     ShapesTests.cpp
     RoomsTests.cpp
     SpeechRulesTests.cpp
+    WorldStreamTests.cpp
     "${DA_SRC}/core/Strings.cpp"
     "${DA_SRC}/core/Config.cpp"
     "${DA_SRC}/core/Symbols.cpp"
@@ -72,7 +73,8 @@ add_executable(tests
     "${DA_SRC}/features/SceneScripts.cpp"
     "${DA_SRC}/features/Shapes.cpp"
     "${DA_SRC}/features/Rooms.cpp"
-    "${DA_SRC}/speech/SpeechRules.cpp")
+    "${DA_SRC}/speech/SpeechRules.cpp"
+    "${DA_SRC}/features/WorldStream.cpp")
 
 target_include_directories(tests PRIVATE "${DA_SRC}" "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(tests PRIVATE doctest::doctest)

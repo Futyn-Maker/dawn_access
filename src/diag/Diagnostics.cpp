@@ -436,6 +436,11 @@ namespace da::diag
         return DumpsDir();
     }
 
+    std::wstring ModDirectory()
+    {
+        return g_modDir;
+    }
+
     void DumpScreen()
     {
         std::vector<std::wstring> lines;

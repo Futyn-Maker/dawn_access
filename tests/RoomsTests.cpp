@@ -477,6 +477,34 @@ TEST_CASE("the room rule leaves a thing out only by the map's proof, and holds a
     CHECK(rooms::Judge(f, Verdict::None) == Verdict::In);
 }
 
+TEST_CASE("a map of too few cells changes no verdict: the asylum's walkway, 2026-11-07")
+{
+    // act4_2 (research/sessions/s51-full.log, 17:19:24 to 17:19:26): Mike at the ledge's edge above the
+    // cellar, his capsule for a moment in a cell boxed in on every side; a map of one cell came
+    // between maps of 108 cells, and with each the building's forty things came back ("listed again:
+    // no map proves it closed off") and "hospital writing on wall, 46 m" was said, then left out again.
+    using rooms::Verdict;
+    rooms::Facts f;
+    f.settled = true;
+    f.running = false;
+    f.proves = false;
+    f.reach = 0;
+    f.stuck = true;
+    CHECK(rooms::Judge(f, Verdict::Apart) == Verdict::Apart);
+    CHECK(rooms::Judge(f, Verdict::In) == Verdict::In);
+    CHECK(rooms::Judge(f, Verdict::None) == Verdict::Waits);
+    // What it does reach, or the game offers, is in as ever.
+    f.reach = 1;
+    CHECK(rooms::Judge(f, Verdict::Apart) == Verdict::In);
+    f.reach = 0;
+    f.offered = true;
+    CHECK(rooms::Judge(f, Verdict::Apart) == Verdict::In);
+    // Without the stuck map, a map that proves nothing lists the thing.
+    f.offered = false;
+    f.stuck = false;
+    CHECK(rooms::Judge(f, Verdict::Apart) == Verdict::In);
+}
+
 TEST_CASE("the mine's things are never shown while the first map of Mike's hold runs past the list's while, 2026-11-04")
 {
     // Session 43 (research/sessions/s43.log): the hold began at 02:52:28.77 beside the security gate;
@@ -546,6 +574,46 @@ TEST_CASE("a way on beyond a door is not offered, one the path runs into is")
     CHECK_FALSE(rooms::WayOffered(false, 3, false));
     CHECK(rooms::WayOffered(false, 3, true));
     CHECK(rooms::WayOffered(true, 2, true));
+}
+
+TEST_CASE("a way found beyond a door stays out while a new map has not got to it: the asylum's hall, 2026-11-07")
+{
+    // act4_2 after the keycard (research/sessions/s52-full.log, 19:08:38 to 19:08:42): Mike walked off
+    // the ground the last map reached, a new map was begun, and the list settled on its while 3.0 s
+    // on with 8 of 37 targets judged. The ways to Section_08 and Section_07 (BatesCharacterTriggerVolume_10
+    // and _11), the beam's volume outside and the hospital's wolf scare, all found beyond a door by
+    // the map before, were offered again ("a way to it is open") and left out once more 0.9 s later,
+    // when the map was done; at every new map of the walk, up to fifteen seconds at a time.
+    struct Way
+    {
+        const char* name;
+        bool judgedNow;
+        int reach; // the map's verdict as the target holds it: this map's once judged, else the last one's
+    };
+    const Way ways[] = {
+        {"BatesCharacterTriggerVolume_10", false, 3},
+        {"BatesCharacterTriggerVolume_11", false, 3},
+        {"BP_CharacterTriggerVolume_C_1", false, 3},
+        {"BatesCharacterTriggerVolume_1", false, 3},
+        {"BatesCharacterTriggerVolume_0", true, 1}, // reached by this map, 3184 cm on foot
+    };
+    std::vector<std::string> offered;
+    for (const auto& w : ways)
+    {
+        if (rooms::WayOffered(false, rooms::WayReach(w.judgedNow, true, false, w.reach), false)) offered.push_back(w.name);
+    }
+    CHECK(offered == std::vector<std::string>{"BatesCharacterTriggerVolume_0"});
+    // A map that has opened too few cells to judge by keeps them out too.
+    CHECK_FALSE(rooms::WayOffered(false, rooms::WayReach(false, false, true, 3), false));
+    // Done without a verdict on a way (cut short by its bound), the map proves no wall: the way is offered.
+    CHECK(rooms::WayOffered(false, rooms::WayReach(false, false, false, 3), false));
+    // A way the earlier map reached stays offered meanwhile, and one never judged waits for the map
+    // by the list's own rule (ways::Lister), whatever its verdict here.
+    CHECK(rooms::WayOffered(false, rooms::WayReach(false, true, false, 1), false));
+    CHECK(rooms::WayReach(false, true, false, 0) == 0);
+    // This map's verdict is the one, once it has given it.
+    CHECK(rooms::WayReach(true, true, false, 3) == 3);
+    CHECK(rooms::WayReach(true, false, false, 1) == 1);
 }
 
 TEST_CASE("the lodge's yard: the lodge's things are another room's, the yard's stay, and the walk crosses no room")

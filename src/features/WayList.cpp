@@ -77,8 +77,8 @@ namespace da::ways
                 {
                     if (j == i) continue;
                     const Entry& other = entries[j];
-                    const bool counts = !other.closedOff &&
-                                        (other.chosen || (!other.behind && !other.unreachable && !other.unjudged && (!other.way || listedWays.count(j) > 0)));
+                    const bool counts = !other.closedOff && (other.chosen || (!other.behind && !other.unreachable && !other.unjudged && !other.used &&
+                                                                              (!other.way || listedWays.count(j) > 0)));
                     if (!counts || !enters(i, j)) continue;
                     onRoadOf[i] = static_cast<int>(j);
                     break;
@@ -180,18 +180,20 @@ namespace da::ways
         return settle.Settled() && (settlesNow || now - m_judgedAt >= 1.0);
     }
 
-    void Lister::Judge(std::vector<Entry>& entries, const Settling& settle, bool due, bool roads, double now, const Enters& enters)
+    void Lister::Judge(std::vector<Entry>& entries, const Settling& settle, bool due, bool roads, bool mapDone, double now, const Enters& enters)
     {
         if (!roads && (settle.Settled() || settle.Keeping())) return;
+        const bool anyShown = std::any_of(entries.begin(), entries.end(), [](const Entry& e) { return e.shown; });
         for (auto& e : entries)
         {
             if (settle.Keeping() && e.passed) continue;
-            e.unjudged = e.way && (!settle.Settled() || !(e.known || (settle.Kept() && e.earlier)));
+            const bool waitsForMap = !mapDone && anyShown && !e.shown;
+            e.unjudged = e.way && (!settle.Settled() || waitsForMap || !(e.known || (settle.Kept() && e.earlier)));
         }
         if (!due) return;
         m_judgedAt = now;
         for (auto& e : entries)
-            e.kept = m_frozen && e.passed && e.epoch == m_epoch;
+            e.kept = e.passed && e.epoch == m_epoch && (m_frozen || (e.way && e.shown));
         const auto onRoadOf = RowRule(entries, enters);
         for (size_t i = 0; i < entries.size(); ++i)
         {
@@ -201,14 +203,106 @@ namespace da::ways
         }
     }
 
-    bool IsNews(std::optional<double> turnedOnAt, double now)
+    bool IsNews(std::optional<double> turnedOnAt, double now, bool listedBefore)
     {
-        return turnedOnAt && now - *turnedOnAt <= kNewsWithin;
+        return !listedBefore && turnedOnAt && now - *turnedOnAt <= kNewsWithin;
     }
 
     bool ResumesList(bool paused, bool onMappedGround)
     {
         return paused || onMappedGround;
+    }
+
+    bool MapProves(bool complete, bool radiusReached, int expanded, int minCells)
+    {
+        return complete && !radiusReached && expanded >= minCells;
+    }
+
+    bool StreamsMore(std::optional<bool> sectionLoaded, bool inside, bool seenBefore)
+    {
+        return sectionLoaded.has_value() && !*sectionLoaded && !inside && !seenBefore;
+    }
+
+    void LevelsSeen::Count(const std::vector<std::wstring>& levels, bool newWorld)
+    {
+        if (newWorld) m_seen.clear();
+        for (const auto& level : levels)
+            Loaded(level);
+    }
+
+    void LevelsSeen::Loaded(const std::wstring& section)
+    {
+        if (!Seen(section)) m_seen.push_back(section);
+    }
+
+    bool LevelsSeen::Seen(const std::wstring& section) const
+    {
+        return std::find(m_seen.begin(), m_seen.end(), section) != m_seen.end();
+    }
+
+    bool BeamWay(bool volumeOn, bool onBeam, bool crossed)
+    {
+        return volumeOn && !onBeam && !crossed;
+    }
+
+    bool BeamCrossed(const Vec& tookAt, const Vec& letGo)
+    {
+        return std::hypot(letGo.x - tookAt.x, letGo.y - tookAt.y) >= kBeamCrossed;
+    }
+
+    int KeptReach(int reach, bool sameGround)
+    {
+        return sameGround && (reach == 1 || reach == 3) ? reach : 0;
+    }
+
+    bool StillComing(bool mapRunning, size_t waiting)
+    {
+        return mapRunning && waiting > 0;
+    }
+
+    bool MapHurries(bool settled, bool keeping, bool anyListed, size_t waiting)
+    {
+        return !anyListed || (!settled && !keeping) || waiting > 0;
+    }
+
+    bool OfferHold::Update(bool otherOffered, double now)
+    {
+        if (!otherOffered)
+        {
+            m_since = -1.0;
+            return false;
+        }
+        if (m_since < 0.0) m_since = now;
+        return now - m_since >= kOtherOfferHold;
+    }
+
+    bool HintWaitsForTurn(bool newTurn, bool cardUp, bool cardSeen, bool objectiveDue, double sinceHandOver)
+    {
+        if (!newTurn || sinceHandOver >= kTurnWait) return false;
+        if (cardUp) return true;
+        if (!cardSeen) return sinceHandOver < kCardWait;
+        return objectiveDue;
+    }
+
+    int HandOverChoice(int chosen, bool autoChosen, const std::vector<bool>& shown)
+    {
+        const bool known = chosen >= 0 && static_cast<size_t>(chosen) < shown.size();
+        if (known && (shown[static_cast<size_t>(chosen)] || !autoChosen)) return chosen;
+        for (size_t i = 0; i < shown.size(); ++i)
+        {
+            if (shown[i]) return static_cast<int>(i);
+        }
+        return -1;
+    }
+
+    bool Unplaced(const Vec& root)
+    {
+        return std::fabs(root.x) < 1.0 && std::fabs(root.y) < 1.0 && std::fabs(root.z) < 1.0;
+    }
+
+    bool WalkGoesOn(const void* walkFor, const void* chosen)
+    {
+        return walkFor != nullptr && chosen == walkFor;
     }
 
     bool Reopened(int reachWhenFrozen, int reachNow)

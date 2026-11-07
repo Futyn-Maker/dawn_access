@@ -7,10 +7,16 @@
 // Lines (whitespace-separated, one event each):
 //   ground 1
 //   A x y z cell level half radius step walkable     the grid laid at a spot, with the character's sizes
-//   F x y level floor normalZ                        a floor found at a column, probed from a level
+//   F x y level floor normalZ [on]                   a floor found at a column, probed from a level, and
+//                                                    the level of the world it lies in, where known
 //   N x y level why                                  no floor at a column from a level (n none, s too steep)
-//   S ax ay alevel bx by land why clear              a step: land = the level landed on, or X with why
-//                                                    (A/B no floor at a/b, H too high, W swept into something)
+//   S ax ay alevel bx by land why clear [on]         a step: land = the level landed on, why '-' (swept), or
+//                                                    M (free by the step back, grid::MirroredLanding); or X with
+//                                                    why (A/B no floor at a/b, H too high, W swept into something,
+//                                                    D a door's leaf across it), and for W and D the level of
+//                                                    the world what stopped it lies in, where known
+//   L in|out name ...                                levels of the world the game streamed in or out, the
+//                                                    ground felt out anew by the rules of features/WorldStream
 //   Q fx fy flevel tx ty tlevel radius levels        a search begins
 //   R found|failed cells sweeps nx ny nlevel         a search ends, with the cell that got nearest the goal
 //   P x y z                                          where the character stands
@@ -36,6 +42,7 @@
 #include "features/WayList.hpp"
 
 #include <map>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -54,6 +61,7 @@ namespace da::ground
         bool found = false;
         double floor = 0.0, normalZ = 1.0;
         char why = 0; // 'n' none, 's' too steep
+        std::string on; // the level of the world the floor lies in, empty where not known
     };
 
     struct Step
@@ -62,8 +70,18 @@ namespace da::ground
         int bx = 0, by = 0;
         bool free = false;
         int land = 0;
-        char why = 0; // 'A', 'B', 'H', 'W'
+        char why = 0; // 'A', 'B', 'H', 'W', 'D'
         double clear = 0.0;
+        std::string on; // for W and D, the level of the world what stopped it lies in, where known
+    };
+
+    // Levels of the world streamed in or out, after the steps and probes recorded before it.
+    struct Levels
+    {
+        bool in = false;
+        std::vector<std::string> names;
+        size_t steps = 0;
+        size_t probes = 0;
     };
 
     struct Search
@@ -88,6 +106,7 @@ namespace da::ground
     std::string SearchLine(const Search& s);
     std::string ResultLine(const Search& s);
     std::string PositionLine(const Position& p);
+    std::string LevelsLine(const Levels& l);
     // A volume's collision, a line for each piece.
     std::vector<std::string> VolumeLines(const std::string& name, const shapes::Shape& shape);
     std::string PassageLine(const ways::Passage& p);
@@ -102,6 +121,7 @@ namespace da::ground
         std::vector<Step> steps;
         std::vector<Search> searches;
         std::vector<Position> positions;
+        std::vector<Levels> levels;
         std::map<StepKey, int> stepLevels;                  // the level a free step lands on
         std::map<std::tuple<int, int, int>, double> floors; // the floor of a cell (x, y, level), where known
         std::map<std::string, shapes::Shape> volumes;       // the collision of the volumes the ways on were, by name
@@ -109,9 +129,13 @@ namespace da::ground
 
         // Reads a whole record; unknown lines are skipped. False when no header was found.
         bool Parse(const std::string& text);
-        // The recorded steps as the search's answer: a step not recorded is not free, and is
-        // counted in `unknown` when given.
-        grid::Passable Passable(int* unknown = nullptr) const;
+        // The recorded steps as the search's answer, as the game's ground answers them: a step not
+        // recorded is free where the step back was recorded free (grid::MirroredLanding, unless
+        // `mirror` is false, as the mod took the ground before 2026-11-08), else not free, and counted
+        // in `unknown` when given.
+        grid::Passable Passable(int* unknown = nullptr, bool mirror = true) const;
+        // The level a recorded free step lands on.
+        std::optional<int> FreeStep(grid::Cell from, int bx, int by) const;
         // The step recorded from a cell into a column, if any.
         const Step* Find(grid::Cell from, int bx, int by) const;
         // The links the recorded passages give the cells of the last anchor's grid, the cell of an

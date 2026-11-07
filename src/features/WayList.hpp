@@ -46,6 +46,8 @@ namespace da::ways
         bool closedOff = false;   // the ground was proven closed off from it, no door between: its road ends short of it
         bool known = true;        // its road is known now: the navigation mesh, the map, the path she is held to
         bool earlier = false;     // an earlier map found it reachable, or beyond a door, and this one has not judged it yet
+        bool shown = false;       // listed at the last look (a way: judged and listed)
+        bool used = false;        // a thing the player has used before, here or where the game put it before
         // The list's verdict, kept from look to look: whether the row rule has judged it since it
         // came, and the index of the target whose road it lies on, or -1.
         bool passed = false;
@@ -66,9 +68,12 @@ namespace da::ways
     // that two ways never leave each other out, nor a road that is itself left out leaves a way
     // out. A way behind, unreachable, unjudged, reached or chosen is not judged; a road counts only
     // from a target listed and not closed off (the road to a closed-off thing ends short of it, a
-    // dead end no walk gets through). An entry whose verdict is `kept` keeps it, and counts as a
-    // road as it stands. Returns, for each entry, the index of the target whose road it lies on, or
-    // -1.
+    // dead end no walk gets through), and not from a thing the player has used before unless she
+    // chose it: she has no more cause to walk there. The game uses one place in several chapters
+    // (the lodge in chapters 2 and 5), and a way it turns on later can lie on the roads to things
+    // seen long before, which the player does not walk to again (Andrey, 2026-11-08). An entry
+    // whose verdict is `kept` keeps it, and counts as a road as it stands.
+    // Returns, for each entry, the index of the target whose road it lies on, or -1.
     std::vector<int> RowRule(const std::vector<Entry>& entries, const Enters& enters);
 
     // A way's volume as a box turned about the upright: its middle, its sides along its own axes,
@@ -216,7 +221,16 @@ namespace da::ways
     // The list at every look, as Exploration's ChooseListed takes it. A way's `unjudged` follows the
     // settling: no way is judged before the list settles, and none whose road is not known after
     // (but what an earlier map found, under a map begun while its list stood), while a target the
-    // rule judged before keeps its verdict as a later map settles. The row rule
+    // rule judged before keeps its verdict as a later map settles.
+    //
+    // A way not listed yet waits for the map to be done while anything is listed (`mapDone`): what
+    // the map has not reached yet may lie beyond it, its road running through the way, and a way
+    // listed meanwhile was left out a moment later. After the landing door on 2026-11-07 the map of
+    // the lodge ran 18 s; the way on to the floating balloon was listed 3.4 s in and left out 1.6 s
+    // later for the road to the prom photo, and the cinema's way 3 s in, left out 0.8 s later
+    // (research/sessions/s56-full.log). With nothing else listed a way is judged once the list
+    // settles, as before; and a way once listed keeps its verdict for the rest of the hold: the list
+    // does not take back what it has offered for a road it learns of later. The row rule
     // judges the list at the look it settles, before anything is listed or said (the woods' start
     // on 2026-10-28 listed four ways at the look it settled and left three out at the next), then
     // once a second, and at the first look after Again().
@@ -236,7 +250,7 @@ namespace da::ways
         // `onRoadOf` and `passed` for every one. Without `roads` (neither a map nor the navigation
         // mesh judges them: a hand-over before its first map, a search that laid the grid afresh)
         // a list that stands stays as it is.
-        void Judge(std::vector<Entry>& entries, const Settling& settle, bool due, bool roads, double now, const Enters& enters);
+        void Judge(std::vector<Entry>& entries, const Settling& settle, bool due, bool roads, bool mapDone, double now, const Enters& enters);
         // The next look judges the list: a target was judged, came or went.
         void Again()
         {
@@ -282,6 +296,134 @@ namespace da::ways
     // throw handed him back where he had stood with every thing behind him gone quiet for the new
     // map to prove again, up to 25 s: "objects appearing and disappearing".
     bool ResumesList(bool paused, bool onMappedGround);
+
+    // Whether a reach map that is done proves a thing it has not reached closed off: it opened
+    // every cell within its bound (`complete`, not cut by the bound) and enough of them to judge by
+    // (`minCells`). What the game has yet to stream in is judged so too, since no map can tell how
+    // the ground there runs: the trigger that streams it in is the way on instead (StreamsMore).
+    bool MapProves(bool complete, bool radiusReached, int expanded, int minCells);
+
+    // Whether a trigger that streams in a section of the act (UBatesStreamingLoadTriggerAction's
+    // LoadOnEntry) is a way on: the game holds the section not loaded (`sectionLoaded`, from
+    // IsLevelLoaded; unknown is no), she does not stand in it already, walking in being what loads
+    // it, and the world has not shown the section since the act's levels were first counted
+    // (`seenBefore`): the trigger leads into the act's ground still to come. Until then what lies in
+    // the section has no floor to any probe. In act4_1's kitchen on 2026-11-07 the porch's stairs,
+    // the yard and the path to the hanging shed were Section_02's, loaded only past T_Section2_Load in
+    // the airlock's corridor: the map judged every way on beyond closed off and listed none. Listing
+    // whatever stood over the unloaded ground instead listed the asylum's morgue, hospital, admin area
+    // and Jack's lair from its grounds in act4_2 that evening, fourteen things behind the cellar door
+    // and the building's walls, which went at once when Section_03 came in on the way to the totem.
+    // A section the world has shown is one she has been through: the asylum's hall is a hub the game
+    // streams its wings in and out of as she walks (sections 3 to 7 in act4_2), and with every
+    // trigger back into a wing a way on, six of them came and went in the hall as Mike walked about
+    // after the keycard, none of them the story's way (the chapel door, listed among them).
+    bool StreamsMore(std::optional<bool> sectionLoaded, bool inside, bool seenBefore);
+
+    // The levels the world has shown, by name, as each count of its levels finds them (Exploration's
+    // PollWorld), and the sections the streaming manager has said are loaded: what she has been
+    // through. A new world (every level new: another act, a checkpoint loaded) forgets the old.
+    class LevelsSeen
+    {
+    public:
+        void Count(const std::vector<std::wstring>& levels, bool newWorld);
+        void Loaded(const std::wstring& section);
+        bool Seen(const std::wstring& section) const;
+
+    private:
+        std::vector<std::wstring> m_seen;
+    };
+
+    // Whether the volume that puts her on a beam (ABatesSpecialLocoActivityActor's ActivationVolume)
+    // is a way on: it is on (`volumeOn`, its collision), the beam does not hold her now, and it has
+    // not carried her over already, the beam leading back from the far side. The grid cannot walk a
+    // beam: on the asylum's walkway in act4_2 on 2026-11-07 the map stopped at the middle of
+    // BP_BeamWalk_C_1's volume, the ledge behind it all it reached, the list stood empty and Mike
+    // was stuck on the ledge above the cellar.
+    bool BeamWay(bool volumeOn, bool onBeam, bool crossed);
+    // Whether the beam carried her over: it let her go `kBeamCrossed` or more from where it took her
+    // (turned back on it, she leaves it about where she came on).
+    constexpr double kBeamCrossed = 150.0;
+    bool BeamCrossed(const Vec& tookAt, const Vec& letGo);
+
+    // What a target keeps of a verdict the reach map gave it once that map is dropped (the ground is
+    // felt out anew after an interaction): 1 reached or 3 beyond a door stay until a new map judges
+    // it, while she stands on the ground that map reached (`sameGround`); 2 closed off goes at once,
+    // since what closed the way may be gone; and a hold begun afresh off that ground keeps none. Mike
+    // dropped into the asylum's cellar in act4_2 on 2026-11-07 and the list said "totem danger, 17 m
+    // behind, above" at once, reached by the map from the grounds outside, then left it out a second
+    // later when the cellar's own map was done.
+    int KeptReach(int reach, bool sameGround);
+
+    // Whether a press of next or previous on an empty list says the list is still to come rather than
+    // that nothing is near: a reach map runs (`mapRunning`) and things wait for it (`waiting`). At the
+    // asylum's grounds on 2026-11-07 the first map took 14 s to reach the nearest thing, 50 m on foot,
+    // and six presses meanwhile said there was nothing to walk to.
+    bool StillComing(bool mapRunning, size_t waiting);
+
+    // Whether the reach map takes the larger share of a frame: while the first list of a hold settles
+    // (not `settled`, and no earlier list `keeping` it), and on for as long as nothing is listed. The
+    // grounds' first map got the smaller share once the list's while ran out with nothing judged, and
+    // took 16 s to reach what lay 50 m off.
+    // And on while things in range still wait for it (`waiting`, ways::StillComing's count): the
+    // first list after the hall's checkpoint was loaded settled with 2 of its 34 things judged, the
+    // map went on at the smaller share, and the chapel door 39 m off came 29 s later and the map was
+    // done after 43 s (2026-11-07, research/sessions/s54-full.log).
+    bool MapHurries(bool settled, bool keeping, bool anyListed, size_t waiting);
+
+    // Whether a walk at the end of its way says the game offers a neighbour instead of its target:
+    // the game's offer follows her facing as she steps up, so it must stand kOtherOfferHold before it
+    // is said. At the map in act4_3's station on 2026-11-07 the graffiti beside it was the game's
+    // offer for half a second as Matt stepped up, and the map once he faced it; "map: near, but the
+    // game offers graffiti" was said all the same, and again at the map with Emily
+    // (research/sessions/s54-full.log).
+    constexpr double kOtherOfferHold = 1.5;
+    class OfferHold
+    {
+    public:
+        // A look: whether the game offers a neighbour now; true once it has for kOtherOfferHold.
+        bool Update(bool otherOffered, double now);
+        void Reset()
+        {
+            m_since = -1.0;
+        }
+
+    private:
+        double m_since = -1.0;
+    };
+
+    // Whether the hand-over's keys and choice wait for a character's turn to be named (`newTurn`: she
+    // is another character than at the last hand-over, or the first since a level loaded): the game
+    // hands her over a moment before the card that names her (name, place, time) comes up, and her
+    // objective is said after the card. The keys and the choice come after both: while the card is up
+    // (`cardUp`), for kCardWait from the hand-over while no card has come (`cardSeen`), and while the
+    // objective is due once it has gone; never longer than kTurnWait. At the cable car's upper station
+    // on 2026-11-07 they were said 2.1 s before "МЭТТ" and 9.3 s before his objective
+    // (research/sessions/s54-full.log); Andrey: the character and the objective first, then the rest.
+    constexpr double kCardWait = 4.0;
+    constexpr double kTurnWait = 15.0;
+    bool HintWaitsForTurn(bool newTurn, bool cardUp, bool cardSeen, bool objectiveDue, double sinceHandOver);
+
+    // Which target the hand-over names as the choice once the list has come, by index (-1 for none):
+    // the one chosen while the list shows it (`shown`, in the list's order); one the mod chose that
+    // the list shows no longer gives way to the first it shows; and with nothing shown nothing is
+    // said. In the asylum's hall on 2026-11-07 the hand-over chose the barrel Mike had just climbed
+    // up from, listed for one look while the game still counted him in its volume, and a second later
+    // named it, 37 m below and left out of the list.
+    int HandOverChoice(int chosen, bool autoChosen, const std::vector<bool>& shown);
+
+    // Whether a use location stands where no level placed it: its root at the world's very origin.
+    // An activity's own use locations are left there (act4_1's death-machine lever and "joshisdead",
+    // owned by activities at the origin and never moved, the lever used through the scene's own
+    // binding): there is no place to walk to, and the list said them 95 m off toward the origin.
+    bool Unplaced(const Vec& root);
+
+    // Whether a walk goes on with the target chosen now: only with the one it was begun for, or one
+    // the player has chosen since (`walkFor` follows the player's N and P), never with one the mod
+    // chose after the walk's own left the list: in act4_1 on 2026-11-07 the scarecrow's look-at was
+    // put off under Chris's feet, the mod chose the kitchen's door 47 m behind, and the walk turned
+    // back to it.
+    bool WalkGoesOn(const void* walkFor, const void* chosen);
     // A target the list stood on as out of reach when its verdicts were frozen (`reachWhenFrozen`:
     // 2 closed off, 3 beyond a door, as Exploration's reach map judges; 0 not judged, 1 reached) that
     // a later map reaches (`reachNow` 1): the ground has grown, a door has opened beside her, and
@@ -296,9 +438,12 @@ namespace da::ways
     // two ways on were said as news as he walked down toward them, though the game had had them on
     // since the level began, and the player took them for things a trigger had just enabled.
     // `turnedOnAt`: when the game turned it on, if it was seen off before; news within kNewsWithin of
-    // that (its ground may take a while to be known).
+    // that (its ground may take a while to be known). A thing the list has shown before (`listedBefore`)
+    // is never news again: the game puts some off and on as she walks (act4_1's scarecrow look-at,
+    // off inside T_scarecrow_lookat_disable and on again outside it), and it was said "New:" each time
+    // it came back (2026-11-07).
     constexpr double kNewsWithin = 30.0;
-    bool IsNews(std::optional<double> turnedOnAt, double now);
+    bool IsNews(std::optional<double> turnedOnAt, double now, bool listedBefore);
 
     // ---- a path the game holds her to ---------------------------------------------------------
 

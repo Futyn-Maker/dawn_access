@@ -1,10 +1,21 @@
-// features/GridPath: the search over a grid of cells, with a map drawn in characters.
+// features/GridPath: the search over a grid of cells, with a map drawn in characters, and the hall
+// of 2026-11-07 flooded over its recorded ground.
 #include "Support.hpp"
 #include "features/GridPath.hpp"
+#include "features/GroundFile.hpp"
+#include "features/Shapes.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <map>
+#include <memory>
+#include <optional>
 #include <string>
+#include <tuple>
 #include <vector>
 
 using namespace da;
@@ -533,4 +544,201 @@ TEST_CASE("a link takes the search and the flood through a wall the steps cannot
     }
     CHECK(linked.Reached(map.Find('G')));
     CHECK(linked.Cost(b) == doctest::Approx(linked.Cost(a) + 2.0));
+}
+
+TEST_CASE("a flood that knows where steps land asks none into cells it has reached, and reaches the same: the asylum's hall, 2026-11-07")
+{
+    // The hall as it was first felt out (tests/fixtures/ground-asylum-hall-streamed.tsv, the T lines):
+    // the first map after the hall's checkpoint was loaded swept 246078 times over 27710 cells and
+    // took 43 s (research/sessions/s54-full.log), nearly half of it steps back into cells it had settled.
+    std::ifstream in(std::filesystem::path(DA_REPO_ROOT) / "tests" / "fixtures" / "ground-asylum-hall-streamed.tsv");
+    REQUIRE(in.good());
+    const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    ground::Record record;
+    REQUIRE(record.Parse(text));
+    std::map<ground::StepKey, int> hall = record.stepLevels;
+    for (const auto& s : record.steps)
+        hall.erase(ground::StepKey{s.from.x, s.from.y, s.from.level, s.bx, s.by});
+    record.stepLevels = hall;
+    const auto& anchor = record.anchors.front();
+    const grid::Cell start{static_cast<int>(std::floor((record.positions[0].x - anchor.x) / anchor.cell)),
+                           static_cast<int>(std::floor((record.positions[0].y - anchor.y) / anchor.cell)), 173};
+    const auto base = record.Passable();
+    size_t asked = 0;
+    const grid::Passable counted = [&](grid::Cell from, grid::Cell& to)
+    {
+        ++asked;
+        return base(from, to);
+    };
+    const auto run = [&](bool landing)
+    {
+        asked = 0;
+        auto flood = std::make_unique<grid::Flood>(start, 400, 200000);
+        if (landing)
+        {
+            // Where a step lands is the floor of its column, known once probed: the record's own answer.
+            flood->SetLanding(
+                [&](grid::Cell from, int x, int y, int& level)
+                {
+                    const auto known = hall.find(ground::StepKey{from.x, from.y, from.level, x, y});
+                    if (known == hall.end()) return false;
+                    level = known->second;
+                    return true;
+                });
+        }
+        while (flood->Step(64, counted) == grid::Flood::State::Running)
+        {
+        }
+        return std::make_pair(std::move(flood), asked);
+    };
+    const auto [plain, askedPlain] = run(false);
+    const auto [knowing, askedKnowing] = run(true);
+    REQUIRE(plain->Current() == grid::Flood::State::Complete);
+    REQUIRE(knowing->Current() == grid::Flood::State::Complete);
+    CHECK(knowing->Expanded() == plain->Expanded());
+    CHECK(plain->Expanded() > 10000);
+    // Every cell reached at the same cost.
+    for (const auto& c : plain->Order())
+    {
+        REQUIRE(knowing->Reached(c));
+        CHECK(knowing->Cost(c) == doctest::Approx(plain->Cost(c)));
+    }
+    // Far fewer steps asked.
+    CHECK(static_cast<double>(askedKnowing) < 0.75 * static_cast<double>(askedPlain));
+}
+
+TEST_CASE("a walk to a thing to use ends well inside its place, not at its rim: Sam's sock, 2026-11-07")
+{
+    // Sam's bathroom as the map felt it out (tests/fixtures/ground-sams-bathroom.tsv, cut from
+    // research/dumps/ground-20261107-230006.tsv) and the sock's place as the log gave its collision,
+    // within (3511, -9673, 3284) to (3650, -9502, 3484). The walks ended at the first cell whose capsule
+    // touched it, 31 cm outside: she crossed its corner, the game took the press for a quarter of a
+    // second, and her stop slid her out; the second walk too (research/sessions/s55-full.log).
+    std::ifstream in(std::filesystem::path(DA_REPO_ROOT) / "tests" / "fixtures" / "ground-sams-bathroom.tsv");
+    REQUIRE(in.good());
+    const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    ground::Record record;
+    REQUIRE(record.Parse(text));
+    const auto& anchor = record.anchors.front();
+    using shapes::Vec;
+    const Vec low{3511.0, -9673.0, 3284.0};
+    const Vec high{3650.0, -9502.0, 3484.0};
+    shapes::Shape place;
+    place.hulls.push_back(shapes::BoxHull(Vec{(low.x + high.x) / 2.0, (low.y + high.y) / 2.0, (low.z + high.z) / 2.0},
+                                          Vec{(high.x - low.x) / 2.0, (high.y - low.y) / 2.0, (high.z - low.z) / 2.0}, shapes::Quat{}));
+    const auto middle = [&](grid::Cell c)
+    {
+        const auto floor = record.floors.find({c.x, c.y, c.level});
+        const double z = (floor != record.floors.end() ? floor->second : c.level * anchor.level) + anchor.half;
+        return Vec{anchor.x + (c.x + 0.5) * anchor.cell, anchor.y + (c.y + 0.5) * anchor.cell, z};
+    };
+    const grid::Cell start{static_cast<int>(std::floor((record.positions[0].x - anchor.x) / anchor.cell)),
+                           static_cast<int>(std::floor((record.positions[0].y - anchor.y) / anchor.cell)), 67};
+    grid::Flood flood(start, 200, 100000);
+    const auto passable = record.Passable();
+    while (flood.Step(64, passable) == grid::Flood::State::Running)
+    {
+    }
+    REQUIRE(flood.Current() == grid::Flood::State::Complete);
+    const grid::Cell goal{static_cast<int>(std::floor(((low.x + high.x) / 2.0 - anchor.x) / anchor.cell)),
+                          static_cast<int>(std::floor(((low.y + high.y) / 2.0 - anchor.y) / anchor.cell)), 67};
+    const int reach = static_cast<int>(std::ceil((std::hypot(high.x - low.x, high.y - low.y) / 2.0 + anchor.radius) / anchor.cell + 1.0));
+    const auto touches = [&](grid::Cell c) { return shapes::CapsuleTouches(place, middle(c), anchor.radius, anchor.half); };
+    const auto deep = [&](grid::Cell c) { return shapes::CapsuleTouches(place, middle(c), 0.0, anchor.half); };
+    const auto inside = [&](const Vec& m) { return m.x >= low.x && m.x <= high.x && m.y >= low.y && m.y <= high.y; };
+    // The rim the walks headed for: her capsule touching the place, her middle outside it.
+    const auto rim = grid::PickArrival(flood, goal, reach, nullptr, touches, nullptr);
+    REQUIRE(rim.found);
+    CHECK_FALSE(rim.deep);
+    CHECK_FALSE(inside(middle(rim.cell)));
+    // Well inside: her middle within the place, so the stop's slide carries her further in.
+    const auto arrival = grid::PickArrival(flood, goal, reach, deep, touches, nullptr);
+    REQUIRE(arrival.found);
+    CHECK(arrival.deep);
+    CHECK(inside(middle(arrival.cell)));
+    CHECK(flood.Reached(arrival.cell));
+}
+
+TEST_CASE("an arrival keeps out of the volumes the thing is off in, and is got from inside one only where there is no other ground")
+{
+    const Map map{{
+        "#######",
+        "#S....#",
+        "#.....#",
+        "#######",
+    }};
+    const auto flood = RunFlood(map);
+    // The place: the right half of the room; the volume it is off in: the bottom row of it.
+    const auto touches = [](grid::Cell c) { return c.x >= 3; };
+    const auto deep = [](grid::Cell c) { return c.x >= 4; };
+    const auto offBottom = [](grid::Cell c) { return c.y == 2; };
+    auto a = grid::PickArrival(flood, map.Find('S'), 10, deep, touches, offBottom);
+    REQUIRE(a.found);
+    CHECK(a.deep);
+    CHECK(a.cell.x >= 4);
+    CHECK(a.cell.y != 2);
+    CHECK_FALSE(a.offInside);
+    // No deep ground: the touching ground outside the volume.
+    a = grid::PickArrival(flood, map.Find('S'), 10, [](grid::Cell) { return false; }, touches, offBottom);
+    REQUIRE(a.found);
+    CHECK_FALSE(a.deep);
+    CHECK(a.cell.x >= 3);
+    CHECK(a.cell.y != 2);
+    // Every touching cell inside the volume: from inside it, said so.
+    a = grid::PickArrival(flood, map.Find('S'), 10, nullptr, touches, [](grid::Cell c) { return c.x >= 3; });
+    REQUIRE(a.found);
+    CHECK(a.offInside);
+}
+
+TEST_CASE("a step known free one way lands, the other way, where the step back began")
+{
+    std::map<std::tuple<int, int, int, int, int>, int> steps{
+        {{5, 5, 10, 6, 5}, 10}, // level
+        {{7, 7, 11, 8, 7}, 12}, // a step up
+    };
+    const grid::KnownStep known = [&](grid::Cell from, int x, int y) -> std::optional<int>
+    {
+        const auto it = steps.find({from.x, from.y, from.level, x, y});
+        if (it == steps.end()) return std::nullopt;
+        return it->second;
+    };
+    CHECK(grid::MirroredLanding(known, grid::Cell{6, 5, 10}, 5, 5) == 10);
+    CHECK(grid::MirroredLanding(known, grid::Cell{8, 7, 12}, 7, 7) == 11); // the step down
+    CHECK_FALSE(grid::MirroredLanding(known, grid::Cell{8, 7, 11}, 7, 7)); // the step back landed above it
+    CHECK_FALSE(grid::MirroredLanding(known, grid::Cell{6, 5, 10}, 4, 5)); // nothing known back
+    CHECK_FALSE(grid::MirroredLanding(nullptr, grid::Cell{6, 5, 10}, 5, 5));
+}
+
+TEST_CASE("a step is free both ways: the map begun in the hall gets back into Sam's bathroom through the open door, 2026-11-07")
+{
+    // tests/fixtures/ground-sams-bath-door.tsv: the bathroom, its doorway and the hall beyond as the
+    // mod's ground knew them when the map began past the doorway at 23:47:21.508 (cut from
+    // research/dumps/ground-20261107-234549.tsv up to its line 10923 by research/tools/cut_ground.py).
+    // The door pushed open stood ajar across the doorway; the first map, begun in the bathroom, got out
+    // by the channel beside its leaf, and every step of that channel taken back from the hall was swept
+    // into the leaf or the hall's wall: the map begun past it opened the hall's 281 cells and left the
+    // sock, 4 m off, out as another room's until the chapter's end (research/sessions/s56-full.log).
+    std::ifstream in(std::filesystem::path(DA_REPO_ROOT) / "tests" / "fixtures" / "ground-sams-bath-door.tsv");
+    REQUIRE(in.good());
+    const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    ground::Record record;
+    REQUIRE(record.Parse(text));
+    const grid::Cell past{-7, 16, 67}; // where that map began
+    const grid::Cell bath{0, 0, 67};   // where Sam had stood by her sock, the first map's start
+    const auto run = [&](bool mirror)
+    {
+        auto flood = std::make_unique<grid::Flood>(past, 200, 100000);
+        const auto passable = record.Passable(nullptr, mirror);
+        while (flood->Step(64, passable) == grid::Flood::State::Running)
+        {
+        }
+        REQUIRE(flood->Current() == grid::Flood::State::Complete);
+        return flood;
+    };
+    const auto before = run(false);
+    CHECK(before->Expanded() == 281);
+    CHECK_FALSE(before->Reached(bath));
+    const auto now = run(true);
+    CHECK(now->Expanded() == 467);
+    CHECK(now->Reached(bath));
 }

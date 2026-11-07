@@ -141,14 +141,23 @@ TEST_CASE("the reach map over the woods' pocket after the duck-under reaches the
     const auto& anchor = record.anchors.front();
     const grid::Cell start{0, 0, static_cast<int>(std::floor((anchor.z - anchor.half) / anchor.level))};
     int unknown = 0;
+    {
+        // The pocket was felt out offline for a map that takes no step by the step back.
+        grid::Flood felt(start, 550, 80000);
+        while (felt.Step(50, record.Passable(&unknown, false)) == grid::Flood::State::Running)
+        {
+        }
+        CHECK(felt.Expanded() == 311);
+        CHECK(unknown == 0); // every step that map asks was felt out offline
+    }
+    // The map as it runs now, the steps back taken: the same pocket, nothing past its walls.
     grid::Flood flood(start, 550, 80000);
-    while (flood.Step(50, record.Passable(&unknown)) == grid::Flood::State::Running)
+    while (flood.Step(50, record.Passable()) == grid::Flood::State::Running)
     {
     }
     CHECK(flood.Current() == grid::Flood::State::Complete);
     CHECK_FALSE(flood.RadiusReached());
     CHECK(flood.Expanded() == 311);
-    CHECK(unknown == 0); // every step the map asks was felt out offline
     struct Goal
     {
         const char* name;
@@ -307,4 +316,49 @@ TEST_CASE("the recorded passages link a cell by its middle, where the live map p
     out.clear();
     links(grid::Cell{10, 0, 2}, out);
     CHECK(out.empty());
+}
+
+TEST_CASE("the level a wall or a floor lies in, and the world's changes, are recorded and read back, 2026-11-07")
+{
+    ground::Probe p;
+    p.x = 1;
+    p.y = 2;
+    p.level = 3;
+    p.found = true;
+    p.floor = 160.0;
+    p.normalZ = 1.0;
+    p.on = "LV_Game";
+    ground::Step wall;
+    wall.from = {1, 2, 3};
+    wall.bx = 1;
+    wall.by = 3;
+    wall.free = false;
+    wall.why = 'W';
+    wall.on = "LV_Act_4_2_Section_03";
+    ground::Levels out;
+    out.in = false;
+    out.names = {"LV_Act_4_2_Section_03", "LV_player_hard_collision_entryhall"};
+    ground::Step open = wall;
+    open.free = true;
+    open.land = 3;
+    open.on.clear();
+    const std::string text = ground::HeaderLine() + "\n" + ground::ProbeLine(p) + "\n" + ground::StepLine(wall) + "\n" + ground::LevelsLine(out) + "\n" +
+                             ground::StepLine(open) + "\n";
+    ground::Record record;
+    REQUIRE(record.Parse(text));
+    REQUIRE(record.probes.size() == 1);
+    CHECK(record.probes[0].on == "LV_Game");
+    REQUIRE(record.steps.size() == 2);
+    CHECK(record.steps[0].on == "LV_Act_4_2_Section_03");
+    CHECK(record.steps[1].on.empty());
+    REQUIRE(record.levels.size() == 1);
+    CHECK_FALSE(record.levels[0].in);
+    CHECK(record.levels[0].names == out.names);
+    CHECK(record.levels[0].steps == 1);
+    CHECK(record.levels[0].probes == 1);
+    // A record written before the levels were kept reads as it did.
+    ground::Record before;
+    REQUIRE(before.Parse("ground 1\nS 1 2 3 1 3 X W 0.00\nF 1 2 3 160.00 1.00\n"));
+    CHECK(before.steps[0].on.empty());
+    CHECK(before.probes[0].on.empty());
 }

@@ -1459,3 +1459,351 @@ gRegisteredStatemachines.Scene_loop = {
     REQUIRE(in != polls.end());
     CHECK(in->story);
 }
+
+TEST_CASE("scripts: a trigger starting an activity of the background moves nothing on, act3_4's rats, 2026-11-07")
+{
+    // act3_4, by the hunger totem and the mine's note: BP_CharacterTriggerVolume_C_7's
+    // BatesStartSequenceTriggerAction starts BatesActivityActor_5 of LV_Scene04_dark_cave,
+    // PAO_rat_CaveFloor (bIsBackgroundActivity, bIsPAOSequence: rats on the cave's floor). Listed as
+    // a way on, it was walked to and nothing came of it.
+    CHECK_FALSE(scripts::StoryActor(L"PAO_rat_CaveFloor", true, true));
+    CHECK_FALSE(scripts::StoryActor(L"PAO_rat_CaveFloor", false, false));
+    CHECK_FALSE(scripts::StoryActor(L"A_rats", true, false));
+    CHECK_FALSE(scripts::StoryActor(L"A_rats", false, true));
+    // The story's own activities, and one with no name to judge by.
+    CHECK(scripts::StoryActor(L"A_wakeup", false, false));
+    CHECK(scripts::StoryActor(L"", false, false));
+}
+
+TEST_CASE("scripts: a volume the scene keeps waiting in while it turns a thing on moves the scene on: act4_3's ladder, 2026-11-07")
+{
+    // act4_3's scene03_look_for_map.lua as the game ships it, its states 11, 12, 13 and 20. After Emily
+    // is helped up, state 12 asks whether Matt stands in T_Cam_station_Interior_20b by the ladder, and
+    // state 11, while he does, waits for her to pick up her torch and turns on the climb down
+    // (research/sessions/s54-full.log: the volume judged nothing of the story's, Matt stood about the
+    // station with nothing to walk to).
+    const std::wstring script = LR"lua(function Scene03_look_for_map_State_11(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 4776)
+  if not SF_IsInTrigger(sm, {gameObjects = "Matt",
+      trigger = "T_Cam_station_Interior_20b"}) then
+    -- Auto-generated JumpToState(), since the condition has a link
+    M_JumpToState(sm,12)
+    return
+  end
+  SF_SetCallforward(sm, {callforward = "MattInLadderTrigger",
+      valueBool = true,
+      dataType = "Bool",
+      type = "General"})
+  if SF_IsActivityComplete(sm, {activity = "A_EmilyPicksUpTorch_PAO"}) then
+    if SF_Wait(sm, {seconds = 1.0,
+        uniqueID = 1}) then
+      -- Auto-generated JumpToState(), since the condition has a link
+      M_JumpToState(sm,20)
+      return
+    end
+  end
+end
+
+function Scene03_look_for_map_State_12(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 4778)
+  SF_SetCallforward(sm, {callforward = "MattInLadderTrigger",
+      dataType = "Bool",
+      type = "General"})
+  if SF_IsInTrigger(sm, {gameObjects = "Matt",
+      trigger = "T_Cam_station_Interior_20b"}) then
+    -- Auto-generated JumpToState(), since the condition has a link
+    M_JumpToState(sm,11)
+    return
+  end
+end
+
+function Scene03_look_for_map_State_13(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 4799)
+  if SF_IsBoundToActivity(sm, {characters = "Matt",
+      activity = "I_climb_down"}) then
+    SF_SendMessageToActivity(sm, {activities = "A_emily_on_ledge",
+        message = "End"})
+    -- Auto-generated JumpToState(), since the condition has a link
+    M_JumpToState(sm,9)
+    return
+  end
+end
+
+function Scene03_look_for_map_State_20(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 8908)
+  SF_SetEnableActivity(sm, {activities = "I_climb_down",
+      enable = true})
+end
+
+
+-- Register the statemachine with the SM handler
+gRegisteredStatemachines.Scene03_look_for_map = {
+    startState = 1,
+    name = 'Scene03_look_for_map',
+    states = {
+      {nextState = 2,	func = Scene03_look_for_map_State_1, 	funcList = 'Start'},
+      {nextState = 7,	func = Scene03_look_for_map_State_2, 	funcList = 'Disable Activity I_help_emily, Disable Activity I_climb_down, Enable Activity I_graffiti, Run Statemachine Scene03_look_for_map_ai, Disable Activity I_lookatmap_without_emily, Disable Activity I_lookatmap_with_emily, Set Light Visibilty'},
+      {nextState = nil,	func = Scene03_look_for_map_State_3, 	funcList = 'Is Activity A_make_plan Complete?'},
+      {nextState = 3,	func = Scene03_look_for_map_State_4, 	funcList = 'Start Activity A_make_plan'},
+      {nextState = nil,	func = Scene03_look_for_map_State_5, 	funcList = 'End '},
+      {nextState = nil,	func = Scene03_look_for_map_State_6, 	funcList = 'Is Activity I_help_emily Complete?'},
+      {nextState = 10,	func = Scene03_look_for_map_State_7, 	funcList = 'Is Start Node = 3, Is Start Node = 31, Is Start Node = 32, Is Start Node = 33'},
+      {nextState = 11,	func = Scene03_look_for_map_State_8, 	funcList = 'Allow Player Locomotion, Swap Loco Anim Set Of Emily to anim_set_emily_held_item [blend of 0]'},
+      {nextState = nil,	func = Scene03_look_for_map_State_9, 	funcList = 'Is Activity I_ledge_shimmy Complete?'},
+      {nextState = nil,	func = Scene03_look_for_map_State_10, 	funcList = 'Is Activity I_map Complete?'},
+      {nextState = nil,	func = Scene03_look_for_map_State_11, 	funcList = 'NOT Is Matt In Trigger T_Cam_station_Interior_20b, Set Callforward MattInLadderTrigger True, Is Activity A_EmilyPicksUpTorch_PAO Complete?'},
+      {nextState = nil,	func = Scene03_look_for_map_State_12, 	funcList = 'Set Callforward MattInLadderTrigger False, Is Matt In Trigger T_Cam_station_Interior_20b'},
+      {nextState = nil,	func = Scene03_look_for_map_State_13, 	funcList = 'Is Matt Bound To Activity I_climb_down'},
+      {nextState = 18,	func = Scene03_look_for_map_State_14, 	funcList = 'Set Callforward CableCarSway True'},
+      {nextState = nil,	func = Scene03_look_for_map_State_15, 	funcList = 'Is Activity A_cablecarmoved Complete?'},
+      {nextState = nil,	func = Scene03_look_for_map_State_16, 	funcList = 'Give Held Item HI_emilys_torch To Emily With Style Pointing Left Hand Ready'},
+      {nextState = nil,	func = Scene03_look_for_map_State_17, 	funcList = 'Put A_EmilyPicksUpTorch_PAO  to sleep.'},
+      {nextState = nil,	func = Scene03_look_for_map_State_18, 	funcList = 'Is Activity A_ledge_emily_happy Complete?, Is Activity A_ledge_emily_angry Complete?'},
+      {nextState = nil,	func = Scene03_look_for_map_State_19, 	funcList = 'Put A_emily_on_ledge  to sleep.'},
+      {nextState = 13,	func = Scene03_look_for_map_State_20, 	funcList = 'Enable Activity I_climb_down'},
+      {nextState = nil,	func = Scene03_look_for_map_State_21, 	funcList = '#BM - Guillermo. We wait 1 second to prevent I_climb_down to be done before A_emily_on_ledge starts'},
+    },
+  } -- Done registering the SM)lua";
+    const auto polls = scripts::ParsePolls(script, L"scene03_look_for_map");
+    const auto in = std::find_if(polls.begin(), polls.end(), [](const Poll& p) { return p.trigger == L"T_Cam_station_Interior_20b" && !p.negated; });
+    REQUIRE(in != polls.end());
+    CHECK(in->state == 12);
+    CHECK(in->waits);
+    CHECK(in->leaves);
+    CHECK(in->story);
+    // Leaving moves nothing on: the scene goes back to asking.
+    const auto out = std::find_if(polls.begin(), polls.end(), [](const Poll& p) { return p.trigger == L"T_Cam_station_Interior_20b" && p.negated; });
+    REQUIRE(out != polls.end());
+    CHECK_FALSE(out->story);
+    Waits waits;
+    waits.SetPolls(polls);
+    waits.Asked(10.0, L"T_Cam_station_Interior_20b", true);
+    CHECK(waits.Judge(10.2, L"T_Cam_station_Interior_20b", L"Matt").kind == Waits::Kind::Waiting);
+}
+
+TEST_CASE("scripts: a scene that turns a thing on once she stands in a volume waits for her there")
+{
+    const std::wstring script = LR"lua(function Scene01_turnon_State_1(sm)
+  SF_Start(sm, {})
+end
+
+function Scene01_turnon_State_2(sm)
+  if SF_IsInTrigger(sm, {gameObjects = "Player",
+      trigger = "T_bench"}) then
+    SF_SetEnableActivity(sm, {activities = "I_sit",
+        enable = true})
+    M_JumpToState(sm,3)
+    return
+  end
+end
+
+function Scene01_turnon_State_3(sm)
+  if SF_IsActivityComplete(sm, {activity = "I_sit"}) then
+    M_JumpToState(sm,4)
+    return
+  end
+end
+
+function Scene01_turnon_State_4(sm)
+  SF_End(sm, {statemachine = nil})
+  return
+end
+
+gRegisteredStatemachines.Scene01_turnon = {
+    startState = 1,
+    name = 'Scene01_turnon',
+    states = {
+      {nextState = 2,	func = Scene01_turnon_State_1, 	funcList = 'Start'},
+      {nextState = nil,	func = Scene01_turnon_State_2, 	funcList = 'Is Player In Trigger T_bench, Enable Activity I_sit'},
+      {nextState = nil,	func = Scene01_turnon_State_3, 	funcList = 'Is Activity I_sit Complete?'},
+      {nextState = nil,	func = Scene01_turnon_State_4, 	funcList = 'End '},
+    },
+  } -- Done registering the SM)lua";
+    const auto polls = scripts::ParsePolls(script, L"scene01_turnon");
+    REQUIRE(polls.size() == 1);
+    CHECK(polls[0].story);
+    // A volume walked into once, the scene then waiting on something else that turns a thing on,
+    // asks nothing of her standing there: what follows is not hers to bring about.
+    const std::wstring passing = LR"lua(function Scene01_passing_State_1(sm)
+  SF_Start(sm, {})
+end
+
+function Scene01_passing_State_2(sm)
+  if SF_IsInTrigger(sm, {gameObjects = "Player",
+      trigger = "T_hall"}) then
+    M_JumpToState(sm,3)
+    return
+  end
+end
+
+function Scene01_passing_State_3(sm)
+  if SF_IsActivityComplete(sm, {activity = "A_knock"}) then
+    M_JumpToState(sm,4)
+    return
+  end
+end
+
+function Scene01_passing_State_4(sm)
+  SF_SetEnableActivity(sm, {activities = "I_door",
+      enable = true})
+end
+
+gRegisteredStatemachines.Scene01_passing = {
+    startState = 1,
+    name = 'Scene01_passing',
+    states = {
+      {nextState = 2,	func = Scene01_passing_State_1, 	funcList = 'Start'},
+      {nextState = nil,	func = Scene01_passing_State_2, 	funcList = 'Is Player In Trigger T_hall'},
+      {nextState = nil,	func = Scene01_passing_State_3, 	funcList = 'Is Activity A_knock Complete?'},
+      {nextState = nil,	func = Scene01_passing_State_4, 	funcList = 'Enable Activity I_door'},
+    },
+  } -- Done registering the SM)lua";
+    const auto passingPolls = scripts::ParsePolls(passing, L"scene01_passing");
+    REQUIRE(passingPolls.size() == 1);
+    CHECK_FALSE(passingPolls[0].story);
+    // Turning it off is no more than a look: nothing comes of standing there.
+    std::wstring off = script;
+    const std::wstring enable = L",\n        enable = true";
+    off.replace(off.find(enable), enable.size(), L"");
+    const auto offPolls = scripts::ParsePolls(off, L"scene01_turnon");
+    REQUIRE(offPolls.size() == 1);
+    CHECK_FALSE(offPolls[0].story);
+}
+
+TEST_CASE("scripts: a volume that turns a thing off while she stands in it: Jack's cigar box, 2026-11-07")
+{
+    // act4_2's T_disable_cigar_box-Enter and -Leave as the game ships them. Five walks to the cigar box
+    // went in through the volume, the game turned the box off a metre or two short, and each walk
+    // ended saying the target was gone (research/sessions/s54-full.log).
+    const std::wstring enter = LR"lua(--------------------------------------------------------------
+-- SMED events for triggers 'T_disable_cigar_box' - 'Enter' --
+--------------------------------------------------------------
+
+-- Create entry in table for this event
+if gEvents["EnterTrigger"] == nil then
+	gEvents["EnterTrigger"] = {}
+end
+
+--Add it to the events table
+gEvents["EnterTrigger"]["T_disable_cigar_box"] = {
+	stateMachine = "Event_t_disable_cigar_box_enter",
+	triggerLimit = -1,
+	delay = 0,
+}
+-- Here's the actual statemachine
+------------------------------------------------------------------
+-- Statemachine definitions for event T_disable_cigar_box Enter --
+------------------------------------------------------------------
+function Event_T_disable_cigar_box_Enter_State_1(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 6542)
+  SF_Start(sm, {})
+end
+
+function Event_T_disable_cigar_box_Enter_State_2(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 6544)
+  SF_SetEnableActivity(sm, {activities = "I_jackslair_cigarbox"})
+end
+
+function Event_T_disable_cigar_box_Enter_State_3(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 6546)
+  --If there was anything after the following End-command in the statemachine, that
+  --was dropped since it's not allowed in lua to have anything after a return
+  SF_End(sm, {statemachine = nil})
+  return
+end
+
+
+-- Register the statemachine with the SM handler
+gRegisteredStatemachines.Event_t_disable_cigar_box_enter = {
+    startState = 1,
+    name = 'Event_t_disable_cigar_box_enter',
+    states = {
+      {nextState = 2,	func = Event_T_disable_cigar_box_Enter_State_1, 	funcList = 'Start'},
+      {nextState = 3,	func = Event_T_disable_cigar_box_Enter_State_2, 	funcList = 'Disable Activity I_jackslair_cigarbox'},
+      {nextState = nil,	func = Event_T_disable_cigar_box_Enter_State_3, 	funcList = 'End '},
+    },
+  } -- Done registering the SM)lua";
+    const std::wstring leave = LR"lua(--------------------------------------------------------------
+-- SMED events for triggers 'T_disable_cigar_box' - 'Leave' --
+--------------------------------------------------------------
+
+-- Create entry in table for this event
+if gEvents["LeaveTrigger"] == nil then
+	gEvents["LeaveTrigger"] = {}
+end
+
+--Add it to the events table
+gEvents["LeaveTrigger"]["T_disable_cigar_box"] = {
+	stateMachine = "Event_t_disable_cigar_box_leave",
+	triggerLimit = -1,
+	delay = 0,
+}
+-- Here's the actual statemachine
+------------------------------------------------------------------
+-- Statemachine definitions for event T_disable_cigar_box Leave --
+------------------------------------------------------------------
+function Event_T_disable_cigar_box_Leave_State_1(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 6536)
+  SF_Start(sm, {})
+end
+
+function Event_T_disable_cigar_box_Leave_State_2(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 6539)
+  SF_SetEnableActivity(sm, {activities = "I_jackslair_cigarbox",
+      enable = true})
+end
+
+function Event_T_disable_cigar_box_Leave_State_3(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 6540)
+  --If there was anything after the following End-command in the statemachine, that
+  --was dropped since it's not allowed in lua to have anything after a return
+  SF_End(sm, {statemachine = nil})
+  return
+end
+
+
+-- Register the statemachine with the SM handler
+gRegisteredStatemachines.Event_t_disable_cigar_box_leave = {
+    startState = 1,
+    name = 'Event_t_disable_cigar_box_leave',
+    states = {
+      {nextState = 2,	func = Event_T_disable_cigar_box_Leave_State_1, 	funcList = 'Start'},
+      {nextState = 3,	func = Event_T_disable_cigar_box_Leave_State_2, 	funcList = 'Enable Activity I_jackslair_cigarbox'},
+      {nextState = nil,	func = Event_T_disable_cigar_box_Leave_State_3, 	funcList = 'End '},
+    },
+  } -- Done registering the SM)lua";
+    const auto in = scripts::ParseActivitySwitches(enter);
+    REQUIRE(in.size() == 1);
+    CHECK(in[0].trigger == L"T_disable_cigar_box");
+    CHECK_FALSE(in[0].leave);
+    CHECK(in[0].activity == L"I_jackslair_cigarbox");
+    CHECK_FALSE(in[0].enable);
+    const auto out = scripts::ParseActivitySwitches(leave);
+    REQUIRE(out.size() == 1);
+    CHECK(out[0].leave);
+    CHECK(out[0].enable);
+    std::vector<scripts::ActivitySwitch> all = in;
+    all.insert(all.end(), out.begin(), out.end());
+    const auto off = scripts::OffInside(all);
+    REQUIRE(off.count(L"I_jackslair_cigarbox") == 1);
+    CHECK(off.at(L"I_jackslair_cigarbox") == std::vector<std::wstring>{L"T_disable_cigar_box"});
+    // Turned off by walking in and never on again by walking out: no volume it is off in only while
+    // she stands there.
+    CHECK(scripts::OffInside(in).empty());
+    // The other way round, on only near (act4_2's T_wendigo_trap_near_enable): not off inside.
+    std::vector<scripts::ActivitySwitch> near = {{L"T_wendigo_trap_near_enable", false, L"I_hospital_trap_fingers", true},
+                                                 {L"T_wendigo_trap_near_enable", true, L"I_hospital_trap_fingers", false}};
+    CHECK(scripts::OffInside(near).empty());
+    // A script of no trigger has no switches.
+    CHECK(scripts::ParseActivitySwitches(L"SF_SetEnableActivity(sm, {activities = \"I_x\"})").empty());
+}

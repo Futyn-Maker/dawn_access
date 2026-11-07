@@ -6,7 +6,9 @@
 
 #include "features/Vec.hpp"
 
+#include <deque>
 #include <optional>
+#include <utility>
 
 namespace da::look
 {
@@ -49,6 +51,15 @@ namespace da::look
     // verdict is only a tick behind it), when nothing is at hand, or when no turn of the
     // player's completes it.
     Lead Missing(const Parts& p);
+
+    // Whether a thing to use counts as reached, "arrived" in the list: the game would take the press
+    // now, or the thing starts by itself (`autoStart`), or everything but a look is in place and a
+    // turn of the player's completes it (CanBeLed). Anything else is not reached however near, and
+    // the list says how far, a metre at the least (Andrey's rule of 2026-11-07): after the kitchen's
+    // blood in act4_1 Chris stood inside its volume on a fixed shot whose picture left the glint out,
+    // and the list said "arrived" while no press was taken and no turn brought it. Becoming reached
+    // waits for her to stand still (`still`: a walk past is no arrival); staying so (`before`) does not.
+    bool Arrived(const Parts& p, bool autoStart, bool still, bool before);
 
     // ---- the words ---------------------------------------------------------------------------
 
@@ -155,10 +166,62 @@ namespace da::look
     // was 18 cm off and one step took her in).
     bool FreshSpotMap(double mapOriginDistance);
 
+    // A beam the game walks her along, a special locomotion of its own (chapter 5's BP_BeamWalk,
+    // ABP_BeamTemplate): it moves her only while the stick, past half (InputSizeThreshold 0.5), points
+    // in the world within kBeamCone of where she faces (InputForwardThresholdDegrees 46), and a push
+    // beyond 134 degrees turns her round; under the fixed camera above the beam that way is seen, not
+    // known. The lead sounds where she faces in the stick's frame (`facing`, degrees right of the
+    // stick's forward; behind, muffled), with the double ping while the stick (its x right, y up, -1
+    // to 1) points within the cone.
+    constexpr double kBeamCone = 46.0;
+    constexpr double kBeamPush = 0.5;
+    struct BeamLead
+    {
+        double pan = 0.0;
+        bool locked = false;
+        bool muffled = false;
+    };
+    BeamLead LeadAlongBeam(double facing, double stickX, double stickY);
+
     // The walk ends where the press is taken only once she has come to rest there, still for
     // kRestFor on end: let go, she takes a stopping step, and at the lodge's patio door on 2026-11-05
     // the walk ended 0.4 s after the press would be taken, the moment her speed first read still,
     // and the step carried her out of the door's place. Moving on for kRestMax she is let go as she
+    // Whether she moves, by where she stands rather than by the game's velocity: the velocity follows
+    // the animation's own motion, which goes on while her capsule pushes against something. At the
+    // cable car's upper station on 2026-11-07 Matt pushed against something for five seconds at 111 to
+    // 140 cm/s without moving a centimetre, and the walk, taking the speed for progress, never leaned
+    // another way; the same push from the same spot half a minute later walked him through
+    // (research/sessions/s55-full.log). Moving: kMovingCm within kMovingWindow; still: less than
+    // kStillCm within kStillWindow (10 cm/s, the speed a turn on the spot stays under).
+    constexpr double kMovingWindow = 0.5;
+    constexpr double kMovingCm = 8.0;
+    constexpr double kStillWindow = 0.25;
+    constexpr double kStillCm = 2.5;
+    class Motion
+    {
+    public:
+        void Reset()
+        {
+            m_samples.clear();
+        }
+        // Where she stands on a frame.
+        void Update(double now, const Vec& here);
+        // How far she has gone, over the ground, within the last `seconds`; nothing known is nothing gone.
+        double MovedWithin(double now, double seconds) const;
+        bool Moving(double now) const
+        {
+            return MovedWithin(now, kMovingWindow) >= kMovingCm;
+        }
+        // Still: watched for the whole window, and gone less than kStillCm in it.
+        bool Still(double now) const;
+        // Her speed over the ground, from the samples within the window a still is judged by, in cm/s.
+        double Speed(double now) const;
+
+    private:
+        std::deque<std::pair<double, Vec>> m_samples;
+    };
+
     // is. A look at which the press would not be taken starts the rest over (Reset).
     constexpr double kRestFor = 0.5;
     constexpr double kRestMax = 2.0;
@@ -232,5 +295,57 @@ namespace da::look
         Vec m_flickedFrom;         // where she stood at the last push
         double m_flickedFacing = 0.0;
         int m_dead = 0;
+    };
+
+    // The aim sound of a look's lead, the camera's turn or hers by the stick: on the side of the
+    // thing, higher above and lower below, quicker as the turn left to make shrinks, the double ping
+    // while the game would take the press. The game takes the look wherever its glint lies within
+    // the screen's ellipse, and the sessions' logs have it taken as far as 80 degrees across and 24 up
+    // or down of where the glint stands; with the shooting aim's scales (12 degrees across, 6 up and
+    // down, 25 for the pace) three in four of the leads' blips sounded alike, telling the side and
+    // never nearer or further: in s47 the look went 46 and 91 degrees off and came back with no change
+    // heard (research/sessions/s46-full.log to s56-full.log, the audit of 2026-11-08). The pan follows
+    // the turn over kLookPanSpan, the pitch over kLookRiseSpan, the pace over kLookPaceSpan.
+    constexpr double kLookPanSpan = 45.0;
+    constexpr double kLookRiseSpan = 30.0;
+    constexpr double kLookPaceSpan = 90.0;
+    struct LookBlip
+    {
+        double pan = 0.0;   // -1 left .. 1 right
+        double level = 0.5; // 0 low .. 1 high
+        double interval = 0.12;
+        bool locked = false;
+        bool muffled = false;
+    };
+    LookBlip LookSound(double across, double rise, bool lookedAt);
+
+    // The thing she has just used is led to no more until the player chooses it again or she leaves
+    // its place: handed back after a door tried or a photo seen, she stands in the thing's place
+    // facing away from it, and "turn to it" was said for the thing just used 23 times in sessions 46
+    // to 56, 140 to 176 degrees behind her, and never followed (the audit of 2026-11-08; s56 23:51:48
+    // after the lodge's patio door was tried).
+    class JustUsed
+    {
+    public:
+        // Bound to the interaction of `thing`.
+        void Used(const void* thing)
+        {
+            m_thing = thing;
+        }
+        // The player chose a target.
+        void Chosen()
+        {
+            m_thing = nullptr;
+        }
+        // The look's subject at this look (none when she is in no thing's place): whether its lead
+        // waits. A subject other than the thing used, or none, lets the thing go.
+        bool Waits(const void* subject)
+        {
+            if (m_thing && subject != m_thing) m_thing = nullptr;
+            return subject != nullptr && subject == m_thing;
+        }
+
+    private:
+        const void* m_thing = nullptr;
     };
 }

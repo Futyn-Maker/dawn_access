@@ -132,6 +132,7 @@ namespace da::rooms
         bool proves = false;  // the map ran out of cells within its bound: whatever it has not reached is closed off
         int reach = 0;        // the map's verdict: 0 none yet, 1 reached, 2 closed off, 3 not reached with a door in what it reached
         bool offered = false; // the game offers it to her now
+        bool stuck = false;   // the map, done, opened too few cells to judge by: it began where she stands boxed in for a moment
     };
 
     // Judges a thing at a look, with its verdict at the last one. Reached or offered, it is in. No
@@ -145,13 +146,27 @@ namespace da::rooms
     // itself (the mine's police tape and carts, listed for three seconds when Mike's hold began on
     // 2026-11-04, the first map of the hold taking six). Once the map is done, the thing is apart only
     // by its proof: whatever it could not prove (cut short by its budget or its bound) is in, since only
-    // a proven wall may take a thing off the list.
+    // a proven wall may take a thing off the list. A map that opened too few cells to judge by
+    // (`stuck`) says nothing of the ground either way, and the verdicts before it stand: on the
+    // asylum's walkway on 2026-11-07 Mike's capsule stood for a moment in a cell boxed in at the
+    // ledge's edge, maps of one cell came between maps of 108, and with each the forty things of the
+    // building came back on the list ("hospital writing on wall, 46 m") and went again.
     Verdict Judge(const Facts& facts, Verdict before);
 
     // Whether a way on is offered by the reach map's verdict: not one the ground was proven
     // closed off from (`enclosed`), nor one beyond a door (`reach` 3: the door is listed, and
     // what lies behind it is another room's), but one the path she is held to runs into.
     bool WayOffered(bool enclosed, int reach, bool pathReach);
+
+    // The reach map's verdict a way on is offered by (WayOffered), as Judge gives a thing its room:
+    // this map's once it has judged the way (`judgedNow`); while the map runs without having got to
+    // the way yet, or is stuck, the verdict an earlier map gave it and the ground kept (`reach`,
+    // ways::KeptReach); none once the map is done without one, since only a proven wall takes a way
+    // off the list. Every map begun as she walked off the ground the last one reached offered every
+    // way found beyond a door again until it got to it: in the asylum's hall on 2026-11-07 the ways
+    // to the morgue, the church and the grounds were listed for one to fifteen seconds at each new
+    // map, "Путь дальше" said six times over, and walks to them could not get there.
+    int WayReach(bool judgedNow, bool running, bool stuck, int reach);
 
     // The point a thing's room is told by: the spot the character is put on to use it, raised to
     // the height of her middle, where the rooms' volumes reach whatever the floor's height.

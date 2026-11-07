@@ -197,12 +197,17 @@ namespace da::rooms
     {
         if (f.offered || f.reach == 1) return Verdict::In;
         const bool judged = before == Verdict::In || before == Verdict::Apart;
-        if (!f.settled || (f.reach == 0 && f.running)) return judged ? before : Verdict::Waits;
+        if (!f.settled || (f.reach == 0 && f.running) || f.stuck) return judged ? before : Verdict::Waits;
         return f.proves && (f.reach == 2 || f.reach == 3) ? Verdict::Apart : Verdict::In;
     }
 
     bool WayOffered(bool enclosed, int reach, bool pathReach)
     {
         return pathReach || (!enclosed && reach != 3);
+    }
+
+    int WayReach(bool judgedNow, bool running, bool stuck, int reach)
+    {
+        return judgedNow || running || stuck ? reach : 0;
     }
 }

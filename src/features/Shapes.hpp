@@ -70,6 +70,21 @@ namespace da::shapes
     // (the hull's by the Gilbert-Johnson-Keerthi distance over the hull's points).
     double Distance(const Hull& hull, const Vec& a, const Vec& b);
     double Distance(const Shape& shape, const Vec& a, const Vec& b);
+    // The same for a convex piece, with `gap` set to the way from the segment's nearest point to the
+    // piece's, as long as the distance (none where they meet).
+    double HullGap(const Hull& hull, const Vec& a, const Vec& b, Vec& gap);
+
+    // Where the shape lies nearest the segment ab: how far, and the way there from the segment's
+    // nearest point, as long as the distance (none where they meet). A way on's volume is set off
+    // where her capsule first touches it, not at its middle: the cinema's trigger at the lodge, a
+    // room 11 m across, was said 8 m off, behind and to the left, as Sam stood 1.5 m short of its near
+    // side and walked into it three seconds later (research/sessions/s56-full.log, 23:50:45).
+    struct Gap
+    {
+        double distance = 0.0;
+        Vec toward;
+    };
+    Gap Nearest(const Shape& shape, const Vec& a, const Vec& b);
 
     // Whether an upright capsule with its middle at `middle` touches the shape: the segment
     // between the middles of its end spheres comes within its radius of a piece.

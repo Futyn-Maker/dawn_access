@@ -13,6 +13,8 @@ namespace da::diag
     void DumpScreen();
     // The folder the dumps go to, made if need be; empty before the mod's folder is known.
     std::wstring DumpsDirectory();
+    // The mod's own folder; empty before it is known.
+    std::wstring ModDirectory();
 
     void ToggleTrace();
     // Sets the log level and keeps it in the ini for the next session.

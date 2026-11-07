@@ -41,9 +41,9 @@ namespace da::shapes
             return Add(a, Mul(ab, std::clamp(Dot(Sub(p, a), ab) / length, 0.0, 1.0)));
         }
 
-        // The distance between the segments p1q1 and p2q2 (Ericson, Real-Time Collision
-        // Detection, 5.1.9).
-        double SegmentsApart(const Vec& p1, const Vec& q1, const Vec& p2, const Vec& q2)
+        // The gap between the segments p1q1 and p2q2, from the nearest point of the second to the
+        // nearest point of the first (Ericson, Real-Time Collision Detection, 5.1.9).
+        Vec SegmentsGap(const Vec& p1, const Vec& q1, const Vec& p2, const Vec& q2)
         {
             constexpr double eps = 1e-9;
             const Vec d1 = Sub(q1, p1);
@@ -86,7 +86,12 @@ namespace da::shapes
                     }
                 }
             }
-            const Vec gap = Sub(Add(p1, Mul(d1, s)), Add(p2, Mul(d2, t)));
+            return Sub(Add(p1, Mul(d1, s)), Add(p2, Mul(d2, t)));
+        }
+
+        double SegmentsApart(const Vec& p1, const Vec& q1, const Vec& p2, const Vec& q2)
+        {
+            const Vec gap = SegmentsGap(p1, q1, p2, q2);
             return std::sqrt(Dot(gap, gap));
         }
 
@@ -302,6 +307,13 @@ namespace da::shapes
 
     double Distance(const Hull& hull, const Vec& a0, const Vec& b0)
     {
+        Vec gap;
+        return HullGap(hull, a0, b0, gap);
+    }
+
+    double HullGap(const Hull& hull, const Vec& a0, const Vec& b0, Vec& gap)
+    {
+        gap = Vec{};
         if (hull.points.empty()) return kFar;
         // Measured about a corner of the hull, for precision far from the world's origin.
         const Vec o = hull.points.front();
@@ -330,7 +342,11 @@ namespace da::shapes
         for (int i = 0; i < 64; ++i)
         {
             const double vv = Dot(v, v);
-            if (vv <= 1e-12) return 0.0;
+            if (vv <= 1e-12)
+            {
+                gap = Vec{};
+                return 0.0;
+            }
             const Vec w = support(Mul(v, -1.0));
             // No point of the difference lies nearer the origin than v by more than the tolerance.
             if (vv - Dot(v, w) <= 1e-9 * vv + 1e-9) break;
@@ -355,12 +371,58 @@ namespace da::shapes
             case 3: next = NearestOnTriangle(s.p[0], s.p[1], s.p[2], keep); break;
             default: next = NearestOnTetrahedron(s.p[0], s.p[1], s.p[2], s.p[3], keep, inside); break;
             }
-            if (inside) return 0.0;
+            if (inside)
+            {
+                gap = Vec{};
+                return 0.0;
+            }
             s = keep;
             if (Dot(next, next) >= vv) break;
             v = next;
         }
+        // v is a point of the segment less a point of the hull: the hull lies the other way.
+        gap = Mul(v, -1.0);
         return std::sqrt(Dot(v, v));
+    }
+
+    Gap Nearest(const Shape& shape, const Vec& a, const Vec& b)
+    {
+        Gap best;
+        best.distance = kFar;
+        for (const auto& hull : shape.hulls)
+        {
+            Vec toward;
+            const double d = HullGap(hull, a, b, toward);
+            if (d < best.distance)
+            {
+                best.distance = d;
+                best.toward = toward;
+            }
+        }
+        for (const auto& ball : shape.balls)
+        {
+            const Vec onSegment = NearestOnSegment(ball.middle, a, b);
+            const Vec gap = Sub(ball.middle, onSegment);
+            const double length = std::sqrt(Dot(gap, gap));
+            const double d = std::max(0.0, length - ball.radius);
+            if (d < best.distance)
+            {
+                best.distance = d;
+                best.toward = length > 0.0 ? Mul(gap, d / length) : Vec{};
+            }
+        }
+        for (const auto& pill : shape.pills)
+        {
+            const Vec gap = Mul(SegmentsGap(a, b, pill.a, pill.b), -1.0);
+            const double length = std::sqrt(Dot(gap, gap));
+            const double d = std::max(0.0, length - pill.radius);
+            if (d < best.distance)
+            {
+                best.distance = d;
+                best.toward = length > 0.0 ? Mul(gap, d / length) : Vec{};
+            }
+        }
+        return best;
     }
 
     double Distance(const Shape& shape, const Vec& a, const Vec& b)

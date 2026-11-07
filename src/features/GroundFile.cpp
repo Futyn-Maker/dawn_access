@@ -58,7 +58,9 @@ namespace da::ground
 
     std::string ProbeLine(const Probe& p)
     {
-        if (p.found) return "F " + std::to_string(p.x) + " " + std::to_string(p.y) + " " + std::to_string(p.level) + " " + Num(p.floor) + " " + Num(p.normalZ);
+        if (p.found)
+            return "F " + std::to_string(p.x) + " " + std::to_string(p.y) + " " + std::to_string(p.level) + " " + Num(p.floor) + " " + Num(p.normalZ) +
+                   (p.on.empty() ? std::string() : " " + p.on);
         return "N " + std::to_string(p.x) + " " + std::to_string(p.y) + " " + std::to_string(p.level) + " " + std::string(1, p.why ? p.why : 'n');
     }
 
@@ -67,9 +69,17 @@ namespace da::ground
         std::string line = "S " + std::to_string(s.from.x) + " " + std::to_string(s.from.y) + " " + std::to_string(s.from.level) + " " + std::to_string(s.bx) +
                            " " + std::to_string(s.by) + " ";
         if (s.free)
-            line += std::to_string(s.land) + " - " + Num(s.clear);
+            line += std::to_string(s.land) + (s.why == 'M' ? " M " : " - ") + Num(s.clear);
         else
-            line += "X " + std::string(1, s.why ? s.why : '?') + " " + Num(s.clear);
+            line += "X " + std::string(1, s.why ? s.why : '?') + " " + Num(s.clear) + (s.on.empty() ? std::string() : " " + s.on);
+        return line;
+    }
+
+    std::string LevelsLine(const Levels& l)
+    {
+        std::string line = l.in ? "L in" : "L out";
+        for (const auto& name : l.names)
+            line += " " + name;
         return line;
     }
 
@@ -141,6 +151,7 @@ namespace da::ground
                 p.found = true;
                 if (ToInt(f[1], p.x) && ToInt(f[2], p.y) && ToInt(f[3], p.level) && ToDouble(f[4], p.floor) && ToDouble(f[5], p.normalZ))
                 {
+                    if (f.size() >= 7) p.on = std::string(f[6]);
                     probes.push_back(p);
                     if (anchors.empty() || anchors.back().level <= 0.0) continue;
                     floors.emplace(std::tuple<int, int, int>{p.x, p.y, static_cast<int>(std::floor(p.floor / anchors.back().level))}, p.floor);
@@ -181,6 +192,7 @@ namespace da::ground
                 {
                     s.free = false;
                     s.why = f[7].empty() ? '?' : f[7][0];
+                    if (f.size() >= 10) s.on = std::string(f[9]);
                 }
                 else
                 {
@@ -189,6 +201,16 @@ namespace da::ground
                 }
                 steps.push_back(s);
                 if (s.free) stepLevels[StepKey{s.from.x, s.from.y, s.from.level, s.bx, s.by}] = s.land;
+            }
+            else if (f[0] == "L" && f.size() >= 2 && (f[1] == "in" || f[1] == "out"))
+            {
+                Levels l;
+                l.in = f[1] == "in";
+                for (size_t i = 2; i < f.size(); ++i)
+                    l.names.emplace_back(f[i]);
+                l.steps = steps.size();
+                l.probes = probes.size();
+                levels.push_back(std::move(l));
             }
             else if (f[0] == "Q" && f.size() >= 9)
             {
@@ -251,18 +273,32 @@ namespace da::ground
         return header;
     }
 
-    grid::Passable Record::Passable(int* unknown) const
+    std::optional<int> Record::FreeStep(grid::Cell from, int bx, int by) const
     {
-        return [this, unknown](grid::Cell from, grid::Cell& to)
+        const auto it = stepLevels.find(StepKey{from.x, from.y, from.level, bx, by});
+        if (it == stepLevels.end()) return std::nullopt;
+        return it->second;
+    }
+
+    grid::Passable Record::Passable(int* unknown, bool mirror) const
+    {
+        return [this, unknown, mirror](grid::Cell from, grid::Cell& to)
         {
-            const auto it = stepLevels.find(StepKey{from.x, from.y, from.level, to.x, to.y});
-            if (it == stepLevels.end())
+            if (const auto land = FreeStep(from, to.x, to.y))
             {
-                if (unknown && Find(from, to.x, to.y) == nullptr) ++*unknown;
-                return false;
+                to.level = *land;
+                return true;
             }
-            to.level = it->second;
-            return true;
+            if (mirror)
+            {
+                if (const auto back = grid::MirroredLanding([this](grid::Cell f, int x, int y) { return FreeStep(f, x, y); }, from, to.x, to.y))
+                {
+                    to.level = *back;
+                    return true;
+                }
+            }
+            if (unknown && Find(from, to.x, to.y) == nullptr) ++*unknown;
+            return false;
         };
     }
 

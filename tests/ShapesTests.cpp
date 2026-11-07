@@ -206,3 +206,42 @@ TEST_CASE("the lodge's garage door, shut, is a wall to the steps through its doo
     swung.hulls.push_back(openBox);
     CHECK_FALSE(shapes::SweepTouches(swung, middle(90, 70), middle(90, 69), radius, half));
 }
+
+TEST_CASE("a volume lies where her capsule would first touch it: the lodge's cinema trigger, 2026-11-07")
+{
+    // T_samsbath_findcinema as the ground record keeps it (research/dumps/ground-20261107-234549.tsv):
+    // a slab the size of the room, turned 10 degrees. Sam stood at (2163, -7990, 3060) when the game
+    // turned it on, its middle 8 m off; she walked into its near side three seconds later.
+    shapes::Shape room;
+    room.hulls.push_back(shapes::Hull{{{1501.10, -6686.43, 3352.48},
+                                       {2481.67, -6855.00, 3352.48},
+                                       {1332.53, -7667.00, 3352.48},
+                                       {2313.10, -7835.57, 3352.48},
+                                       {1332.53, -7667.00, 2357.52},
+                                       {2313.10, -7835.57, 2357.52},
+                                       {1501.10, -6686.43, 2357.52},
+                                       {2481.67, -6855.00, 2357.52}}});
+    const shapes::Vec bottom{2163.0, -7990.0, 3060.0 - 48.0};
+    const shapes::Vec top{2163.0, -7990.0, 3060.0 + 48.0};
+    const auto gap = shapes::Nearest(room, bottom, top);
+    CHECK(gap.distance == doctest::Approx(177.6).epsilon(0.01));
+    CHECK(gap.distance == doctest::Approx(shapes::Distance(room, bottom, top)));
+    // The way there: north, a little east, to the point of its near side (2193, -7815).
+    CHECK(std::hypot(gap.toward.x, gap.toward.y, gap.toward.z) == doctest::Approx(gap.distance).epsilon(0.001));
+    CHECK(gap.toward.x == doctest::Approx(30.1).epsilon(0.02));
+    CHECK(gap.toward.y == doctest::Approx(175.1).epsilon(0.02));
+    // Inside it, nothing to go.
+    const auto inside = shapes::Nearest(room, shapes::Vec{1900.0, -7260.0, 2900.0}, shapes::Vec{1900.0, -7260.0, 3000.0});
+    CHECK(inside.distance == 0.0);
+    // A ball and a capsule answer the same way.
+    shapes::Shape ball;
+    ball.balls.push_back(shapes::Ball{{100.0, 0.0, 0.0}, 30.0});
+    const auto b = shapes::Nearest(ball, shapes::Vec{0.0, 0.0, -10.0}, shapes::Vec{0.0, 0.0, 10.0});
+    CHECK(b.distance == doctest::Approx(70.0));
+    CHECK(b.toward.x == doctest::Approx(70.0));
+    shapes::Shape pill;
+    pill.pills.push_back(shapes::Pill{{0.0, 200.0, -50.0}, {0.0, 200.0, 50.0}, 20.0});
+    const auto c = shapes::Nearest(pill, shapes::Vec{0.0, 0.0, -10.0}, shapes::Vec{0.0, 0.0, 10.0});
+    CHECK(c.distance == doctest::Approx(180.0));
+    CHECK(c.toward.y == doctest::Approx(180.0));
+}

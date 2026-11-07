@@ -299,7 +299,21 @@ namespace da::scripts
             std::vector<std::wstring> calls;
             std::vector<std::wstring> activities;
             std::vector<int> waits;
+            bool enables = false; // turns on an activity (SF_SetEnableActivity with enable = true)
         };
+
+        // Whether a text turns an activity on for the player to use.
+        bool EnablesIn(const std::wstring& text)
+        {
+            static const std::wregex call(LR"re(SF_SetEnableActivity\s*\(\s*sm\s*,\s*\{([^}]*)\})re");
+            static const std::wregex on(LR"re(enable\s*=\s*true)re");
+            for (auto it = std::wsregex_iterator(text.begin(), text.end(), call); it != std::wsregex_iterator(); ++it)
+            {
+                const auto args = (*it)[1].str();
+                if (std::regex_search(args, on)) return true;
+            }
+            return false;
+        }
 
         void Take(Path& path, const std::wstring& text)
         {
@@ -308,6 +322,7 @@ namespace da::scripts
             {
                 if (std::find(path.activities.begin(), path.activities.end(), a) == path.activities.end()) path.activities.push_back(a);
             }
+            if (EnablesIn(text)) path.enables = true;
         }
 
         void WalkFrom(const Machine& machine, int state, Path& path, std::set<int>& visited)
@@ -538,6 +553,11 @@ namespace da::scripts
         return !activity.empty() && !str::StartsWith(activity, L"PAO_") && !str::StartsWith(activity, L"pao_");
     }
 
+    bool StoryActor(std::wstring_view coreName, bool background, bool performance)
+    {
+        return !background && !performance && (coreName.empty() || StoryActivity(coreName));
+    }
+
     bool ParseEnterEvent(const std::wstring& script, EnterEvent& out)
     {
         static const std::wregex header(LR"re(gEvents\["EnterTrigger"\]\["([^"]+)"\])re");
@@ -592,6 +612,47 @@ namespace da::scripts
         return MovesOn(calls, path.activities, false);
     }
 
+    std::vector<ActivitySwitch> ParseActivitySwitches(const std::wstring& script)
+    {
+        static const std::wregex header(LR"re(gEvents\["(EnterTrigger|LeaveTrigger)"\]\["([^"]+)"\])re");
+        static const std::wregex call(LR"re(SF_SetEnableActivity\s*\(\s*sm\s*,\s*\{([^}]*)\})re");
+        static const std::wregex activity(LR"re(activit(?:y|ies)\s*=\s*"([^"]*)")re");
+        static const std::wregex on(LR"re(enable\s*=\s*true)re");
+        std::vector<ActivitySwitch> switches;
+        std::wsmatch m;
+        if (!std::regex_search(script, m, header)) return switches;
+        const bool leave = m[1].str() == L"LeaveTrigger";
+        const std::wstring trigger = m[2].str();
+        for (auto it = std::wsregex_iterator(script.begin(), script.end(), call); it != std::wsregex_iterator(); ++it)
+        {
+            const auto args = (*it)[1].str();
+            std::wsmatch a;
+            if (!std::regex_search(args, a, activity)) continue;
+            const bool enable = std::regex_search(args, on);
+            for (const auto& one : str::Split(a[1].str(), L','))
+            {
+                const auto name = str::Trim(one);
+                if (!name.empty()) switches.push_back(ActivitySwitch{trigger, leave, std::wstring(name), enable});
+            }
+        }
+        return switches;
+    }
+
+    std::map<std::wstring, std::vector<std::wstring>> OffInside(const std::vector<ActivitySwitch>& switches)
+    {
+        std::map<std::wstring, std::vector<std::wstring>> off;
+        for (const auto& in : switches)
+        {
+            if (in.leave || in.enable) continue;
+            const bool back = std::any_of(switches.begin(), switches.end(), [&](const ActivitySwitch& out)
+                                          { return out.leave && out.enable && out.trigger == in.trigger && out.activity == in.activity; });
+            if (!back) continue;
+            auto& volumes = off[in.activity];
+            if (std::find(volumes.begin(), volumes.end(), in.trigger) == volumes.end()) volumes.push_back(in.trigger);
+        }
+        return off;
+    }
+
     std::vector<Poll> ParsePolls(const std::wstring& script, const std::wstring& source)
     {
         std::vector<Poll> polls;
@@ -624,9 +685,49 @@ namespace da::scripts
                         p.leaves = leaves;
                         p.calls = path.calls;
                         p.activities = path.activities;
-                        p.story = !q.negated && waits && leaves && MovesOn(path.calls, path.activities, true) && !ComesBack(machine, number, path);
+                        // Turning on a thing to use once she stands there moves the scene on too: she can
+                        // only bring it about by standing there.
+                        p.story = !q.negated && waits && leaves && (MovesOn(path.calls, path.activities, true) || path.enables) &&
+                                  !ComesBack(machine, number, path);
                         polls.push_back(std::move(p));
                         restsIn.push_back(path.waits);
+                    }
+                }
+            }
+        }
+        // A way on that comes to rest in a state the scene keeps only while she stands there (it
+        // asks there whether she has left the volume, and goes back if she has) moves the scene on as
+        // that state's other ways on do: act4_3's Scene03_look_for_map asks in its state 12 whether
+        // Matt stands in T_Cam_station_Interior_20b by the ladder, and in its state 11, while he
+        // does, waits for Emily to pick up her torch and turns on the climb down. The volume was
+        // judged nothing of the story's, and Matt stood about the station with nothing to walk to
+        // (2026-11-07).
+        for (size_t i = 0; i < polls.size(); ++i)
+        {
+            Poll& p = polls[i];
+            if (p.story || p.negated || !p.waits || !p.leaves) continue;
+            const auto machine = machines.find(p.machine);
+            if (machine == machines.end()) continue;
+            const auto asks = [&](const Question& q) { return std::find(q.triggers.begin(), q.triggers.end(), p.trigger) != q.triggers.end(); };
+            for (const int rest : restsIn[i])
+            {
+                if (rest == p.state || p.story) continue;
+                const auto found = machine->second.states.find(rest);
+                if (found == machine->second.states.end()) continue;
+                std::vector<std::pair<const Block*, Question>> asked;
+                Questions(found->second.blocks, asked);
+                const bool kept =
+                    std::any_of(asked.begin(), asked.end(), [&](const auto& a) { return a.second.negated && SameCharacter(a.second.who, p.who) && asks(a.second); });
+                if (!kept) continue;
+                for (const auto& block : found->second.blocks)
+                {
+                    const auto questions = QuestionsIn(block.condition);
+                    if (std::any_of(questions.begin(), questions.end(), asks) || JumpsIn(block.text).empty()) continue;
+                    const Path on = Follow(machine->second, rest, block.text);
+                    if (MovesOn(on.calls, on.activities, true) || on.enables)
+                    {
+                        p.story = true;
+                        break;
                     }
                 }
             }

@@ -402,7 +402,7 @@ TEST_CASE("the woods' start: the way at the duck-under alone is listed, and only
             entries[i].known = woods[i].reached;
         }
         const bool due = lister.Due(settle, settlesNow, now);
-        lister.Judge(entries, settle, due, true, now, [&](size_t way, size_t other)
+        lister.Judge(entries, settle, due, true, true, now, [&](size_t way, size_t other)
                      { return woods[other].road.size() >= 2 && ways::RoadEntersBox(woods[way].box, woods[other].road, 42.0, 90.0); });
         Listing look;
         look.at = now;
@@ -540,7 +540,7 @@ TEST_CASE("a way the game turns on beside the character waits for the map, and a
             entries[i].closedOff = done && !targets[i].reached && !targets[i].way;
         }
         const bool due = lister.Due(settle, settlesNow, now);
-        lister.Judge(entries, settle, due, true, now, [&](size_t way, size_t other)
+        lister.Judge(entries, settle, due, true, true, now, [&](size_t way, size_t other)
                      { return targets[other].road.size() >= 2 && ways::RoadEntersBox(targets[way].box, targets[other].road, 42.0, 90.0); });
         everListed = everListed || (!entries[0].unjudged && entries[0].onRoadOf < 0);
         keptAlways = keptAlways && !entries[2].unjudged && entries[2].onRoadOf < 0;
@@ -593,7 +593,7 @@ TEST_CASE("a way the list said stays listed while a map begun as she walked on h
             entries[0].known = flood.BestIn({398, 2, 0}, 1.5, 4, best);
             reachedBeforeSettling = reachedBeforeSettling || (entries[0].known && !settle.Settled());
             const bool settlesNow = settle.Update(now, flood.Current() != grid::Flood::State::Running, entries[0].known ? 1 : 0, 1);
-            lister.Judge(entries, settle, lister.Due(settle, settlesNow, now), true, now, [](size_t, size_t) { return false; });
+            lister.Judge(entries, settle, lister.Due(settle, settlesNow, now), true, true, now, [](size_t, size_t) { return false; });
             listed.push_back(!entries[0].unjudged && entries[0].onRoadOf < 0);
         }
         CHECK(settle.Settled());
@@ -627,17 +627,17 @@ TEST_CASE("with neither a map nor the navigation mesh to judge the roads, a list
     settle.Clear(); // the mesh gave the roads
     ways::Lister lister;
     const auto never = [](size_t, size_t) { return false; };
-    lister.Judge(entries, settle, lister.Due(settle, false, 0.0), false, 0.0, never);
+    lister.Judge(entries, settle, lister.Due(settle, false, 0.0), false, true, 0.0, never);
     CHECK_FALSE(entries[0].unjudged);
     CHECK(entries[1].onRoadOf == 0);
     // With a judge again the list follows it.
-    lister.Judge(entries, settle, lister.Due(settle, false, 0.0), true, 0.0, never);
+    lister.Judge(entries, settle, lister.Due(settle, false, 0.0), true, true, 0.0, never);
     CHECK(entries[0].unjudged);
     // A fresh hold before its first map lists no way, judge or none.
     ways::Settling fresh;
     fresh.Reset();
     entries[0].unjudged = false;
-    lister.Judge(entries, fresh, false, false, 1.0, never);
+    lister.Judge(entries, fresh, false, false, true, 1.0, never);
     CHECK(entries[0].unjudged);
 }
 
@@ -982,7 +982,7 @@ TEST_CASE("the list's verdicts stand once the hold's first map is done, though t
     e[2].distance = 4518.0; // T_ExitMine
     bool through = true;    // the road to the way out runs through the nearer two
     const auto enters = [&](size_t way, size_t other) { return through && other == 2 && way != 2; };
-    lister.Judge(e, settle, lister.Due(settle, true, 1.0), true, 1.0, enters);
+    lister.Judge(e, settle, lister.Due(settle, true, 1.0), true, true, 1.0, enters);
     CHECK(e[0].onRoadOf == 2);
     CHECK(e[1].onRoadOf == 2);
     CHECK(e[2].onRoadOf == -1);
@@ -992,7 +992,7 @@ TEST_CASE("the list's verdicts stand once the hold's first map is done, though t
     for (double now = 2.0; now < 6.0; now += 1.0)
     {
         lister.Again();
-        lister.Judge(e, settle, lister.Due(settle, false, now), true, now, enters);
+        lister.Judge(e, settle, lister.Due(settle, false, now), true, true, now, enters);
         CHECK(e[0].onRoadOf == 2);
         CHECK(e[1].onRoadOf == 2);
         CHECK(e[2].onRoadOf == -1);
@@ -1005,20 +1005,20 @@ TEST_CASE("the list's verdicts stand once the hold's first map is done, though t
     e[3].distance = 900.0;
     through = true;
     lister.Again();
-    lister.Judge(e, settle, lister.Due(settle, false, 7.0), true, 7.0, enters);
+    lister.Judge(e, settle, lister.Due(settle, false, 7.0), true, true, 7.0, enters);
     CHECK(e[3].onRoadOf == 2);
     CHECK(e[3].passed);
     // A way whose road-giver left the list is judged afresh (ChooseListed takes its verdict back).
     through = false;
     e[0].passed = false;
     lister.Again();
-    lister.Judge(e, settle, lister.Due(settle, false, 8.0), true, 8.0, enters);
+    lister.Judge(e, settle, lister.Due(settle, false, 8.0), true, true, 8.0, enters);
     CHECK(e[0].onRoadOf == -1);
     CHECK(e[1].onRoadOf == 2);
     // A new hold judges every one afresh by the roads of now.
     lister.NewHold();
     CHECK_FALSE(lister.Frozen());
-    lister.Judge(e, settle, lister.Due(settle, false, 9.0), true, 9.0, enters);
+    lister.Judge(e, settle, lister.Due(settle, false, 9.0), true, true, 9.0, enters);
     CHECK(e[1].onRoadOf == -1);
     CHECK(e[3].onRoadOf == -1);
     // Frozen at once in a new hold (its map was done before it began), the last hold's verdicts are
@@ -1026,7 +1026,7 @@ TEST_CASE("the list's verdicts stand once the hold's first map is done, though t
     through = true;
     lister.NewHold();
     lister.Freeze();
-    lister.Judge(e, settle, lister.Due(settle, false, 10.0), true, 10.0, enters);
+    lister.Judge(e, settle, lister.Due(settle, false, 10.0), true, true, 10.0, enters);
     CHECK(e[1].onRoadOf == 2);
     CHECK(e[3].onRoadOf == 2);
 }
@@ -1219,7 +1219,7 @@ TEST_CASE("a door opened in a short exchange gives every verdict anew: the way o
     e[0].unreachable = true;
     e[1].unreachable = true;
     const auto roads = [&](size_t way, size_t other) { return way == 0 && other == 1 && enters; };
-    lister.Judge(e, settle, lister.Due(settle, true, 1.0), true, 1.0, roads);
+    lister.Judge(e, settle, lister.Due(settle, true, 1.0), true, true, 1.0, roads);
     lister.Freeze();
     const int wayThen = 3, phoneThen = 3; // how the map judged them at the freeze
     // The door opens; she stands where she stood, so the hold takes its list up again.
@@ -1229,7 +1229,7 @@ TEST_CASE("a door opened in a short exchange gives every verdict anew: the way o
     e[1].unreachable = false;
     if (ways::Reopened(phoneThen, 1) || ways::Reopened(wayThen, 1)) lister.NewHold();
     CHECK_FALSE(lister.Frozen());
-    lister.Judge(e, settle, lister.Due(settle, false, 30.0), true, 30.0, roads);
+    lister.Judge(e, settle, lister.Due(settle, false, 30.0), true, true, 30.0, roads);
     // The way lies on the road to the answerphone, and only the answerphone is listed.
     CHECK(e[0].onRoadOf == 1);
     // A target reached then and now, or out of reach then and now, reopens nothing.
@@ -1323,12 +1323,487 @@ TEST_CASE("only what the game has just turned on is news, not what comes within 
     // research/sessions/s45-full.log. The lodge's baseball bat was seen off from 23:05:30 and turned on
     // at 23:34:46.121 when Sam took the torch; it joined the list at once: news ("New: baseball bat").
     const double batOn = 0.0;
-    CHECK(ways::IsNews(batOn, 0.012));
+    CHECK(ways::IsNews(batOn, 0.012, false));
     // A way on whose ground takes a while to be known is still news when it is.
-    CHECK(ways::IsNews(batOn, 15.0));
+    CHECK(ways::IsNews(batOn, 15.0, false));
     // Drop Down Emily was on from the moment the level was first looked at (23:47:00), never seen
     // off; it joined the list at 23:53:42, 98.9 m off, as Matt walked within the range: no news.
-    CHECK_FALSE(ways::IsNews(std::nullopt, 400.0));
+    CHECK_FALSE(ways::IsNews(std::nullopt, 400.0, false));
     // Turned on long before it came within the range: no news either.
-    CHECK_FALSE(ways::IsNews(batOn, 300.0));
+    CHECK_FALSE(ways::IsNews(batOn, 300.0, false));
+}
+
+TEST_CASE("the trigger that streams in more of the world is the way on where the map ends: the kitchen's airlock, 2026-11-07")
+{
+    // act4_1, Chris after the kitchen's open door (research/dumps/ground-20261107-001916.tsv, the
+    // third grid, cut by research/tools/cut_ground.py from his cell at (4022, -8651)): the map ran
+    // through the airlock to a strip of the porch and stopped at its edge, "no floor". The porch's
+    // stairs, the yard and the path to the hanging shed are levels of Section_02, which the game
+    // streams in only once he walks into T_Section2_Load in the airlock's corridor (its slab placed
+    // from the level's own data, research/extract/json_act41); the map judged every way on beyond
+    // closed off and listed none. The trigger itself, reached on foot, is the way on.
+    std::ifstream in(std::filesystem::path(DA_REPO_ROOT) / "tests" / "fixtures" / "ground-kitchen-airlock.tsv");
+    REQUIRE(in.good());
+    const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    ground::Record record;
+    REQUIRE(record.Parse(text));
+    REQUIRE(!record.anchors.empty());
+    const auto& anchor = record.anchors.front();
+    const auto middle = [&](grid::Cell c)
+    {
+        const auto floor = record.floors.find({c.x, c.y, c.level});
+        return Vec{anchor.x + (c.x + 0.5) * anchor.cell, anchor.y + (c.y + 0.5) * anchor.cell,
+                   (floor != record.floors.end() ? floor->second : c.level * anchor.level + anchor.level / 2.0) + anchor.half};
+    };
+    const grid::Cell start{67, 2, 59};
+    grid::Flood flood(start, 550, 120000);
+    const auto passable = record.Passable();
+    while (flood.Current() == grid::Flood::State::Running)
+        flood.Step(64, passable);
+    // Every cell within reach opened: the kitchen, the airlock and the porch's strip.
+    REQUIRE(flood.Current() == grid::Flood::State::Complete);
+    CHECK_FALSE(flood.RadiusReached());
+    CHECK(flood.Expanded() > 2000);
+    // The ground reaches the streaming trigger: his capsule touches its slab in the corridor.
+    REQUIRE(record.volumes.count("T_Section2_Load") == 1);
+    const auto& gate = record.volumes.at("T_Section2_Load");
+    Vec low, high;
+    gate.Bounds(low, high);
+    const Vec at{(low.x + high.x) / 2.0, (low.y + high.y) / 2.0, (low.z + high.z) / 2.0};
+    const grid::Cell goal{static_cast<int>(std::floor((at.x - anchor.x) / anchor.cell)), static_cast<int>(std::floor((at.y - anchor.y) / anchor.cell)),
+                          LevelOf(at.z)};
+    const int reach = static_cast<int>(std::ceil((std::hypot(high.x - low.x, high.y - low.y) / 2.0 + anchor.radius) / anchor.cell)) + 1;
+    grid::Cell touching;
+    REQUIRE(flood.BestWhere(goal, reach, -1, [&](grid::Cell c) { return shapes::CapsuleTouches(gate, middle(c), anchor.radius, anchor.half); }, touching));
+    CHECK(flood.Cost(touching) * anchor.cell < 400.0);
+    // The way on past the yard's gate (T_gate_crows, round (5729, -5010)) lies far beyond the ground.
+    double nearest = 1e9;
+    for (const auto& c : flood.Order())
+    {
+        const Vec m = middle(c);
+        nearest = std::min(nearest, std::hypot(m.x - 5729.0, m.y + 5010.0));
+    }
+    CHECK(nearest > 2000.0);
+    // The map proves what it did not reach closed off, the yard's gate with it, whatever the game has
+    // still to stream in: no map can tell how the ground runs there (a room behind a closed door
+    // stays another room's however many sections the act has still to load).
+    const int opened = static_cast<int>(flood.Expanded());
+    CHECK(ways::MapProves(true, flood.RadiusReached(), opened, 50));
+    // The trigger he reaches is the way on while its section is not loaded, he stands outside it and
+    // the act has not shown the section yet; in it, the section comes in, and with an answer unknown
+    // it is none.
+    CHECK(ways::StreamsMore(false, false, false));
+    CHECK_FALSE(ways::StreamsMore(false, true, false));
+    CHECK_FALSE(ways::StreamsMore(true, false, false));
+    CHECK_FALSE(ways::StreamsMore(std::nullopt, false, false));
+    // A map cut short, or too small, proves nothing either way.
+    CHECK_FALSE(ways::MapProves(false, false, 3000, 50));
+    CHECK_FALSE(ways::MapProves(true, true, 3000, 50));
+    CHECK_FALSE(ways::MapProves(true, false, 20, 50));
+}
+
+TEST_CASE("a use location at the world's origin is no place to walk to: the death machine's, 2026-11-07")
+{
+    // act4_1's I_deathmachinelever and A_joshisdead's use location belong to activities placed at the
+    // origin (LV_Scene02_hanging_shed: their roots carry no placement), and stay there: the list
+    // said "deathmachinelever, 95 m, behind right, lower" from the kitchen, toward the origin.
+    CHECK(ways::Unplaced(Vec{0.0, 0.0, 0.0}));
+    CHECK(ways::Unplaced(Vec{0.4, -0.3, 0.0}));
+    // Placed things, the shed's door among them, are where they are.
+    CHECK_FALSE(ways::Unplaced(Vec{5655.3, 3516.9, 3780.2}));
+    CHECK_FALSE(ways::Unplaced(Vec{70.0, 0.0, 0.0}));
+    CHECK_FALSE(ways::Unplaced(Vec{0.0, 0.0, 2970.0}));
+}
+
+TEST_CASE("a thing the list has shown before is no news when the game turns it on again: the scarecrow's look-at, 2026-11-07")
+{
+    // act4_1: I_scarecrow_lookat is put off while Chris stands in T_scarecrow_lookat_disable and on
+    // again once he leaves it; "New: scarecrow lookat" came each time it was back.
+    const std::optional<double> backOn = 100.0;
+    CHECK(ways::IsNews(backOn, 101.0, false));
+    CHECK_FALSE(ways::IsNews(backOn, 101.0, true));
+    CHECK_FALSE(ways::IsNews(std::nullopt, 101.0, false));
+}
+
+TEST_CASE("a walk goes on only with its own target, or the player's new choice, 2026-11-07")
+{
+    // act4_1: the walk to the scarecrow's look-at turned back to the kitchen's door once the look-at
+    // was put off and the mod chose the door in its place.
+    int lookAt = 0, door = 0, entrails = 0;
+    const void* walkFor = &lookAt;
+    CHECK(ways::WalkGoesOn(walkFor, &lookAt));
+    // Its target gone, and the mod's choice in its place: the walk ends.
+    CHECK_FALSE(ways::WalkGoesOn(walkFor, &door));
+    CHECK_FALSE(ways::WalkGoesOn(walkFor, nullptr));
+    // The player chose another with N: the walk follows the choice.
+    walkFor = &entrails;
+    CHECK(ways::WalkGoesOn(walkFor, &entrails));
+    // No walk.
+    CHECK_FALSE(ways::WalkGoesOn(nullptr, nullptr));
+}
+
+TEST_CASE("the volume that puts her on a beam is the way on where the ground's map ends: the asylum's walkway, 2026-11-07")
+{
+    // act4_2, Mike on the ledge above the cellar after the barrel's climb (research/dumps/
+    // ground-20261107-170946.tsv, the second grid, cut by research/tools/cut_ground.py from his cell
+    // at (28258, 33418)): the map ran down the walkway and stopped at its middle, 108 cells, and the
+    // list stood empty; the way on is over BP_BeamWalk_C_1, whose ActivationVolume
+    // (BP_CharacterTriggerVolume_C_1, an engine cube of 256 scaled 3.41 by 0.28 by 0.5, turned
+    // -60.4 degrees: research/extract/json_act42) runs the walkway's whole length.
+    std::ifstream in(std::filesystem::path(DA_REPO_ROOT) / "tests" / "fixtures" / "ground-asylum-walkway.tsv");
+    REQUIRE(in.good());
+    const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    ground::Record record;
+    REQUIRE(record.Parse(text));
+    REQUIRE(!record.anchors.empty());
+    const auto& anchor = record.anchors.front();
+    const auto middle = [&](grid::Cell c)
+    {
+        const auto floor = record.floors.find({c.x, c.y, c.level});
+        return Vec{anchor.x + (c.x + 0.5) * anchor.cell, anchor.y + (c.y + 0.5) * anchor.cell,
+                   (floor != record.floors.end() ? floor->second : c.level * anchor.level + anchor.level / 2.0) + anchor.half};
+    };
+    const grid::Cell start{-16, 21, 168};
+    grid::Flood flood(start, 550, 120000);
+    const auto passable = record.Passable();
+    while (flood.Current() == grid::Flood::State::Running)
+        flood.Step(64, passable);
+    REQUIRE(flood.Current() == grid::Flood::State::Complete);
+    CHECK(flood.Expanded() == 108);
+    // The walkway's far end, where the guidance passage BP_Doorway_C_10 begins, is not reached.
+    double nearest = 1e9;
+    for (const auto& c : flood.Order())
+    {
+        const Vec m = middle(c);
+        nearest = std::min(nearest, std::hypot(m.x - 28757.0, m.y - 32533.0));
+    }
+    CHECK(nearest > 250.0);
+    // His capsule touches the beam's volume a few steps down the walkway.
+    REQUIRE(record.volumes.count("BP_CharacterTriggerVolume_C_1") == 1);
+    const auto& volume = record.volumes.at("BP_CharacterTriggerVolume_C_1");
+    Vec low, high;
+    volume.Bounds(low, high);
+    const Vec at{(low.x + high.x) / 2.0, (low.y + high.y) / 2.0, (low.z + high.z) / 2.0};
+    const grid::Cell goal{static_cast<int>(std::floor((at.x - anchor.x) / anchor.cell)), static_cast<int>(std::floor((at.y - anchor.y) / anchor.cell)),
+                          LevelOf(at.z)};
+    const int reach = static_cast<int>(std::ceil((std::hypot(high.x - low.x, high.y - low.y) / 2.0 + anchor.radius) / anchor.cell)) + 1;
+    grid::Cell touching;
+    REQUIRE(flood.BestWhere(goal, reach, -1, [&](grid::Cell c) { return shapes::CapsuleTouches(volume, middle(c), anchor.radius, anchor.half); }, touching));
+    CHECK(flood.Cost(touching) * anchor.cell < 300.0);
+    // It is a way on while it is on, the beam does not hold him, and it has not carried him over.
+    CHECK(ways::BeamWay(true, false, false));
+    CHECK_FALSE(ways::BeamWay(false, false, false));
+    CHECK_FALSE(ways::BeamWay(true, true, false));
+    CHECK_FALSE(ways::BeamWay(true, false, true));
+    // Over the walkway's 8.7 m it carried him over; turned back at once, it did not.
+    CHECK(ways::BeamCrossed(Vec{28362.0, 33234.0, 8460.0}, Vec{28794.0, 32476.0, 8460.0}));
+    CHECK_FALSE(ways::BeamCrossed(Vec{28362.0, 33234.0, 8460.0}, Vec{28400.0, 33180.0, 8460.0}));
+}
+
+TEST_CASE("a hold begun afresh off the ground the last map reached keeps none of its verdicts: the asylum's cellar, 2026-11-07")
+{
+    // act4_2: the storm cellar's door opened, Mike dropped into the cellar 3 m on, and the list said
+    // "totem danger, 17 m behind, above", reached by the map from the grounds outside; the cellar's
+    // own map left it out a second later.
+    CHECK(ways::KeptReach(1, false) == 0);
+    CHECK(ways::KeptReach(3, false) == 0);
+    // Handed back on that ground (a short exchange, the end of an interaction), what listed a target
+    // stays until a new map judges it, and a way found closed off goes at once.
+    CHECK(ways::KeptReach(1, true) == 1);
+    CHECK(ways::KeptReach(3, true) == 3);
+    CHECK(ways::KeptReach(2, true) == 0);
+    CHECK(ways::KeptReach(0, true) == 0);
+}
+
+TEST_CASE("an empty list still to come says so, and its map hurries while nothing is listed: the asylum's grounds, 2026-11-07")
+{
+    // act4_2's start (research/sessions/s51-full.log, 17:09:46 to 17:10:02): the list's while ran out
+    // with none of the 41 things judged, six presses said "nothing to walk to nearby", and the map,
+    // at the smaller share of a frame from then on, took 16 s to reach the front door 51 m on foot.
+    CHECK(ways::StillComing(true, 41));
+    CHECK_FALSE(ways::StillComing(false, 41)); // done: nothing near is the truth
+    CHECK_FALSE(ways::StillComing(true, 0));   // nothing waits on the map
+    // The first list of a hold settling: the larger share.
+    CHECK(ways::MapHurries(false, false, false, 0));
+    CHECK(ways::MapHurries(false, false, true, 0));
+    // Settled with nothing listed: still the larger share.
+    CHECK(ways::MapHurries(true, false, false, 0));
+    // A list stands, and nothing waits for the map: the smaller.
+    CHECK_FALSE(ways::MapHurries(true, false, true, 0));
+    CHECK_FALSE(ways::MapHurries(false, true, true, 0));
+}
+
+TEST_CASE("the map hurries while things wait for it: the hall's checkpoint, 2026-11-07")
+{
+    // research/sessions/s54-full.log, 21:47:13 to 21:47:56: the list settled after 3.3 s with 2 of 34
+    // things judged and stood; the chapel door, 39 m off, came 29 s later and the map was done at 43 s.
+    CHECK(ways::MapHurries(true, false, true, 32));
+    CHECK(ways::MapHurries(true, true, true, 1));
+    CHECK_FALSE(ways::MapHurries(true, false, true, 0));
+}
+
+TEST_CASE("a trigger back into a section she has been through is no way on: the asylum's hall, 2026-11-07")
+{
+    // act4_2's second run of the evening (research/sessions/s52-full.log, 18:46:37 to 19:15:46), the
+    // levels of the act's sections as the world showed them ("the game has streamed ... in/out"). Begun
+    // at the hospital's chair, Mike went to the morgue, took the keycard, fled up into Jack's lair and
+    // dropped into the hall. There the game streams the wings in and out as he walks, and with every
+    // trigger back into an unloaded wing a way on, the list said "Путь дальше" six times over in the
+    // hall, none of them the story's way: the chapel door ("jacks lair door open") was listed with them.
+    ways::LevelsSeen seen;
+    // The first count: the hospital's wing (sections 4 and 6) shown; the hall, the morgue, the
+    // church and Jack's lair's way out not.
+    seen.Count({L"LV_Act_4_2_Section_01", L"LV_Act_4_2_Section_02", L"LV_Act_4_2_Section_04", L"LV_Act_4_2_Section_06", L"LV_Game_entities"}, true);
+    struct Trigger
+    {
+        const char* name;
+        const wchar_t* section;
+    };
+    const Trigger triggers[] = {
+        {"T_Section3_Load1", L"LV_Act_4_2_Section_03"}, {"T_Section3_Load2", L"LV_Act_4_2_Section_03"}, {"T_Section4_Load", L"LV_Act_4_2_Section_04"},
+        {"T_Section5_Load", L"LV_Act_4_2_Section_05"},  {"T_Section7_Load", L"LV_Act_4_2_Section_07"},  {"T_Section8_Load", L"LV_Act_4_2_Section_08"},
+    };
+    // Which are ways on with every section unloaded but the one she stands in (`here`).
+    const auto ways = [&](const wchar_t* here)
+    {
+        std::vector<std::string> out;
+        for (const auto& t : triggers)
+        {
+            const bool loaded = std::wstring(t.section) == here;
+            if (ways::StreamsMore(loaded, false, seen.Seen(t.section))) out.push_back(t.name);
+        }
+        return out;
+    };
+    // In the hospital: the wings still to come are the ways on.
+    CHECK(ways(L"LV_Act_4_2_Section_04") ==
+          std::vector<std::string>{"T_Section3_Load1", "T_Section3_Load2", "T_Section5_Load", "T_Section7_Load", "T_Section8_Load"});
+    // 18:51:37, on the way to the telegram: the morgue's section comes in.
+    seen.Count({L"LV_Act_4_2_Section_05"}, false);
+    // 19:04:04, the keycard taken: the way up to Jack's lair is still to come (T_Section7_Load, 52 m,
+    // the hospital's wolf scare on its road), and was the one walked.
+    CHECK(ways(L"LV_Act_4_2_Section_05") == std::vector<std::string>{"T_Section3_Load1", "T_Section3_Load2", "T_Section7_Load", "T_Section8_Load"});
+    // 19:04:59 the church and Jack's lair come in; 19:06:42, dropped into the hall, the hall does.
+    seen.Count({L"LV_Act_4_2_Section_07", L"LV_church_Structural_VTS_UP"}, false);
+    seen.Loaded(L"LV_Act_4_2_Section_03");
+    // From 19:10 on, walking about the hall as the wings swap: the way out past Jack's lair alone is
+    // still to come (and lies beyond the chapel door).
+    CHECK(ways(L"LV_Act_4_2_Section_03") == std::vector<std::string>{"T_Section8_Load"});
+    CHECK(ways(L"LV_Act_4_2_Section_04") == std::vector<std::string>{"T_Section8_Load"});
+    // A checkpoint loaded, or the next act: a new world, nothing been through but what it shows.
+    seen.Count({L"LV_Act_4_2_Section_04"}, true);
+    CHECK_FALSE(seen.Seen(L"LV_Act_4_2_Section_03"));
+    CHECK(seen.Seen(L"LV_Act_4_2_Section_04"));
+}
+
+TEST_CASE("the hand-over names a choice the list shows: the asylum's hall, 2026-11-07")
+{
+    // act4_2, 18:30:39: Mike climbed the barrel up into the hall. At the hand-over's first look the
+    // barrel he had climbed from (37 m below) was listed for that look alone, the game still counting
+    // him in its volume, and was chosen; a second later the hand-over named it, "find way in climb
+    // barrel, 37 m, ahead, below", while the list showed only the reader at Jack's door.
+    const std::vector<bool> shown{false, true};
+    CHECK(ways::HandOverChoice(0, true, shown) == 1);
+    // The mod's choice the list shows is named.
+    CHECK(ways::HandOverChoice(1, true, shown) == 1);
+    // The player's own choice is named, the list keeping it whatever its rules say.
+    CHECK(ways::HandOverChoice(0, false, shown) == 0);
+    // Nothing shown, nothing named; no choice, the first shown.
+    CHECK(ways::HandOverChoice(0, true, {false, false}) == -1);
+    CHECK(ways::HandOverChoice(-1, true, shown) == 1);
+    CHECK(ways::HandOverChoice(5, false, shown) == 1);
+}
+
+TEST_CASE("a character's turn is named before the keys and the choice: the cable car's upper station, 2026-11-07")
+{
+    // research/sessions/s54-full.log: Matt handed over at 22:04:04.7, his card up at 22:04:06.8 and gone
+    // at 22:04:13.1, his objective said at 22:04:15.0; the keys and the choice had been said at 22:04:05.7.
+    using ways::HintWaitsForTurn;
+    CHECK(HintWaitsForTurn(true, false, false, true, 1.0)); // the card not come yet
+    CHECK(HintWaitsForTurn(true, true, true, true, 2.1));   // the card up
+    CHECK(HintWaitsForTurn(true, true, true, false, 2.1));  // the card up, no objective to wait for
+    CHECK(HintWaitsForTurn(true, false, true, true, 8.4));  // the card gone, the objective due
+    CHECK_FALSE(HintWaitsForTurn(true, false, true, false, 10.4)); // the objective said
+    // No card comes: the keys wait kCardWait for one.
+    CHECK(HintWaitsForTurn(true, false, false, false, ways::kCardWait - 0.1));
+    CHECK_FALSE(HintWaitsForTurn(true, false, false, false, ways::kCardWait));
+    // Never longer than kTurnWait.
+    CHECK_FALSE(HintWaitsForTurn(true, true, true, true, ways::kTurnWait));
+    // The same character handed back after a scene: nothing waits.
+    CHECK_FALSE(HintWaitsForTurn(false, true, true, true, 1.0));
+}
+
+TEST_CASE("a neighbour the game offers at the end of the way is said once the offer stands: the station's map, 2026-11-07")
+{
+    // research/sessions/s54-full.log: at 22:12:13.101 the game offered the graffiti beside the map as
+    // Matt stepped up, and at 22:12:13.583 the map, which the press would take.
+    ways::OfferHold hold;
+    CHECK_FALSE(hold.Update(true, 13.101));
+    CHECK_FALSE(hold.Update(true, 13.400));
+    CHECK_FALSE(hold.Update(false, 13.583));
+    CHECK_FALSE(hold.Update(false, 15.0));
+    // A neighbour offered on and on is said.
+    CHECK_FALSE(hold.Update(true, 20.0));
+    CHECK_FALSE(hold.Update(true, 21.0));
+    CHECK(hold.Update(true, 20.0 + ways::kOtherOfferHold));
+    hold.Reset();
+    CHECK_FALSE(hold.Update(true, 30.0));
+}
+
+namespace
+{
+    // The list after the landing door on 2026-11-07 (research/sessions/s56-full.log, 23:48:36.6 to
+    // 23:48:55.1), in seconds of that minute: the map of the lodge begun at 36.6 and done at 55.1, the
+    // things it reached, the ways and the roads that ran through them.
+    struct LodgeLook
+    {
+        std::vector<ways::Entry> e;
+        std::vector<bool> listed;
+    };
+
+    // Runs the looks of that minute. `waitForMap`: the map's end and what was listed are told (as
+    // now); without it every look is taken as one of a map done and nothing as shown (the rule before
+    // 2026-11-08). Returns, for each way, the times it was listed.
+    std::vector<std::vector<double>> RunLodge(bool waitForMap, LodgeLook& out)
+    {
+        enum
+        {
+            Bedroom, // hannah bedroom door locked, listed from before
+            Totem,   // totem guidance, listed from before
+            Trophy,  // hannahs trophy, reached at 38.3
+            Shadow,  // way T_samsbath_psychoshadow, known at 36.8
+            Seq8,    // way BP_CharacterTriggerVolume_C_8, known at 39.4
+            Balloon, // way T_samsbath_floatingballoon, known at 40.0
+            Prom,    // Prom night photo female, reached at 41.7
+            Kitchen, // kitchen door locked, reached at 43.2
+            Count
+        };
+        const double knownAt[Count] = {0.0, 0.0, 38.3, 36.8, 39.4, 40.0, 41.7, 43.2};
+        const double distance[Count] = {1354.0, 1847.0, 1569.0, 440.0, 1539.0, 1480.0, 1069.0, 687.0};
+        const double done = 55.1;
+        ways::Settling settle;
+        settle.Reset();
+        settle.Begin(36.6);
+        ways::Lister lister;
+        auto& e = out.e;
+        e.assign(Count, ways::Entry{});
+        for (int i = 0; i < Count; ++i)
+        {
+            e[i].way = i == Shadow || i == Seq8 || i == Balloon;
+            e[i].hasBox = true;
+            e[i].distance = distance[i];
+        }
+        // The roads: the prom photo's and the kitchen door's run through all three ways, the
+        // balloon's through the other two, the sequence's through the shadow's.
+        const auto enters = [](size_t way, size_t other)
+        {
+            if (other == Prom || other == Kitchen) return way == Shadow || way == Seq8 || way == Balloon;
+            if (other == Balloon) return way == Shadow || way == Seq8;
+            if (other == Seq8) return way == Shadow;
+            return false;
+        };
+        std::vector<std::vector<double>> listedAt(Count);
+        out.listed.assign(Count, false);
+        std::vector<bool> wasKnown(Count, false);
+        for (double now = 36.6; now < 57.0; now += 0.2)
+        {
+            size_t judged = 0;
+            for (int i = 0; i < Count; ++i)
+            {
+                const bool known = now >= knownAt[i];
+                if (known && !wasKnown[i]) lister.Again();
+                wasKnown[i] = known;
+                judged += known ? 1 : 0;
+                e[i].known = known;
+                // A thing the map has not reached waits for it, and is no road to weigh.
+                e[i].unreachable = !e[i].way && !known;
+                e[i].shown = waitForMap && out.listed[i] && (!e[i].way || e[i].passed);
+            }
+            const bool settlesNow = settle.Update(now, now >= done, judged, Count);
+            lister.Judge(e, settle, lister.Due(settle, settlesNow, now), true, !waitForMap || now >= done, now, enters);
+            for (int i = 0; i < Count; ++i)
+            {
+                out.listed[i] = !e[i].unreachable && !(e[i].way && (e[i].unjudged || e[i].onRoadOf >= 0));
+                if (e[i].way && out.listed[i]) listedAt[i].push_back(now);
+            }
+        }
+        return listedAt;
+    }
+}
+
+TEST_CASE("a way waits for the map to be done while anything is listed: the lodge after the landing door, 2026-11-07")
+{
+    // As it was: the sequence's way listed 3 s into the map and the balloon's at 3.6 s, each left out
+    // a moment later for a road the map found since (s56: "the way on appeared and disappeared at once").
+    LodgeLook before;
+    const auto was = RunLodge(false, before);
+    bool flicker = false;
+    for (const auto& times : was)
+    {
+        if (!times.empty() && times.back() < 56.0) flicker = true; // listed, then left out
+    }
+    CHECK(flicker);
+    // Now: no way is listed while the map runs, and the map done leaves all three on the roads.
+    LodgeLook now;
+    const auto is = RunLodge(true, now);
+    for (const auto& times : is)
+        CHECK(times.empty());
+    CHECK(now.e[3].onRoadOf >= 0);
+    CHECK(now.e[4].onRoadOf >= 0);
+    CHECK(now.e[5].onRoadOf >= 0);
+}
+
+TEST_CASE("with nothing else listed a way is judged as the list settles, and once listed keeps its verdict for the hold")
+{
+    ways::Settling settle;
+    settle.Reset();
+    settle.Begin(0.0);
+    ways::Lister lister;
+    std::vector<ways::Entry> e(2);
+    e[0].way = true;
+    e[0].hasBox = true;
+    e[0].known = true;
+    e[0].distance = 800.0;
+    e[1].hasBox = true;
+    e[1].distance = 2500.0;
+    e[1].unreachable = true; // a thing the map has not reached yet
+    bool through = true;     // the thing's road runs through the way
+    const auto enters = [&](size_t way, size_t other) { return through && way == 0 && other == 1; };
+    // Settled by its while, the map still running, nothing listed: the way is judged and listed.
+    REQUIRE(settle.Update(3.0, false, 1, 2));
+    lister.Judge(e, settle, lister.Due(settle, true, 3.0), true, false, 3.0, enters);
+    CHECK_FALSE(e[0].unjudged);
+    CHECK(e[0].onRoadOf == -1);
+    // The map reaches the thing beyond it: the way stays listed.
+    e[0].shown = true;
+    e[1].unreachable = false;
+    lister.Again();
+    lister.Judge(e, settle, lister.Due(settle, false, 4.0), true, false, 4.0, enters);
+    CHECK(e[0].onRoadOf == -1);
+    e[1].shown = true;
+    lister.Again();
+    lister.Judge(e, settle, lister.Due(settle, false, 6.0), true, true, 6.0, enters);
+    CHECK(e[0].onRoadOf == -1);
+    // A new hold judges it afresh.
+    lister.NewHold();
+    lister.Judge(e, settle, lister.Due(settle, false, 7.0), true, true, 7.0, enters);
+    CHECK(e[0].onRoadOf == 1);
+}
+
+TEST_CASE("a thing used before gives no road that keeps a way out of the list, unless it is chosen")
+{
+    // Andrey on chapter 5's lodge (2026-11-08): the game puts its places to use again in later
+    // chapters, and a way it turns on later can lie on the roads to things seen long before, which he
+    // does not walk to again.
+    std::vector<ways::Entry> e(2);
+    e[0].way = true;
+    e[0].hasBox = true;
+    e[0].distance = 800.0;
+    e[1].hasBox = true;
+    e[1].distance = 1300.0;
+    const auto enters = [](size_t way, size_t other) { return way == 0 && other == 1; };
+    CHECK(ways::RowRule(e, enters)[0] == 1); // a thing not used yet: the way is left out
+    e[1].used = true;
+    CHECK(ways::RowRule(e, enters)[0] == -1); // used: the way is listed
+    e[1].chosen = true;
+    CHECK(ways::RowRule(e, enters)[0] == 1); // chosen again: the walk there sets it off
 }

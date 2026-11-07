@@ -28,6 +28,14 @@ namespace da::scripts
     bool StoryCall(std::wstring_view call);
     bool StoryActivity(std::wstring_view activity);
 
+    // Whether starting an activity actor moves a scene on, by what the actor says of itself: an
+    // activity of the background (bIsBackgroundActivity), a performance loop (bIsPAOSequence), or one
+    // the scripts would not count by its name (StoryActivity) does not; one with no name to judge by
+    // is weighed by its flags alone. act3_4's BP_CharacterTriggerVolume_C_7 starts PAO_rat_CaveFloor,
+    // rats on the cave's floor by the mine's note: listed as a way on, it was walked to on 2026-11-07
+    // and nothing came of it.
+    bool StoryActor(std::wstring_view coreName, bool background, bool performance);
+
     // A number the scripts keep in gVariables, as their comparison (SF_Comparison of type
     // "Number", the library's Compare) sees it: nothing yet (nil), a number, or not known to the
     // mod, when a condition on it is taken either way.
@@ -126,6 +134,25 @@ namespace da::scripts
         std::vector<std::wstring> calls;      // on the way on, in order
         std::vector<std::wstring> activities; // named on the way on
     };
+
+    // What a trigger's script turns on or off when she walks into the volume or out of it
+    // (gEvents["EnterTrigger"] or gEvents["LeaveTrigger"], SF_SetEnableActivity): the trigger, whether
+    // it is its leaving, and each activity with whether it is turned on.
+    struct ActivitySwitch
+    {
+        std::wstring trigger;
+        bool leave = false;
+        std::wstring activity;
+        bool enable = false;
+    };
+    std::vector<ActivitySwitch> ParseActivitySwitches(const std::wstring& script);
+
+    // The volumes each activity is off in while she stands there: walking in turns it off and walking
+    // out turns it on again. act4_2's T_disable_cigar_box turns Jack's cigar box off on the desk's
+    // near side; five walks to the box went in through it, the game turned the box off a metre or two
+    // short, and each walk ended saying the target was gone (2026-11-07). act4_1's scarecrow look-at
+    // and act4_2's drop into the cellar are turned off so too.
+    std::map<std::wstring, std::vector<std::wstring>> OffInside(const std::vector<ActivitySwitch>& switches);
 
     // Every question of the state machines in a script, judged. `source` names the script.
     std::vector<Poll> ParsePolls(const std::wstring& script, const std::wstring& source);

@@ -791,3 +791,143 @@ TEST_CASE("look: a map begun far off is begun again from where the last stretch 
     CHECK_FALSE(look::FreshSpotMap(0.0));
     CHECK_FALSE(look::FreshSpotMap(look::kStretchReach));
 }
+
+TEST_CASE("look: on a beam the lead sounds where she faces in the stick's frame, chapter 5")
+{
+    // act4_2's BP_BeamWalk (ABP_BeamTemplate): she moves only while the stick, past half, points in
+    // the world within 46 degrees of where she faces (research/mechanics/gaps.md).
+    // She faces 60 degrees right of the stick's forward: the lead is on the right.
+    auto lead = look::LeadAlongBeam(60.0, 0.0, 0.0);
+    CHECK(lead.pan == doctest::Approx(std::sin(60.0 * std::numbers::pi / 180.0)));
+    CHECK_FALSE(lead.locked);
+    CHECK_FALSE(lead.muffled);
+    // The stick pushed right: 30 degrees off where she faces, within the cone: the double ping.
+    CHECK(look::LeadAlongBeam(60.0, 1.0, 0.0).locked);
+    // Pushed straight up: 60 degrees off, outside the cone.
+    CHECK_FALSE(look::LeadAlongBeam(60.0, 0.0, 1.0).locked);
+    // Barely pushed: under half, the beam does not move her.
+    CHECK_FALSE(look::LeadAlongBeam(60.0, 0.4, 0.0).locked);
+    // She faces the camera's way back: the lead is muffled, the stick down.
+    lead = look::LeadAlongBeam(170.0, 0.0, -1.0);
+    CHECK(lead.muffled);
+    CHECK(lead.locked);
+}
+
+TEST_CASE("look: a thing is reached only where it can be used, or a look of the player's is all it waits for, 2026-11-07")
+{
+    // act4_1, the kitchen's blood after its first use (research/sessions/s49-full.log, 00:40:05):
+    // Chris put back inside its volume, everything in place but the look, on a fixed shot that left
+    // the glint out ("the glint's verdict no on layer 4: another camera, overlapping yes, on the
+    // screen no"). The list said "arrived" while no press was taken and no turn of his brought it.
+    look::Parts used;
+    used.measured = true;
+    used.atHand = true;
+    used.verdict = false;
+    used.byGlint = true;
+    used.explorationView = false;
+    used.onScreen = false;
+    used.characterOk = true;
+    CHECK_FALSE(look::CanBeLed(used));
+    CHECK_FALSE(look::Arrived(used, false, true, false));
+    // Reached before, at rest: still not, once the shot leaves it out.
+    CHECK_FALSE(look::Arrived(used, false, true, true));
+    // Before its use, the game would take the press: reached.
+    look::Parts ready = used;
+    ready.verdict = true;
+    CHECK(look::Arrived(ready, false, true, false));
+    // A thing that starts by itself.
+    CHECK(look::Arrived(used, true, false, false));
+    // On the exploration camera, only the camera's look missing: the player's to make, so reached
+    // once she stands still, and kept while she moves within it.
+    look::Parts look = used;
+    look.explorationView = true;
+    look.onScreen = true;
+    CHECK(look::CanBeLed(look));
+    CHECK(look::Arrived(look, false, true, false));
+    CHECK_FALSE(look::Arrived(look, false, false, false));
+    CHECK(look::Arrived(look, false, false, true));
+    // Out of its place (nothing at hand): not reached, however near.
+    look::Parts outside = look;
+    outside.atHand = false;
+    CHECK_FALSE(look::Arrived(outside, false, true, true));
+}
+
+TEST_CASE("she moves by where she stands, not by the game's velocity: the cable car's station, 2026-11-07")
+{
+    // research/sessions/s55-full.log: Matt walked at 112 cm/s, then pushed against something at
+    // (-14394, -23869) for five seconds, the game's velocity 111 to 140 cm/s, his position unchanged.
+    using look::Vec;
+    look::Motion motion;
+    double now = 0.0;
+    Vec at{-14402.0, -23757.0, -651.0};
+    for (int i = 0; i < 40; ++i, now += 0.025)
+    {
+        at.y -= 112.0 * 0.025;
+        motion.Update(now, at);
+    }
+    CHECK(motion.Moving(now));
+    CHECK_FALSE(motion.Still(now));
+    CHECK(motion.Speed(now) == doctest::Approx(112.0).epsilon(0.15));
+    const double stuckFrom = now;
+    for (int i = 0; i < 200; ++i, now += 0.025)
+        motion.Update(now, at);
+    CHECK_FALSE(motion.Moving(now));
+    CHECK(motion.Still(now));
+    CHECK(now - stuckFrom > look::kMovingWindow);
+    // A turn on the spot is still.
+    for (int i = 0; i < 20; ++i, now += 0.025)
+        motion.Update(now, Vec{at.x + (i % 2) * 0.5, at.y, at.z});
+    CHECK(motion.Still(now));
+    // Nothing known yet is neither.
+    look::Motion fresh;
+    CHECK_FALSE(fresh.Moving(0.0));
+    CHECK_FALSE(fresh.Still(0.0));
+    fresh.Update(0.0, at);
+    CHECK_FALSE(fresh.Still(0.1)); // not watched for a whole window yet
+}
+
+TEST_CASE("look: the look's lead tells nearer from further over the whole turn the game takes the look over")
+{
+    // The audit of 2026-11-08: the game took looks with the glint up to 80 degrees across and 24 up or
+    // down of it; s56 at 23:48:15 had the camera 79 degrees off and 30 down, s47 46 and 91 off.
+    const auto far = look::LookSound(-79.0, -30.0, false);
+    const auto nearer = look::LookSound(-38.0, -10.0, false);
+    const auto near = look::LookSound(-10.0, -2.0, false);
+    CHECK(far.pan == doctest::Approx(-1.0));
+    CHECK(nearer.pan > far.pan);
+    CHECK(near.pan > nearer.pan);
+    CHECK(near.pan < 0.0);
+    CHECK(far.level < nearer.level);
+    CHECK(nearer.level < near.level);
+    CHECK(near.level < 0.5);
+    CHECK(far.interval > nearer.interval);
+    CHECK(nearer.interval > near.interval);
+    // Looked at: the double ping's pace; behind her: muffled.
+    const auto on = look::LookSound(-5.0, 0.0, true);
+    CHECK(on.locked);
+    CHECK(on.interval == doctest::Approx(0.12));
+    CHECK(look::LookSound(150.0, 0.0, false).muffled);
+}
+
+TEST_CASE("look: the thing just used is led to no more until it is chosen again or she leaves its place, the lodge's patio door, 2026-11-07")
+{
+    // research/sessions/s56-full.log, 23:51:41 to 23:51:48: Sam tried the locked patio door, was handed
+    // back in its place facing away, and "Повернитесь к цели." was said for it at once.
+    int door = 0, photo = 0;
+    look::JustUsed used;
+    CHECK_FALSE(used.Waits(&door)); // not used yet: led
+    used.Used(&door);
+    CHECK(used.Waits(&door));
+    CHECK(used.Waits(&door)); // still, while she stands there
+    // She leaves its place: it is let go, and led again when she comes back.
+    CHECK_FALSE(used.Waits(nullptr));
+    CHECK_FALSE(used.Waits(&door));
+    // Chosen again by the player: led at once.
+    used.Used(&door);
+    used.Chosen();
+    CHECK_FALSE(used.Waits(&door));
+    // Another thing offered lets the used one go.
+    used.Used(&door);
+    CHECK_FALSE(used.Waits(&photo));
+    CHECK_FALSE(used.Waits(&door));
+}
