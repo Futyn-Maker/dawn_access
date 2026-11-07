@@ -88,6 +88,12 @@ namespace da::shoot
         double limit = 0.0;   // and its time
         bool aimingOnly = false;
         bool aimReached = false;
+        // The player saw neither the targets nor the reticle, and the stage was no dilemma played by
+        // the stick alone: the game resolved it by itself, and it has no verdict to tell. After the
+        // missed shot at the Wendigo in act3_2 (research/sessions/s49-full.log, 00:26:21), the hidden
+        // stage Wendigo_Dodge took its only option, "aim timeout", 0.15 s in, and the hit's tone was
+        // played for the game's own timeout branch.
+        bool unseen = false;
     };
     // A clock within this of its time has run out.
     constexpr double kClockSlack = 0.05;
@@ -106,6 +112,25 @@ namespace da::shoot
     constexpr double kOnTargetInterval = 0.12;
     double BlipInterval(const Sight& s);
     Blip BlipOf(const Sight& s);
+
+    // An aim-only stage's completion conditions (FBatesAimOnlyStageCompletionCondition): an axis
+    // (EBatesCameraAxis: 0 pitch, 1 yaw), the value, and the operator the stage's aim is held to
+    // against it (EBMFloatParameterOperator: 0 ==, 1 !=, 2 <, 3 <=, 4 >, 5 >=). The stage counts its
+    // aim from the direction it began in, CachedYaw growing to the right and CachedPitch upward. The
+    // chapter 4 rifle scope (act3_2's use_scope) completes once its yaw is 20 or more, with no target
+    // and no clock: the scene waits for the turn.
+    struct AimCondition
+    {
+        int axis = 1;
+        double value = 0.0;
+        int op = 5;
+    };
+    bool ConditionHolds(const AimCondition& c, double yaw, double pitch);
+    // Where the aim must go for every condition to hold, as a sight from the aim now: placed when
+    // some condition names a way to turn, past each threshold by kAimGoalMargin so that the sound
+    // leads over its edge, and on target once all hold.
+    constexpr double kAimGoalMargin = 3.0;
+    Sight AimGoal(const std::vector<AimCondition>& conditions, double yaw, double pitch);
 
     // The aim's blips come at the interval of how near the aim is, and at once when it comes on
     // target: chapter one's telescope took the view in the frame it came to rest on Emily and Mike,
@@ -131,4 +156,41 @@ namespace da::shoot
         double m_last = -1000.0;
         bool m_onTarget = false;
     };
+
+    // ---- the Chris and Ashley dilemma ---------------------------------------------------------
+
+    // act5_3's death room, the game's only stages with bIsChrisAshleyDilemma: the game ignores the
+    // targets' places and the vertical axis, and highlights by where the aim's yaw stands between the
+    // stage's limits (UBatesShootingStage::UpdateOptionsChrisAshley): t = (CachedYaw - MinYaw) /
+    // (MaxYaw - MinYaw), the first option where t < (1 - M) / 2, the second where t > (1 + M) / 2, M the
+    // stage's ChrisAshleyMiddleChoiceSize (0.5: the outer quarters), the middle nothing
+    // (research/shooting/notes.md, section 9). The stick's right raises the yaw (UpdateInputAngles), so
+    // the first option lies to the stick's left unless the aiming's X axis is inverted. The level puts
+    // Chris first (the gun on himself: Shoot_Chris, Aim_Chris_Seq_0) and Ashley second
+    // (research/mechanics/json/act5_3/.../LV_Activities_deathroom.json). The first turn (StartPose)
+    // hides targets and reticle and commits on the highlight (bFinishOnHighlight); each shot after it
+    // (ShootChoice_*) waits 25 s for R2 on the side highlighted, the clock running out shooting nobody.
+    struct DilemmaPlace
+    {
+        double t = 0.5;        // where the aim stands between the limits, 0 to 1
+        int region = -1;       // 0 the first option's, 1 the second's, -1 the middle
+        double toFirst = 0.0;  // degrees of yaw to go into the first option's region (0 within it)
+        double toSecond = 0.0; // and into the second's
+    };
+    DilemmaPlace DilemmaAt(double yaw, double minYaw, double maxYaw, double middle);
+
+    // The aim's lead in the dilemma: toward `option` (0 or 1) when the player has chosen one by key,
+    // past the edge of its region by kDilemmaMargin degrees, on target within it; with none chosen, no
+    // lead to either side (the side is the player's choice) but the aim's place between the two, as
+    // the gun turning between them is seen: the blip's pan from the first's side (-1) to the second's
+    // (+1), at a steady pace, on target while either side is highlighted. `invert`: the stick's right
+    // lowers the yaw.
+    constexpr double kDilemmaMargin = 0.5;
+    constexpr double kDilemmaPace = 0.3;
+    struct DilemmaLead
+    {
+        Blip blip;
+        double interval = kDilemmaPace;
+    };
+    DilemmaLead LeadDilemma(const DilemmaPlace& p, int option, bool highlighted, bool invert);
 }

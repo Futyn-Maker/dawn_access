@@ -3,6 +3,9 @@
 #include "Support.hpp"
 #include "features/NudgeRules.hpp"
 
+#include <cmath>
+#include <algorithm>
+
 using namespace da;
 
 namespace
@@ -233,4 +236,143 @@ TEST_CASE("nudge: a timed light is told the poll it comes on, and again only aft
     CHECK(light.Update(true));
     light.Reset();
     CHECK(light.Update(true));
+}
+
+TEST_CASE("nudge: the premonition is placed against the game's own line, which the stick moves, the danger totem, 2026-11-07")
+{
+    // act4_2's danger totem (research/sessions/s51-full.log, 17:14:04 to 17:14:24): placed against the
+    // view's centre line, the point lay "+7 cm across, -11 up" all the while the game's line missed
+    // the totem; the sound said right, the pose went to its right limit and nothing moved. The game
+    // looks along its own line, from the eye through the query point the pose moves
+    // (CachedTotemInspectionQueryLocation): a point 7 cm right of the centre line lies 2 cm left of a
+    // line moved 9 cm right of it at the totem's distance.
+    using features::world::Vec;
+    const Vec eye{0.0, 0.0, 0.0};
+    const Vec ahead{1.0, 0.0, 0.0};
+    const Vec premonition{100.0, 7.0, -11.0};
+    // The view's centre line straight ahead: 7 right, 11 down.
+    Vec d = nudge::AcrossLine(premonition, eye, Vec{100.0, 0.0, 0.0}, ahead);
+    CHECK(d.x == doctest::Approx(0.0));
+    CHECK(d.y == doctest::Approx(7.0));
+    CHECK(d.z == doctest::Approx(-11.0));
+    // The game's line through a query point 9 cm right and 8 cm down at the totem: 2 left, 3 down.
+    d = nudge::AcrossLine(premonition, eye, Vec{100.0, 9.0, -8.0}, ahead);
+    CHECK(d.y == doctest::Approx(-2.0).epsilon(0.05));
+    CHECK(d.z == doctest::Approx(-3.0).epsilon(0.05));
+    // A line of no length is taken along the fallback.
+    d = nudge::AcrossLine(premonition, eye, eye, ahead);
+    CHECK(d.y == doctest::Approx(7.0));
+}
+
+TEST_CASE("nudge: the totem's lead goes the way a push brings the premonition nearer, the danger totem, 2026-11-07")
+{
+    // 17:14:21 to 17:14:22: the game's line on the totem, the premonition 8 cm left and 2 cm down of
+    // the point it met; the stick pushed left moved the pose from +0.21 to -0.20 and the point came
+    // to 3 cm left, and the vision came.
+    nudge::TotemLead lead;
+    nudge::TotemSample s;
+    s.turnKnown = true;
+    s.onTotem = true;
+    s.closeness = 0.19;
+    s.turnX = 0.21;
+    s.turnY = -0.75;
+    s.lateral = -8.0;
+    s.vertical = -2.0;
+    auto aim = lead.Update(s);
+    // A push toward its side: left and down.
+    CHECK(aim.pan == doctest::Approx(-std::sqrt(8.0 / 15.0)));
+    CHECK(aim.level < 0.5);
+    s.turnX = -0.20;
+    s.closeness = 0.76;
+    s.lateral = -3.0;
+    aim = lead.Update(s);
+    CHECK(lead.WayX() == 1);
+    CHECK(aim.pan == doctest::Approx(-std::sqrt(3.0 / 15.0)));
+    // A pose moved by less than a step weighs nothing, however the point jumps.
+    s.turnX = -0.18;
+    s.lateral = 9.0;
+    lead.Update(s);
+    CHECK(lead.WayX() == 1);
+}
+
+TEST_CASE("nudge: a push that takes the premonition further off turns the totem's lead round, and a new totem starts over")
+{
+    // The totem leans in the hands against the line's move where its controls are inverted: a push
+    // right may take the point further right. Once the pose has moved enough to tell, the lead goes
+    // the other way.
+    nudge::TotemLead lead;
+    nudge::TotemSample s;
+    s.turnKnown = true;
+    s.onTotem = true;
+    s.closeness = -0.40; // on the totem, far from the point
+    s.lateral = 4.0;
+    s.vertical = 3.0;
+    auto aim = lead.Update(s);
+    CHECK(aim.pan > 0.0);
+    CHECK(aim.level > 0.5);
+    // Pushed right a tenth at a time, the point 1.5 cm further right each time.
+    for (int step = 1; step <= 3; ++step)
+    {
+        s.turnX = 0.1 * step;
+        s.lateral = 4.0 + 1.5 * step;
+        lead.Update(s);
+    }
+    CHECK(lead.WayX() == 1); // not moved enough to tell
+    for (int step = 4; step <= 6; ++step)
+    {
+        s.turnX = 0.1 * step;
+        s.lateral = 4.0 + 1.5 * step;
+        aim = lead.Update(s);
+    }
+    CHECK(lead.WayX() == -1);
+    CHECK(aim.pan == doctest::Approx(-std::min(1.0, std::sqrt(s.lateral / 15.0))));
+    // Up and down never moved: the way stays.
+    CHECK(lead.WayY() == 1);
+    CHECK(aim.level > 0.5);
+    // The line leaving the totem: what the point is measured from changes, and that step is not
+    // weighed, though the point's place jumps the other way as the pose goes back.
+    const double xx = s.turnX;
+    s.onTotem = false;
+    s.closeness = 0.0;
+    s.turnX = xx - 0.3;
+    s.lateral = 53.0;
+    lead.Update(s);
+    CHECK(lead.WayX() == -1);
+    // A totem taken up again starts over, a push toward the point's side.
+    lead.Reset();
+    aim = lead.Update(s);
+    CHECK(lead.WayX() == 1);
+    CHECK(aim.pan == doctest::Approx(1.0));
+}
+
+TEST_CASE("nudge: the totem's lead is clear a few centimetres from the point, where the game wants it within one or two, 2026-11-07")
+{
+    // research/sessions/s55-full.log, 23:05:02 to 23:05:05: the point 3 cm across and 1 up, then 1 to 3
+    // cm across and 4 down, the pose held at its top limit while the stick pushed up; the blip panned
+    // 0.17 to 0.21 and pitched 0.41, near the middle.
+    nudge::TotemLead lead;
+    nudge::TotemSample s;
+    s.turnKnown = true;
+    s.onTotem = true;
+    s.closeness = 0.61;
+    s.turnX = 0.08;
+    s.turnY = 0.42;
+    s.lateral = 3.0;
+    s.vertical = 1.0;
+    auto aim = lead.Update(s);
+    CHECK(aim.pan > 0.4);
+    s.closeness = 0.50;
+    s.turnY = 0.75;
+    s.vertical = -4.0;
+    aim = lead.Update(s);
+    CHECK(aim.level < 0.3); // clearly low: push down
+    // Far off it stays full, and on the point it is the middle.
+    s.lateral = -20.0;
+    s.vertical = 0.0;
+    aim = lead.Update(s);
+    CHECK(aim.pan == doctest::Approx(-1.0));
+    s.lateral = 0.0;
+    aim = lead.Update(s);
+    CHECK(aim.pan == doctest::Approx(0.0));
+    CHECK(aim.level == doctest::Approx(0.5));
 }

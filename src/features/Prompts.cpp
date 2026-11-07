@@ -449,6 +449,13 @@ namespace da::features
         return g_lastQuestionAt;
     }
 
+    bool InteractionAsks(std::wstring_view action)
+    {
+        return std::any_of(g_shown.begin(), g_shown.end(),
+                           [&](const Shown& q)
+                           { return !q.glint && !q.hidden && obj::IsLive(q.widget) && obj::IsWidgetShown(q.widget) && q.actions.find(action) != std::wstring::npos; });
+    }
+
     bool InteractionPromptShown()
     {
         return std::any_of(g_shown.begin(), g_shown.end(),

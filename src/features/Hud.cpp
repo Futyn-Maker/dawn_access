@@ -68,6 +68,7 @@ namespace da::features
         std::set<std::wstring> g_classesSeen; // for the log: each kind of element once
         lines::Echo g_echo;                   // the same words through two elements at once
         lines::Reading g_reading;             // a document read page by page while she is held by it
+        std::wstring g_pageSaid;              // the page of it said last, which a turned page cuts short
 
         // The lines an element shows: the texts it draws now (not the ones still fading in,
         // nor the ones faded out), a row of pieces side by side as one line (the camcorder's
@@ -160,11 +161,14 @@ namespace da::features
                         log::Info(L"hud: {} says \"{}\"", obj::ClassName(it->instance), text);
                         if (g_echo.Says(text, now))
                         {
-                            // A document's page in place of the one before cuts it short (lines::Reading).
-                            if (obj::IsA(it->instance, L"BatesReadingWidget") && g_reading.Interrupts())
-                                speech::Replace(text);
+                            // A document's page in place of the one before cuts it short (lines::Reading),
+                            // and only it (speech::Replace).
+                            const bool page = obj::IsA(it->instance, L"BatesReadingWidget");
+                            if (page && g_reading.Interrupts())
+                                speech::Replace(g_pageSaid, text);
                             else
                                 speech::Announce(text);
+                            if (page) g_pageSaid = text;
                         }
                         g_saidAt = now;
                     }
@@ -384,5 +388,15 @@ namespace da::features
     std::wstring hud::Objective()
     {
         return g_objective.Current();
+    }
+
+    bool hud::CharacterCardShown()
+    {
+        return CharacterCardUp();
+    }
+
+    bool hud::ObjectiveDue()
+    {
+        return g_objective.Due();
     }
 }

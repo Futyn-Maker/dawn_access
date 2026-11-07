@@ -38,5 +38,9 @@ namespace da::features
         double LastSaidAt();
         // The objective the game keeps for the player now, as last read; empty when none is known.
         std::wstring Objective();
+        // The card that changes the character (name, place, time) is up now.
+        bool CharacterCardShown();
+        // An objective is set and waits to be said (for a title card to go, or for play to run).
+        bool ObjectiveDue();
     }
 }

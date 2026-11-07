@@ -30,4 +30,6 @@ namespace da::features
     double LastInteractionPromptAt();
     // Whether an interaction's question is drawn now.
     bool InteractionPromptShown();
+    // Whether a question an interaction draws now asks for the action.
+    bool InteractionAsks(std::wstring_view action);
 }

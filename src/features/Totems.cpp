@@ -1,6 +1,7 @@
 #include "features/Totems.hpp"
 
 #include "features/Exploration.hpp"
+#include "features/NudgeRules.hpp"
 #include "features/WorldRead.hpp"
 
 #include "core/GameThread.hpp"
@@ -18,6 +19,7 @@
 #include <algorithm>
 #include <cmath>
 #include <format>
+#include <memory>
 #include <numbers>
 #include <string>
 
@@ -48,6 +50,9 @@ namespace da::features
         double g_blipAt = 0.0;
         double g_loggedAt = 0.0;
         double g_missLoggedAt = 0.0;
+        nudge::TotemLead g_lead; // the aim sound's way, on the totem and off it
+        bool g_pointMeasured = false; // the premonition's point found as the game finds it, as logged
+        const wchar_t* g_measuredFrom = nullptr; // what the premonition is placed against, as logged
 
         std::wstring TotemName(UObject* totem)
         {
@@ -136,6 +141,9 @@ namespace da::features
             g_witnessed = false;
             g_blipAt = 0.0;
             g_loggedAt = 0.0;
+            g_lead.Reset();
+            g_pointMeasured = false;
+            g_measuredFrom = nullptr;
             log::Info(L"totems: {} is picked up", TotemName(self));
             NoteWitnessed(self);
         }
@@ -154,6 +162,19 @@ namespace da::features
             log::Info(L"totems: {} is held, and the inspection begins: the time counts from closeness {:.2f}, the view locks after {:.1f} s and the "
                       L"vision comes after {:.1f} s; off the point the time decays {:.1f} times as fast",
                       TotemName(self), threshold, locked, vision, decay);
+            // How far the pose moves the game's line across the totem (UpdateTotemExamination: the
+            // pose scaled by the bound of PhantomOffset*Limits on its side, in the line's own frame).
+            bool phantom = false;
+            obj::ReadBool(self, L"bUsePhantomOffset", phantom);
+            const auto bounds = [&](const wchar_t* name)
+            {
+                auto* prop = obj::FindProperty(self, name);
+                const auto* at = prop ? static_cast<const uint8_t*>(obj::ValuePtr(self, prop)) : nullptr;
+                return at ? std::format(L"{:.1f}..{:.1f}", *reinterpret_cast<const float*>(at + 4), *reinterpret_cast<const float*>(at + 12))
+                          : std::wstring(L"?");
+            };
+            log::Info(L"totems: the pose moves the game's line{}: across {}, up and down {}", phantom ? L"" : L" not (no phantom offset)",
+                      bounds(L"PhantomOffsetHorizontalLimits"), bounds(L"PhantomOffsetVerticalLimits"));
             NoteWitnessed(self);
         }
 
@@ -212,50 +233,158 @@ namespace da::features
                                *invertH ? L", across inverted" : L"", *invertV ? L", up and down inverted" : L"");
         }
 
-        // Leads the view to the premonition with the aim sound: the blip on the side the
-        // point lies from the point under the view, higher or lower by their difference up
-        // the totem, quicker as the game's own closeness grows, muffled while the point is
-        // round the back, and the quick double ping while the game counts the time on it.
+        // Where the game measures the premonition from (ABatesInteractionTotem::FindUVFromPremonition,
+        // 0x4640340): the point of the totem's collider (TotemMeshCollider) that a line traced in from
+        // as far again beyond the DiscoveryPoint arrow as the mesh's "totem_centre" socket lies within
+        // it, toward that socket, meets first; its texture's spot there is the one the view must rest
+        // on. The arrow itself lies off that point: at the death totem on 2026-11-07 the view lay square
+        // on the arrow at closeness 0.70, and the vision came with the arrow 3 cm right and 3 cm down of
+        // it. Traced out from the socket instead, the line met no face (a mesh's faces are met from
+        // outside only) and the point was never found that evening.
+        bool PremonitionPoint(UObject* totem, const Vec& arrow, Vec& out)
+        {
+            UObject* mesh = nullptr;
+            UObject* collider = nullptr;
+            if (!obj::ReadObject(totem, L"TotemMesh", mesh) || !obj::IsLive(mesh) || !obj::ReadObject(totem, L"TotemMeshCollider", collider) ||
+                !obj::IsLive(collider))
+                return false;
+            Vec centre;
+            auto* socket = obj::FindFunction(mesh, L"GetSocketLocation");
+            if (!socket) return false;
+            bool placed = false;
+            obj::Call(
+                mesh, socket,
+                [&](void* params)
+                {
+                    for (auto* prop : socket->ForEachProperty())
+                    {
+                        if (prop && prop->GetName() == L"InSocketName")
+                            std::construct_at(reinterpret_cast<FName*>(obj::ValuePtrAt(params, prop)), L"totem_centre", FNAME_Add);
+                    }
+                },
+                [&](void* params)
+                {
+                    for (auto* prop : socket->ForEachProperty())
+                    {
+                        if (prop && prop->GetName() == L"ReturnValue") placed = ReadVec(obj::ValuePtrAt(params, prop), prop, centre);
+                    }
+                });
+            if (!placed) return false;
+            const Vec start{2.0 * arrow.x - centre.x, 2.0 * arrow.y - centre.y, 2.0 * arrow.z - centre.z};
+            auto* trace = obj::FindFunction(collider, L"K2_LineTraceComponent");
+            if (!trace) return false;
+            bool hit = false;
+            Vec at;
+            obj::Call(
+                collider, trace,
+                [&](void* params)
+                {
+                    for (auto* prop : trace->ForEachProperty())
+                    {
+                        if (!prop) continue;
+                        const auto name = prop->GetName();
+                        if (name == L"TraceStart")
+                            WriteVec(obj::ValuePtrAt(params, prop), prop, start);
+                        else if (name == L"TraceEnd")
+                            WriteVec(obj::ValuePtrAt(params, prop), prop, centre);
+                        else if (name == L"bTraceComplex")
+                            obj::WriteBoolAt(params, prop, true);
+                    }
+                },
+                [&](void* params)
+                {
+                    for (auto* prop : trace->ForEachProperty())
+                    {
+                        if (!prop) continue;
+                        const auto name = prop->GetName();
+                        if (name == L"ReturnValue")
+                            obj::ReadBoolAt(params, prop, hit);
+                        else if (name == L"HitLocation")
+                            ReadVec(obj::ValuePtrAt(params, prop), prop, at);
+                    }
+                });
+            if (!hit) return false;
+            out = at;
+            return true;
+        }
+
+        // Leads the view to the premonition with the aim sound: the blip on the side the point
+        // lies from the point the game's line meets the totem at, higher or lower by their
+        // difference up the totem, quicker as the game's own closeness grows, muffled while the
+        // point is round the back, and the quick double ping while the game counts the time on
+        // it. The game's line runs from the camera's eye to its query point
+        // (CachedTotemInspectionQueryLocation), which the stick moves; while it misses the totem
+        // the point is placed against that line itself (nudge::TotemLead).
         void Lead(double now, double closeness, double progress, bool onPoint)
         {
             Vec eye, hit, discovery;
             double pitch = 0.0, yaw = 0.0;
             UObject* arrow = nullptr;
             if (!CameraLine(eye, pitch, yaw) || !obj::ReadObject(g_totem, L"DiscoveryPoint", arrow) || !ComponentLocation(arrow, discovery)) return;
+            // The point the game measures from, where the line through the arrow meets the totem.
+            Vec point;
+            const bool measured = PremonitionPoint(g_totem, discovery, point);
+            if (measured) discovery = point;
+            if (measured != g_pointMeasured)
+            {
+                g_pointMeasured = measured;
+                log::Info(L"totems: the premonition is measured {}", measured ? L"at the point the game traces through its arrow"
+                                                                             : L"at its arrow (the game's trace through it found nothing)");
+            }
             Vec forward, right, up;
             ViewBasis(pitch, yaw, forward, right, up);
-            // Off the totem the view's point is stale; the point is then placed against the
-            // view's centre line itself.
-            const bool hitKnown = closeness > 0.001 && VecProperty(g_totem, L"CachedTotemInspectionLocation", hit);
-            Vec d = Minus(discovery, hitKnown ? hit : eye);
-            if (!hitKnown)
+            // The game finds the two places on the totem's texture only while its line meets the
+            // totem, the closeness staying 0 otherwise and going below 0 where they lie far apart
+            // (UpdateTimeLookedAt, 0x4659dc0); the point it last met is stale then. Off the totem
+            // the premonition is placed against the game's line itself, from the eye to the query
+            // point, the view's centre line as a last resort.
+            const bool hitKnown = std::fabs(closeness) > 1e-6 && VecProperty(g_totem, L"CachedTotemInspectionLocation", hit);
+            Vec query;
+            const bool lineKnown = !hitKnown && VecProperty(g_totem, L"CachedTotemInspectionQueryLocation", query);
+            const Vec centreAhead{eye.x + forward.x * 100.0, eye.y + forward.y * 100.0, eye.z + forward.z * 100.0};
+            const Vec d = hitKnown ? Minus(discovery, hit) : nudge::AcrossLine(discovery, eye, lineKnown ? query : centreAhead, forward);
+            const wchar_t* from = hitKnown    ? L"the point the game's line meets the totem at"
+                                  : lineKnown ? L"the game's line"
+                                              : L"the view's centre line";
+            if (from != g_measuredFrom)
             {
-                const double along = Dot(d, forward);
-                d = Minus(d, Vec{forward.x * along, forward.y * along, forward.z * along});
+                g_measuredFrom = from;
+                log::Info(L"totems: the premonition is placed against {}", from);
             }
-            const double lateral = Dot(d, right);
-            const double vertical = Dot(d, up);
-            const double depth = hitKnown ? Dot(d, forward) : 0.0;
-            // Round the side or the back the point lies deeper than the one under the view;
-            // the blip then stays full on the side the shorter way round goes.
-            double pan = std::clamp(lateral / 15.0, -1.0, 1.0);
-            if (depth > 5.0) pan = (lateral < 0.0 ? -1.0 : 1.0) * std::max(std::fabs(pan), std::clamp(depth / 10.0, 0.0, 1.0));
-            const double level = 0.5 + std::clamp(vertical / 20.0, -1.0, 1.0) * 0.5;
-            const bool behind = depth > 10.0 && std::fabs(lateral) < 4.0;
+            nudge::TotemSample sample;
+            sample.lateral = Dot(d, right);
+            sample.vertical = Dot(d, up);
+            sample.depth = hitKnown ? Dot(d, forward) : 0.0;
+            sample.onTotem = hitKnown;
+            sample.closeness = closeness;
+            if (const auto* turn = static_cast<const double*>(sym::MemberOf(g_totem, L"ABatesInteractionTotem.CumulativeInspectionInput")))
+            {
+                sample.turnKnown = true;
+                sample.turnX = turn[0];
+                sample.turnY = turn[1];
+            }
+            // By where the point lies from the game's line, each axis the way the pose was seen to
+            // move it (nudge::TotemLead).
+            const int wayX = g_lead.WayX(), wayY = g_lead.WayY();
+            const auto aim = g_lead.Update(sample);
+            if (g_lead.WayX() != wayX || g_lead.WayY() != wayY)
+                log::Info(L"totems: a push toward the premonition's side brings it nearer {} across and {} up and down, by how it answered the pose",
+                          g_lead.WayX() > 0 ? L"as it should" : L"never (led the other way)", g_lead.WayY() > 0 ? L"as it should" : L"never (led the other way)");
             if (now - g_loggedAt >= 1.0)
             {
                 g_loggedAt = now;
                 const auto pad = input::ReadPad();
                 log::Info(L"totems: the point lies {:+.0f} cm across, {:+.0f} up and {:+.0f} deep of the view's point{}; closeness {:.2f}, time {:.0f}%, {}; "
-                          L"stick ({}, {}){}",
-                          lateral, vertical, depth, hitKnown ? L"" : L" (the view misses the totem)", closeness, progress * 100.0,
-                          onPoint ? L"on the point" : L"off it", pad.valid ? pad.leftX : 0, pad.valid ? pad.leftY : 0, TurnState(g_totem));
+                          L"stick ({}, {}){}; led pan {:+.2f}, level {:.2f}",
+                          sample.lateral, sample.vertical, sample.depth, hitKnown ? L"" : L" (the game's line misses the totem)", closeness,
+                          progress * 100.0, onPoint ? L"on the point" : L"off it", pad.valid ? pad.leftX : 0, pad.valid ? pad.leftY : 0, TurnState(g_totem),
+                          aim.pan, aim.level);
             }
             if (!LookBeaconOn()) return;
             const double interval = onPoint ? 0.12 : 0.09 + 0.4 * std::clamp(1.0 - closeness, 0.0, 1.0);
             if (now - g_blipAt < interval) return;
             g_blipAt = now;
-            sounds::Aim(pan, level, onPoint, behind);
+            sounds::Aim(aim.pan, aim.level, onPoint, aim.behind);
         }
 
         void PollImpl()
@@ -275,7 +404,7 @@ namespace da::features
                 {
                     if (totem == g_putDown.object && obj::IsSame(g_putDown)) continue;
                     double closeness = 0.0;
-                    if (obj::ReadFloat(totem, L"CachedTotemDistanceToPoint", closeness) && closeness > 0.001)
+                    if (obj::ReadFloat(totem, L"CachedTotemDistanceToPoint", closeness) && std::fabs(closeness) > 1e-6)
                     {
                         g_totem = totem;
                         g_held = true;
@@ -311,16 +440,16 @@ namespace da::features
                           progress * 100.0);
             }
             if (progress >= 0.999) Vision(L"the time on the point is full");
-            if (!g_held && closeness > 0.001)
+            if (!g_held && std::fabs(closeness) > 1e-6)
             {
                 g_held = true;
                 log::Info(L"totems: {} counts as held: the inspection is running", TotemName(g_totem));
             }
             if (!g_held || g_visionSaid || g_witnessed) return;
-            if (closeness <= 0.001 && now - g_missLoggedAt >= 5.0)
+            if (std::fabs(closeness) <= 1e-6 && now - g_missLoggedAt >= 5.0)
             {
                 g_missLoggedAt = now;
-                log::Info(L"totems: the view's centre misses the totem");
+                log::Info(L"totems: the game's line misses the totem");
             }
             Lead(now, closeness, progress, onPoint);
         }

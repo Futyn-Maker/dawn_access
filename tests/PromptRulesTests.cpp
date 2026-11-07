@@ -205,16 +205,61 @@ TEST_CASE("an anim graph's state machines are asked by the index the game's own 
     CHECK(prompt::MachineIndices({true}) == std::vector<int>{0});
 }
 
-TEST_CASE("a stage on a clock has run out only while nothing is in hand, 2026-11-06")
+TEST_CASE("a stage on a clock has run out where a graph took the timeout from a waiting state, 2026-11-06")
 {
-    // Jessica's phone in the cabin (research/sessions/s47-full.log): its stage gave 5 s from 22:28:19.75;
-    // Mike reached for it, took hold at 22:28:21.7 and the interaction wound down until 22:28:24.6, its
-    // own count going on.
-    CHECK_FALSE(prompt::StageRanOut(4.9, 5.0, false, false));
-    CHECK_FALSE(prompt::StageRanOut(5.2, 5.0, true, false));
-    CHECK_FALSE(prompt::StageRanOut(5.2, 5.0, false, true));
-    // Past its seconds with nothing taken hold of: the clock ran out.
-    CHECK(prompt::StageRanOut(5.01, 5.0, false, false));
-    // A stage with no clock never runs out.
-    CHECK_FALSE(prompt::StageRanOut(30.0, 0.0, false, false));
+    // Jessica's phone (research/sessions/s47-full.log): its 5 s passed as Mike held it, the graph in
+    // ik_animation, which takes no timeout; it went on as it would have.
+    CHECK_FALSE(prompt::TimeoutTaken({L"ik_animation"}, {L"SingleFrame_LastFrameTransform"}));
+    // The death machine's lever (BP_Deathmachinelever__act4_1.txt): R2 held, deciding, in grab_idle
+    // as its 30 s pass; the graph goes to grab_timeout_end: nobody is spared, and time is up.
+    CHECK(prompt::TimeoutTaken({L"grab_idle"}, {L"grab_timeout_end"}));
+    // Before the grab: reach_idle to reach_timeout_end.
+    CHECK(prompt::TimeoutTaken({L"reach_idle", L"Locomotion"}, {L"reach_timeout_end", L"Locomotion"}));
+    // Emily held over the ledge: GrabLoop to emily_pullsupself.
+    CHECK(prompt::TimeoutTaken({L"GrabLoop"}, {L"emily_pullsupself"}));
+    // A waiting state the graph has not left yet: not yet.
+    CHECK_FALSE(prompt::TimeoutTaken({L"lifted_bolt_idle"}, {L"lifted_bolt_idle"}));
+    CHECK(prompt::WaitingState(L"lifted_bolt_idle"));
+    CHECK_FALSE(prompt::WaitingState(L"reach_to_grab"));
+}
+
+TEST_CASE("the death machine's lever says its sides in the game's names, chapter 4")
+{
+    // act4_1's BP_Deathmachinelever: pulled left, its graph sets ChrisMovedLeverAsh; right,
+    // ChrisMovedLeverJosh (research/interactions/analysis/BP_Deathmachinelever__act4_1.txt). The names
+    // are the characters' own (DA_CharacterMeta_Ashley and _Josh: LocalisedName).
+    const auto sides = prompt::SidesOf(L"BP_Deathmachinelever_C");
+    REQUIRE(sides.has_value());
+    CHECK(sides->left == L"SMG013_66601");
+    CHECK(sides->right == L"SMG013_66604");
+    CHECK(sides->state == L"grab_idle");
+    CHECK_FALSE(prompt::SidesOf(L"BP_Pullliftlever_C").has_value());
+}
+
+TEST_CASE("prompts: a staged shimmy's two-way input names the way on: act4_3's ledge, 2026-11-07")
+{
+    // research/sessions/s55-full.log: "the left stick left and right"; holding right took Matt and Emily on.
+    CHECK(prompt::LinearForward(L"IA_InteractionMovement_LeftRight", false) == L"IA_InteractionMovement_Right");
+    CHECK(prompt::LinearForward(L"IA_InteractionMovement_LeftRight", true) == L"IA_InteractionMovement_Left");
+    CHECK(prompt::LinearForward(L"IA_InteractionMovement_UpDown", false) == L"IA_InteractionMovement_Up");
+    CHECK(prompt::LinearForward(L"IA_InteractionMovement_UpDown", true) == L"IA_InteractionMovement_Down");
+    // A one-way input's prompt names its way already.
+    CHECK(prompt::LinearForward(L"IA_InteractionMovement_Right", false).empty());
+    CHECK(prompt::LinearForward(L"", false).empty());
+    CHECK(prompt::LinearForward(L"LeftRight", false).empty());
+}
+
+TEST_CASE("prompts: the tower radio's dial keeps its place in a global state, the station at 3 up the scale, chapter 6")
+{
+    // act5_2's BP_Radio (research/mechanics/json_int/auto/bp_radio_b422d0.json): its stages keep the
+    // needle's place in RadioDialPosition; MC_Gameplay binds IA_RotateAxisGesture's positive half and
+    // IA_RotateRightGesture to the same keys (a clockwise half circle, D).
+    const auto dial = prompt::DialOf(L"BP_Radio_C");
+    REQUIRE(dial);
+    CHECK(std::wstring(dial->state) == L"RadioDialPosition");
+    CHECK(dial->station == 3);
+    CHECK(std::wstring(dial->turnAction) == L"IA_RotateAxisGesture");
+    CHECK(std::wstring(dial->forward) == L"IA_RotateRightGesture");
+    CHECK_FALSE(prompt::DialOf(L"BP_Deathmachinelever_C"));
+    CHECK_FALSE(prompt::DialOf(L""));
 }

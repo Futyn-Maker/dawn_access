@@ -14,6 +14,7 @@
 #include "core/Symbols.hpp"
 #include "hotkeys/Hotkeys.hpp"
 #include "input/InputNames.hpp"
+#include "locale/GameText.hpp"
 #include "locale/Locale.hpp"
 #include "speech/Sounds.hpp"
 #include "speech/Speech.hpp"
@@ -351,37 +352,52 @@ namespace da::features
         // The timed stage last seen standing, to be asked once more as it goes: a clock that runs out
         // may end its stage, or the interaction, before a look of the mod's sees it run out.
         int64_t g_timedWatched = -1;
+        // The moment a stage's count passed its seconds, and the states its graphs stood in then
+        // (prompt::TimeoutTaken): watched for a moment for a graph taking the timeout.
+        double g_limitAt = -1.0;
+        int64_t g_limitStage = -1;
+        std::vector<std::wstring> g_statesAtLimit;
+        constexpr double kTimeoutTakenWithin = 1.5;
+        std::vector<std::wstring> CurrentStates(UObject* interaction);
 
-        // Whether the stage's clock has run out, by its own count; said once a stage.
-        void CheckRanOut(int64_t index)
+        void SayRanOut(const wchar_t* how)
+        {
+            g_timedOutSaid = g_limitStage;
+            log::Info(L"interactions: the stage's clock ran out, {}", how);
+            sounds::Play(sounds::Cue::Fail);
+            if (cfg::Detailed()) speech::Announce(locale::Mod(L"result.timeout"));
+        }
+
+        // Whether the stage's clock has run out as its answer; said once a stage.
+        void CheckRanOut(int64_t index, UObject* interaction, double now)
         {
             const auto it = g_timedStages.find(index);
             if (index < 0 || index == g_timedOutSaid || it == g_timedStages.end() || !obj::IsSame(it->second.component)) return;
-            UObject* stage = it->second.component.object;
-            const auto* spent = static_cast<const float*>(sym::MemberOf(stage, L"UBatesInteractionStageBase.TimeSpentInStage"));
-            if (!spent || *spent <= it->second.seconds) return;
-            // The game raises the timeout on the stage's anim graphs once its time is over
-            // (UBatesInteractionStageBase::UpdateStage: bHasTimedOut), whatever she does; it is the
-            // answer only while she has not taken hold, as the phone she picks up at 4.9 of its 5 s.
-            const auto* grabbing = static_cast<const bool*>(sym::MemberOf(stage, L"UBatesInteractionStageBase.bIsGrabbing"));
-            const auto* holding = static_cast<const bool*>(sym::MemberOf(stage, L"UBatesInteractionStageBase.bIsFullyHolding"));
-            if (!prompt::StageRanOut(*spent, it->second.seconds, grabbing && *grabbing, holding && *holding))
+            if (g_limitStage != index)
             {
-                g_timedOutSaid = index;
-                log::Info(L"interactions: the stage's clock ran out with the item in hand ({:.1f} of {:.1f} s): no time's up", *spent, it->second.seconds);
+                const auto* spent = static_cast<const float*>(sym::MemberOf(it->second.component.object, L"UBatesInteractionStageBase.TimeSpentInStage"));
+                if (!spent || *spent <= it->second.seconds) return;
+                g_limitStage = index;
+                g_limitAt = now;
+                g_statesAtLimit = interaction ? CurrentStates(interaction) : std::vector<std::wstring>{};
+                log::Info(L"interactions: the stage's count passes its {:.1f} s, its graphs in {}", it->second.seconds,
+                          g_statesAtLimit.empty() ? std::wstring(L"no state") : str::Join(g_statesAtLimit, L", "));
                 return;
             }
-            g_timedOutSaid = index;
-            log::Info(L"interactions: the stage's clock ran out: {:.1f} of {:.1f} s", *spent, it->second.seconds);
-            sounds::Play(sounds::Cue::Fail);
-            if (cfg::Detailed()) speech::Announce(locale::Mod(L"result.timeout"));
+            if (now - g_limitAt > kTimeoutTakenWithin) return;
+            const auto states = interaction ? CurrentStates(interaction) : std::vector<std::wstring>{};
+            if (prompt::TimeoutTaken(g_statesAtLimit, states)) SayRanOut(std::format(L"its graphs moving on to {}", str::Join(states, L", ")).c_str());
         }
 
         void PollTimedStage(UObject* interaction)
         {
             int64_t current = -1;
             if (g_timedStages.empty() || !obj::ReadInt(interaction, L"CurrentStage", current)) return;
-            if (g_timedWatched >= 0 && g_timedWatched != current) CheckRanOut(g_timedWatched);
+            const double now = gamethread::NowSeconds();
+            // A stage that went on as its clock ran out out of a waiting state ran out.
+            if (g_timedWatched >= 0 && g_timedWatched != current && g_limitStage == g_timedWatched && g_timedOutSaid != g_timedWatched &&
+                now - g_limitAt <= kTimeoutTakenWithin && std::any_of(g_statesAtLimit.begin(), g_statesAtLimit.end(), prompt::WaitingState))
+                SayRanOut(L"its stage going on");
             const auto it = g_timedStages.find(current);
             g_timedWatched = it == g_timedStages.end() ? -1 : current;
             if (it == g_timedStages.end()) return;
@@ -392,7 +408,7 @@ namespace da::features
                 sounds::Play(sounds::Cue::Timer);
                 if (cfg::Detailed()) speech::Announce(locale::Mod(L"cue.timer"));
             }
-            CheckRanOut(current);
+            if (gamethread::FrameCount() % 6 == 3) CheckRanOut(current, interaction, now);
         }
 
         // ---- the states its anim graphs stand in -------------------------------------------------
@@ -456,6 +472,61 @@ namespace da::features
         std::wstring g_statesSeen;
         double g_statesSince = -1.0;
         bool g_promptRepeated = false;
+        bool g_sidesSaid = false; // the sides of a lever whose side is the choice (prompt::SidesOf)
+
+        // The staged climbs and shimmies of the interaction in use, by stage: the one-way action that
+        // goes on (prompt::LinearForward); the stage last seen current, since when, and whether its
+        // way on has been said.
+        std::map<int64_t, std::wstring> g_linearForward;
+        int64_t g_linearStage = -1;
+        double g_linearSince = -1.0;
+        bool g_linearSaid = false;
+        constexpr double kLinearAfterPrompt = 1.0; // the game's own prompt comes up first
+
+        void FindLinearStages(UObject* interaction)
+        {
+            g_linearForward.clear();
+            g_linearStage = -1;
+            g_linearSaid = false;
+            std::vector<UObject*> components;
+            obj::ReadObjectArray(interaction, L"BlueprintCreatedComponents", components);
+            for (UObject* component : components)
+            {
+                if (!obj::IsLive(component) || !obj::IsA(component, L"BatesInteractionLinearStaged")) continue;
+                UObject* action = nullptr;
+                bool invert = false;
+                int64_t index = -1;
+                obj::ReadObject(component, L"InputActionAssigned", action);
+                obj::ReadBool(component, L"bInvertInput", invert);
+                obj::ReadInt(component, L"Stage", index);
+                const std::wstring name = obj::IsLive(action) ? obj::ObjectName(action) : std::wstring();
+                const auto forward = prompt::LinearForward(name, invert);
+                log::Info(L"interactions: {} has a staged stage {} ({}) on {}{}{}", obj::ObjectName(interaction), index + 1, obj::ObjectName(component),
+                          name.empty() ? L"no action" : name, invert ? L", inverted" : L"", forward.empty() ? std::wstring() : L": it goes on with " + forward);
+                if (!forward.empty()) g_linearForward[index] = forward;
+            }
+        }
+
+        // The way on of a staged climb or shimmy whose input has two ways, said once its stage is the
+        // current one and the game's prompt has come up.
+        void PollLinear(UObject* interaction, double now)
+        {
+            if (g_linearForward.empty()) return;
+            int64_t current = -1;
+            if (!obj::ReadInt(interaction, L"CurrentStage", current)) return;
+            if (current != g_linearStage)
+            {
+                g_linearStage = current;
+                g_linearSince = now;
+                g_linearSaid = false;
+            }
+            const auto forward = g_linearForward.find(current);
+            if (forward == g_linearForward.end() || g_linearSaid || now - g_linearSince < kLinearAfterPrompt) return;
+            g_linearSaid = true;
+            const auto key = input::KeyForAction(forward->second);
+            log::Info(L"interactions: the stage goes on with {} ({})", forward->second, key);
+            if (!key.empty()) speech::Announce(locale::Mod(L"interact.linear.forward", key));
+        }
 
         // What the states say that nothing else does. A fire laid with no matches to light it plays
         // its no_matches state, the character's empty hands, and the scene waits for the fire; and an
@@ -475,6 +546,17 @@ namespace da::features
                 {
                     log::Info(L"interactions: {} has no matches to light it", obj::ObjectName(interaction));
                     speech::Announce(locale::Mod(L"interact.nomatches"));
+                }
+                // A lever whose side is the choice says the sides as it takes the stick.
+                if (const auto sides = prompt::SidesOf(obj::ClassName(interaction));
+                    sides && !g_sidesSaid && std::find(states.begin(), states.end(), std::wstring(sides->state)) != states.end())
+                {
+                    g_sidesSaid = true;
+                    const auto left = gametext::Resolve(sides->left);
+                    const auto right = gametext::Resolve(sides->right);
+                    log::Info(L"interactions: {} takes the stick: left \"{}\", right \"{}\"", obj::ObjectName(interaction), left, right);
+                    if (!left.empty() && !right.empty())
+                        speech::Announce(locale::Mod(L"dir.left") + L": " + left + L". " + locale::Mod(L"dir.right") + L": " + right + L".");
                 }
             }
             const bool idle = std::any_of(states.begin(), states.end(), [](const std::wstring& st) { return prompt::IdleAfterStep(st); });
@@ -685,11 +767,104 @@ namespace da::features
 
         // ---- a light the press is timed by --------------------------------------------------------
 
-        // The boiler (ABatesInteractionComplexFireItUp): after the turn, the press is judged against
-        // the pressure lamp, which the game keeps as the global flag TimerReadyForButtonPress; a
-        // press while it is dark fails. The double ping marks it coming on.
+        // A press the game judges by a moment it marks with a global flag: the double ping marks
+        // the moment coming, with its word at the detailed level. The boiler
+        // (ABatesInteractionComplexFireItUp) judges the press after the turn against the pressure
+        // lamp, TimerReadyForButtonPress, and a press while it is dark fails. Chapter 5's Wendigo trap
+        // (ABatesInteractionComplexWendigoTrap) takes the grab only while the trap's own animation
+        // holds MikeCanGrabWendigoTrap up ("grab when arm is in right position", its scene's script);
+        // a grab otherwise misses and is tried again. The grab taken is what springs the trap: its
+        // graph has no other way out of reach_idle than reach_to_caught (R2 in the moment), miss (R2
+        // outside it) and the back-out, so being caught is the scene's own end of a grab that lands
+        // (Andrey caught at the third moment on 2026-11-07, then the open/cut choice three times over).
+        struct PressWindow
+        {
+            const wchar_t* cls;
+            const wchar_t* flag;
+            const wchar_t* word;
+            const wchar_t* what;
+        };
+        constexpr PressWindow kPressWindows[] = {
+            {L"BatesInteractionComplexFireItUp", L"TimerReadyForButtonPress", L"interact.lamp", L"the boiler's lamp"},
+            {L"BatesInteractionComplexWendigoTrap", L"MikeCanGrabWendigoTrap", L"interact.now", L"the trap's moment to grab"},
+        };
         nudge::Light g_lamp;
+        const PressWindow* g_window = nullptr;
         bool g_lampActive = false;
+
+        bool GlobalInt(std::wstring_view name, int64_t& out)
+        {
+            static UObject* library = nullptr;
+            static RC::Unreal::UFunction* fn = nullptr;
+            if (!library || !obj::IsLive(library))
+            {
+                library = obj::FindObject(L"/Script/Bates.Default__BatesGlobalStateBlueprintLibrary");
+                fn = library ? obj::FindFunction(library, L"GetGlobalStateControlParameterInt") : nullptr;
+            }
+            UObject* pawn = Pawn();
+            if (!fn || !pawn) return false;
+            bool read = false;
+            obj::Call(
+                library, fn,
+                [&](void* params)
+                {
+                    for (auto* prop : fn->ForEachProperty())
+                    {
+                        if (!prop) continue;
+                        const auto pname = prop->GetName();
+                        if (pname == L"Context")
+                            *static_cast<UObject**>(obj::ValuePtrAt(params, prop)) = pawn;
+                        else if (pname == L"GlobalStateName")
+                            obj::WriteStringAt(params, prop, name);
+                    }
+                },
+                [&](void* params)
+                {
+                    for (auto* prop : fn->ForEachProperty())
+                    {
+                        if (prop && prop->GetName() == L"ReturnValue") read = obj::ReadIntAt(params, prop, out);
+                    }
+                });
+            return read;
+        }
+
+        // A dial the stick turns (prompt::DialOf): its place as last read, and the way to its station,
+        // said once the stage asks for the turn.
+        std::optional<prompt::Dial> g_dial;
+        int64_t g_dialPos = -1;
+        double g_dialAskedSince = -1.0;
+        bool g_dialWaySaid = false;
+
+        void PollDial(double now)
+        {
+            if (!g_dial) return;
+            int64_t pos = -1;
+            if (!GlobalInt(g_dial->state, pos)) return;
+            if (pos != g_dialPos)
+            {
+                if (g_dialPos >= 0)
+                {
+                    log::Info(L"interactions: the dial turns from {} to {}{}", g_dialPos, pos, pos == g_dial->station ? L": the station" : L"");
+                    speech::Announce(locale::Mod(L"interact.dial.position", std::to_wstring(pos)));
+                }
+                else
+                {
+                    log::Info(L"interactions: the dial stands at {}, the station at {}", pos, g_dial->station);
+                }
+                g_dialPos = pos;
+            }
+            if (!InteractionAsks(g_dial->turnAction))
+            {
+                g_dialAskedSince = -1.0;
+                return;
+            }
+            if (g_dialAskedSince < 0.0) g_dialAskedSince = now;
+            if (g_dialWaySaid || pos >= g_dial->station || now - g_dialAskedSince < kLinearAfterPrompt) return;
+            g_dialWaySaid = true;
+            const auto key = input::KeyForAction(g_dial->forward);
+            log::Info(L"interactions: the dial's way to the station is {} ({})", g_dial->forward, key);
+            if (!key.empty()) speech::Announce(locale::Mod(L"interact.linear.forward", key));
+        }
 
         bool GlobalBool(const wchar_t* name, bool& out)
         {
@@ -729,18 +904,19 @@ namespace da::features
 
         void PollLamp(double now)
         {
+            if (!g_window) return;
             bool lit = false;
-            if (!GlobalBool(L"TimerReadyForButtonPress", lit)) return;
+            if (!GlobalBool(g_window->flag, lit)) return;
             const bool was = g_lamp.On();
             if (g_lamp.Update(lit))
             {
-                log::Info(L"interactions: the boiler's lamp comes on: a press now is taken");
+                log::Info(L"interactions: {} comes ({}): a press now is taken", g_window->what, g_window->flag);
                 sounds::Ping();
-                if (cfg::Detailed()) speech::Announce(locale::Mod(L"interact.lamp"));
+                if (cfg::Detailed()) speech::Announce(locale::Mod(g_window->word));
             }
             else if (was && !lit)
             {
-                log::Info(L"interactions: the boiler's lamp goes out");
+                log::Info(L"interactions: {} is over", g_window->what);
             }
             (void)now;
         }
@@ -763,15 +939,32 @@ namespace da::features
                     g_framingTaken = false;
                     ResetTurn();
                     g_lamp.Reset();
-                    g_lampActive = bound && obj::IsA(bound, L"BatesInteractionComplexFireItUp");
+                    g_window = nullptr;
+                    for (const auto& w : kPressWindows)
+                    {
+                        if (bound && obj::IsA(bound, w.cls)) g_window = &w;
+                    }
+                    g_lampActive = g_window != nullptr;
+                    g_sidesSaid = false;
                     if (bound) log::Info(L"interactions: the character uses {} ({})", obj::ObjectName(bound), obj::ClassName(bound));
                     if (bound && obj::IsA(bound, L"BatesInteractionComplex") && !obj::IsA(bound, L"BatesInteractionComplexCameraNudge"))
                         FindExamineStages(bound);
-                    // The stage on a clock that stood as the interaction ended is asked once more.
-                    if (g_timedWatched >= 0) CheckRanOut(g_timedWatched);
+                    // The interaction ending as its stage's clock ran out out of a waiting state ran out.
+                    if (g_timedWatched >= 0 && g_limitStage == g_timedWatched && g_timedOutSaid != g_timedWatched &&
+                        gamethread::NowSeconds() - g_limitAt <= kTimeoutTakenWithin &&
+                        std::any_of(g_statesAtLimit.begin(), g_statesAtLimit.end(), prompt::WaitingState))
+                        SayRanOut(L"the interaction ending");
                     g_timedWatched = -1;
+                    g_limitStage = -1;
+                    g_statesAtLimit.clear();
                     if (bound) FindTimedStages(bound);
                     else g_timedStages.clear();
+                    if (bound) FindLinearStages(bound);
+                    else g_linearForward.clear();
+                    g_dial = bound ? prompt::DialOf(obj::ClassName(bound)) : std::nullopt;
+                    g_dialPos = -1;
+                    g_dialAskedSince = -1.0;
+                    g_dialWaySaid = false;
                     g_statesSeen.clear();
                     g_statesSince = -1.0;
                     g_promptRepeated = false;
@@ -786,6 +979,8 @@ namespace da::features
                 PollTurn(g_interaction, now);
             if (g_lampActive && gamethread::FrameCount() % 2 == 0) PollLamp(now);
             PollTimedStage(g_interaction);
+            if (gamethread::FrameCount() % 6 == 3) PollLinear(g_interaction, now);
+            if (gamethread::FrameCount() % 6 == 5) PollDial(now);
             if (gamethread::FrameCount() % 6 == 1) PollStates(g_interaction, now);
         }
 
@@ -856,7 +1051,7 @@ namespace da::features
             out.push_back(locale::Mod(input::CurrentScheme() == input::Scheme::Gamepad ? L"help.nudge.pad" : L"help.nudge",
                                       {hotkeys::SpokenKey(Command::Where), hotkeys::SpokenKey(Command::Beacon)}));
         if (RevealLed()) out.push_back(locale::Mod(L"help.turn", {hotkeys::SpokenKey(Command::Where), hotkeys::SpokenKey(Command::Beacon)}));
-        if (g_lampActive && g_interaction && obj::IsSame(g_interactionKey))
+        if (g_lampActive && g_window == &kPressWindows[0] && g_interaction && obj::IsSame(g_interactionKey))
             out.push_back(locale::Mod(L"help.boiler", input::KeyForAction(L"IA_GrabInteraction")));
     }
 

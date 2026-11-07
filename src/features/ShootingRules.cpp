@@ -80,7 +80,7 @@ namespace da::shoot
 
     Verdict Judge(const Ending& e)
     {
-        if (e.still) return Verdict::None;
+        if (e.still || e.unseen) return Verdict::None;
         // A shot counts first: in a stage that waits for its end marker after its time, a
         // highlighted shot still takes its target once the clock has run out.
         if (e.shotCircle || e.chosenChanged) return Verdict::Hit;
@@ -88,6 +88,45 @@ namespace da::shoot
         const bool clockOut = e.timed && e.limit > 0.0 && e.seconds >= e.limit - kClockSlack;
         if ((e.timedOutNow && !e.timedOutBefore) || clockOut) return Verdict::TimedOut;
         return Verdict::None;
+    }
+
+    DilemmaPlace DilemmaAt(double yaw, double minYaw, double maxYaw, double middle)
+    {
+        DilemmaPlace p;
+        const double span = maxYaw - minYaw;
+        if (span <= 0.0) return p;
+        p.t = std::clamp((yaw - minYaw) / span, 0.0, 1.0);
+        const double low = (1.0 - middle) / 2.0;
+        const double high = (1.0 + middle) / 2.0;
+        p.region = p.t < low ? 0 : (p.t > high ? 1 : -1);
+        const double lowYaw = minYaw + low * span;
+        const double highYaw = minYaw + high * span;
+        p.toFirst = std::min(0.0, lowYaw - yaw);
+        p.toSecond = std::max(0.0, highYaw - yaw);
+        return p;
+    }
+
+    DilemmaLead LeadDilemma(const DilemmaPlace& p, int option, bool highlighted, bool invert)
+    {
+        DilemmaLead lead;
+        const double side = invert ? -1.0 : 1.0;
+        if (option == 0 || option == 1)
+        {
+            Sight s;
+            s.placed = true;
+            const double toGo = option == 0 ? p.toFirst - (p.region == 0 ? 0.0 : kDilemmaMargin) : p.toSecond + (p.region == 1 ? 0.0 : kDilemmaMargin);
+            s.horizontal = p.region == option ? 0.0 : side * toGo;
+            s.angle = std::fabs(s.horizontal);
+            s.onTarget = p.region == option;
+            lead.blip = BlipOf(s);
+            lead.interval = BlipInterval(s);
+            return lead;
+        }
+        lead.blip.pan = std::clamp(side * (2.0 * p.t - 1.0), -1.0, 1.0);
+        lead.blip.level = 0.5;
+        lead.blip.locked = highlighted;
+        lead.interval = highlighted ? kOnTargetInterval : kDilemmaPace;
+        return lead;
     }
 
     double BlipInterval(const Sight& s)
@@ -103,6 +142,51 @@ namespace da::shoot
         b.locked = s.onTarget;
         b.muffled = std::fabs(s.horizontal) > 90.0;
         return b;
+    }
+
+    bool ConditionHolds(const AimCondition& c, double yaw, double pitch)
+    {
+        const double v = c.axis == 0 ? pitch : yaw;
+        switch (c.op)
+        {
+        case 0: return std::fabs(v - c.value) < 1e-3;
+        case 1: return std::fabs(v - c.value) >= 1e-3;
+        case 2: return v < c.value;
+        case 3: return v <= c.value;
+        case 4: return v > c.value;
+        case 5: return v >= c.value;
+        default: return false;
+        }
+    }
+
+    Sight AimGoal(const std::vector<AimCondition>& conditions, double yaw, double pitch)
+    {
+        Sight s;
+        double goalYaw = yaw, goalPitch = pitch;
+        bool all = !conditions.empty();
+        for (const auto& c : conditions)
+        {
+            const bool holds = ConditionHolds(c, yaw, pitch);
+            all = all && holds;
+            if (holds) continue;
+            double& goal = c.axis == 0 ? goalPitch : goalYaw;
+            if (c.op == 4 || c.op == 5)
+                goal = std::max(goal, c.value + kAimGoalMargin);
+            else if (c.op == 2 || c.op == 3)
+                goal = std::min(goal, c.value - kAimGoalMargin);
+            else if (c.op == 0)
+                goal = c.value;
+            else
+                continue; // "not equal" names no way to turn
+            s.placed = true;
+        }
+        s.onTarget = all;
+        s.solid = all;
+        if (all) s.placed = true;
+        s.horizontal = goalYaw - yaw;
+        s.vertical = goalPitch - pitch;
+        s.angle = std::hypot(s.horizontal, s.vertical);
+        return s;
     }
 
     bool Cadence::Due(double now, bool onTarget, double interval)

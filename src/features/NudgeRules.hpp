@@ -5,6 +5,7 @@
 // comes on.
 
 #include "features/ShootingRules.hpp"
+#include "features/Vec.hpp"
 
 namespace da::nudge
 {
@@ -151,5 +152,85 @@ namespace da::nudge
 
     private:
         bool m_on = false;
+    };
+
+    // ---- a totem turned in the hand -----------------------------------------------------------
+
+    // A totem held for its inspection is turned by the stick: the game adds the stick to a pose of
+    // two numbers held within the totem's limits (ABatesInteractionTotem::CalculateExamineInput:
+    // CumulativeInspectionInput, the stick pushed right raising the first and pushed up the second).
+    // It looks along a line of its own, from the camera's eye to a query point that the pose moves
+    // across the view (UpdateTotemExamination, 0x465a4f0: CachedTotemInspectionQueryLocation, the
+    // focus offset by the pose scaled to PhantomOffset*Limits), and weighs how near the point that
+    // line meets the totem at lies to the premonition's (its closeness, from their places on the
+    // totem's texture; 0 while the line misses the totem). The aim sound goes by where the
+    // premonition lies from that point, or from the line itself while it misses the totem: from the
+    // view's centre line instead, the pose stood at its limit at the fortune totem (2026-11-07,
+    // chapter 4) and at the danger totem (chapter 5), the point "right" all the while and the stick
+    // pushed right for half a minute turning nothing.
+    //
+    // Which way a push moves that point over the premonition is the stick's way in the game's own
+    // frame, but the totem leans in the hands as well, opposite when the player inverts its controls;
+    // so the lead weighs, axis by axis, how the premonition's place answers the pose as the player
+    // turns it, and leads the other way once a push is seen to take it further off (kTotemSlope).
+    // Where a point lies off a line, from `from` through `through`: its part across the line, the
+    // line taken along `fallback` where the two ends are one. The premonition placed so against the
+    // game's line (from the eye through its query point) says which way the line must move to it.
+    features::world::Vec AcrossLine(const features::world::Vec& point, const features::world::Vec& from, const features::world::Vec& through,
+                                    const features::world::Vec& fallback);
+
+    struct TotemSample
+    {
+        bool turnKnown = false;          // the pose is read
+        double turnX = 0.0, turnY = 0.0; // the pose the stick has sent the totem to
+        bool onTotem = false;            // the game's line meets the totem (closeness not 0)
+        double closeness = 0.0;          // the game's own
+        double lateral = 0.0;            // cm right of the point the line meets the totem at (or of the line)
+        double vertical = 0.0;           // cm up from it
+        double depth = 0.0;              // cm further from the view
+    };
+
+    struct TotemAim
+    {
+        double pan = 0.0;    // where the stick goes across: -1 left .. +1 right
+        double level = 0.5;  // and up and down: 0 down .. 1 up
+        bool behind = false; // the point lies round the back: the blip muffled
+    };
+
+    // The pose's change a response is weighed over; how much of what was weighed before each new
+    // step keeps; the pose's movement (summed squares of the steps) it takes to judge a way; and the
+    // answer, in cm the premonition moves for the pose's whole unit, that settles one: further off
+    // the way the push went, the lead turns round, nearer, it goes the push's way.
+    constexpr double kTotemStep = 0.05;
+    constexpr double kTotemForget = 0.95;
+    constexpr double kTotemEvidence = 0.04;
+    constexpr double kTotemSlope = 4.0;
+
+    class TotemLead
+    {
+    public:
+        TotemAim Update(const TotemSample& s);
+        void Reset()
+        {
+            *this = TotemLead{};
+        }
+        // +1 where a push toward the premonition's side brings it nearer, -1 where it was seen to
+        // take it further off; across, then up and down.
+        int WayX() const
+        {
+            return m_wayX;
+        }
+        int WayY() const
+        {
+            return m_wayY;
+        }
+
+    private:
+        TotemAim Aim(const TotemSample& s) const;
+        bool m_have = false; // a sample to weigh the next against
+        bool m_lastOn = false;
+        double m_lastX = 0.0, m_lastY = 0.0, m_lastLateral = 0.0, m_lastVertical = 0.0;
+        double m_xx = 0.0, m_xLateral = 0.0, m_yy = 0.0, m_yVertical = 0.0;
+        int m_wayX = 1, m_wayY = 1;
     };
 }

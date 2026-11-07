@@ -105,4 +105,85 @@ namespace da::nudge
         m_led = led;
         return led ? Event::Begins : Event::Ends;
     }
+
+    features::world::Vec AcrossLine(const features::world::Vec& point, const features::world::Vec& from, const features::world::Vec& through,
+                                    const features::world::Vec& fallback)
+    {
+        features::world::Vec along{through.x - from.x, through.y - from.y, through.z - from.z};
+        double length = std::sqrt(along.x * along.x + along.y * along.y + along.z * along.z);
+        if (length <= 1.0)
+        {
+            along = fallback;
+            length = std::sqrt(along.x * along.x + along.y * along.y + along.z * along.z);
+        }
+        const features::world::Vec d{point.x - from.x, point.y - from.y, point.z - from.z};
+        if (length <= 1e-9) return d;
+        const features::world::Vec u{along.x / length, along.y / length, along.z / length};
+        const double t = d.x * u.x + d.y * u.y + d.z * u.z;
+        return features::world::Vec{d.x - u.x * t, d.y - u.y * t, d.z - u.z * t};
+    }
+
+    TotemAim TotemLead::Update(const TotemSample& s)
+    {
+        // How the premonition's place answers the pose: a push right that takes it further right of
+        // the point the game looks at (or up, for up) leads the other way (kTotemSlope), the answer
+        // weighed as a slope over the steps of the pose, once it has moved enough (kTotemEvidence).
+        // Weighed only between samples measured from the same thing, the line or the point it meets
+        // the totem at.
+        if (s.turnKnown)
+        {
+            const double dx = s.turnX - m_lastX;
+            const double dy = s.turnY - m_lastY;
+            if (!m_have || s.onTotem != m_lastOn)
+            {
+                m_have = true;
+            }
+            else if (std::fabs(dx) >= kTotemStep || std::fabs(dy) >= kTotemStep)
+            {
+                m_xx = m_xx * kTotemForget + dx * dx;
+                m_xLateral = m_xLateral * kTotemForget + dx * (s.lateral - m_lastLateral);
+                m_yy = m_yy * kTotemForget + dy * dy;
+                m_yVertical = m_yVertical * kTotemForget + dy * (s.vertical - m_lastVertical);
+                const auto judge = [](double xx, double xp, int& way)
+                {
+                    if (xx < kTotemEvidence) return;
+                    const double slope = xp / xx;
+                    if (slope > kTotemSlope)
+                        way = -1;
+                    else if (slope < -kTotemSlope)
+                        way = 1;
+                };
+                judge(m_xx, m_xLateral, m_wayX);
+                judge(m_yy, m_yVertical, m_wayY);
+            }
+            else
+            {
+                return Aim(s);
+            }
+            m_lastOn = s.onTotem;
+            m_lastX = s.turnX;
+            m_lastY = s.turnY;
+            m_lastLateral = s.lateral;
+            m_lastVertical = s.vertical;
+        }
+        return Aim(s);
+    }
+
+    TotemAim TotemLead::Aim(const TotemSample& s) const
+    {
+        TotemAim aim;
+        // The game wants the point within a centimetre or two, and a straight scale left the blip near
+        // the middle a few centimetres off: 3 cm across panned 0.2, 4 cm down pitched 0.41, and in s55
+        // the stick was pushed up into the totem's limit for 3 s against it
+        // (research/sessions/s55-full.log, 23:05:04). The scale is the square root of the offset's share.
+        const auto curve = [](double value, double span) { return std::copysign(std::min(1.0, std::sqrt(std::fabs(value) / span)), value); };
+        // Round the side or the back the point lies deeper than the one under the view; the blip
+        // then stays full on the side the shorter way round goes.
+        double pan = curve(s.lateral, 15.0);
+        if (s.depth > 5.0) pan = (s.lateral < 0.0 ? -1.0 : 1.0) * std::max(std::fabs(pan), std::clamp(s.depth / 10.0, 0.0, 1.0));
+        aim.pan = m_wayX * pan;
+        aim.level = 0.5 + m_wayY * curve(s.vertical, 20.0) * 0.5;
+        aim.behind = s.depth > 10.0 && std::fabs(s.lateral) < 4.0;
+        return aim;
+    }
 }

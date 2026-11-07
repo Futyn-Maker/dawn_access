@@ -220,3 +220,98 @@ TEST_CASE("shoot: the double ping comes at once when the aim comes on target, 20
     CHECK_FALSE(blips.Due(20.05, true, shoot::kOnTargetInterval));
     CHECK(blips.Due(20.13, true, shoot::kOnTargetInterval));
 }
+
+TEST_CASE("shoot: an aim-only stage is led past the turn that completes it: the rifle scope, chapter 4")
+{
+    // act3_2's use_scope: AimOnlyStageCompletionConditions[0] is AimAxis YAW, GREATER_OR_EQUAL, 20.0
+    // (research/mechanics/gaps.md); no target, no clock, the scene waits for the turn.
+    const std::vector<shoot::AimCondition> scope{{1, 20.0, 5}};
+    // Looking where it began: the turn lies 23 degrees right (past the threshold by the margin).
+    auto s = shoot::AimGoal(scope, 0.0, -2.0);
+    CHECK(s.placed);
+    CHECK_FALSE(s.onTarget);
+    CHECK(s.horizontal == doctest::Approx(20.0 + shoot::kAimGoalMargin));
+    CHECK(s.vertical == doctest::Approx(0.0));
+    CHECK(shoot::BlipOf(s).pan > 0.9);
+    // Turned the wrong way: still right, farther.
+    CHECK(shoot::AimGoal(scope, -10.0, 0.0).horizontal == doctest::Approx(33.0));
+    // At 20 degrees the stage completes: on target, the double ping.
+    s = shoot::AimGoal(scope, 20.0, 0.0);
+    CHECK(s.onTarget);
+    CHECK(shoot::BlipOf(s).locked);
+    // A pitch condition leads up or down; one stage asks both at once.
+    const std::vector<shoot::AimCondition> both{{1, -15.0, 3}, {0, 10.0, 4}};
+    s = shoot::AimGoal(both, 0.0, 0.0);
+    CHECK(s.horizontal == doctest::Approx(-18.0));
+    CHECK(s.vertical == doctest::Approx(13.0));
+    CHECK_FALSE(s.onTarget);
+    CHECK(shoot::AimGoal(both, -16.0, 11.0).onTarget);
+    // No condition: nothing to lead to.
+    CHECK_FALSE(shoot::AimGoal({}, 0.0, 0.0).placed);
+}
+
+TEST_CASE("a hidden stage the game resolves by itself has no verdict: the Wendigo's dodge, 2026-11-07")
+{
+    // research/sessions/s49-full.log, 00:26:21: after the missed shot the stage Wendigo_Dodge (targets
+    // and reticle hidden) took its only option, "aim timeout", 0.15 s in; the hit's tone was played.
+    shoot::Ending e;
+    e.chosenChanged = true;
+    e.unseen = true;
+    CHECK(shoot::Judge(e) == shoot::Verdict::None);
+    e.unseen = false;
+    CHECK(shoot::Judge(e) == shoot::Verdict::Hit);
+    // Nor a clock run out on it.
+    shoot::Ending t;
+    t.timed = true;
+    t.limit = 5.0;
+    t.seconds = 5.0;
+    t.unseen = true;
+    CHECK(shoot::Judge(t) == shoot::Verdict::None);
+}
+
+TEST_CASE("the death room's dilemma is judged by the yaw's place between the stage's limits, as the game highlights it")
+{
+    // act5_3's StartPose (research/mechanics/shooting_stages.tsv): yaw -5 to 3.7, the middle 0.5.
+    const auto mid = shoot::DilemmaAt(0.0, -5.0, 3.7, 0.5);
+    CHECK(mid.t == doctest::Approx(5.0 / 8.7));
+    CHECK(mid.region == -1);
+    CHECK(mid.toFirst == doctest::Approx(-2.825));  // the first side's edge at -5 + 8.7 / 4
+    CHECK(mid.toSecond == doctest::Approx(1.525)); // the second's at -5 + 8.7 * 3 / 4
+    const auto chris = shoot::DilemmaAt(-3.0, -5.0, 3.7, 0.5);
+    CHECK(chris.region == 0);
+    CHECK(chris.toFirst == 0.0);
+    const auto ashley = shoot::DilemmaAt(1.6, -5.0, 3.7, 0.5);
+    CHECK(ashley.region == 1);
+    CHECK(ashley.toSecond == 0.0);
+    // The shots begin on the side their names give: ShootChoice_AimAsh (-8.7 to 0) on the second,
+    // ShootChoice_AimChris (0 to 8.7) on the first, the aim at 0 as a stage begins.
+    CHECK(shoot::DilemmaAt(0.0, -8.7, 0.0, 0.5).region == 1);
+    CHECK(shoot::DilemmaAt(0.0, 0.0, 8.7, 0.5).region == 0);
+    // Limits that make no span: the middle, nothing highlighted.
+    CHECK(shoot::DilemmaAt(0.0, 0.0, 0.0, 0.5).region == -1);
+}
+
+TEST_CASE("the dilemma's sound leads to no side the player has not chosen, and to the one he has")
+{
+    const auto mid = shoot::DilemmaAt(0.0, -5.0, 3.7, 0.5);
+    // Nothing chosen: the aim's place between the sides, at a steady pace, no lead.
+    auto lead = shoot::LeadDilemma(mid, -1, false, false);
+    CHECK(lead.blip.pan == doctest::Approx(2.0 * mid.t - 1.0));
+    CHECK(lead.interval == doctest::Approx(shoot::kDilemmaPace));
+    CHECK_FALSE(lead.blip.locked);
+    // The aiming's X axis inverted: the sides change ears with the stick.
+    CHECK(shoot::LeadDilemma(mid, -1, false, true).blip.pan == doctest::Approx(-(2.0 * mid.t - 1.0)));
+    // A side highlighted: the double ping.
+    lead = shoot::LeadDilemma(shoot::DilemmaAt(1.6, -5.0, 3.7, 0.5), -1, true, false);
+    CHECK(lead.blip.locked);
+    CHECK(lead.interval == doctest::Approx(shoot::kOnTargetInterval));
+    // Chosen by key: led toward it, past its edge.
+    lead = shoot::LeadDilemma(mid, 1, false, false);
+    CHECK(lead.blip.pan > 0.0);
+    CHECK_FALSE(lead.blip.locked);
+    CHECK(shoot::LeadDilemma(mid, 1, false, true).blip.pan < 0.0);
+    lead = shoot::LeadDilemma(mid, 0, false, false);
+    CHECK(lead.blip.pan < 0.0);
+    // Within the chosen side: on target.
+    CHECK(shoot::LeadDilemma(shoot::DilemmaAt(-3.0, -5.0, 3.7, 0.5), 0, true, false).blip.locked);
+}

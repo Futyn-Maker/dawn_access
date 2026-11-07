@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cwctype>
 
 namespace da::prompt
 {
@@ -72,9 +73,39 @@ namespace da::prompt
         return out;
     }
 
-    bool StageRanOut(double spent, double limit, bool grabbing, bool holding)
+    bool WaitingState(std::wstring_view state)
     {
-        return limit > 0.0 && spent > limit && !grabbing && !holding;
+        std::wstring lower(state);
+        for (auto& c : lower)
+            c = static_cast<wchar_t>(std::towlower(c));
+        return lower.find(L"idle") != std::wstring::npos || lower.find(L"loop") != std::wstring::npos;
+    }
+
+    bool TimeoutTaken(const std::vector<std::wstring>& atLimit, const std::vector<std::wstring>& now)
+    {
+        const bool waited = std::any_of(atLimit.begin(), atLimit.end(), [](const std::wstring& st) { return WaitingState(st); });
+        return waited && now != atLimit;
+    }
+
+    std::wstring LinearForward(std::wstring_view action, bool invert)
+    {
+        const auto ends = [&](std::wstring_view tail) { return action.size() > tail.size() && action.substr(action.size() - tail.size()) == tail; };
+        if (ends(L"LeftRight")) return std::wstring(action.substr(0, action.size() - 9)) + (invert ? L"Left" : L"Right");
+        if (ends(L"UpDown")) return std::wstring(action.substr(0, action.size() - 6)) + (invert ? L"Down" : L"Up");
+        return {};
+    }
+
+    std::optional<Dial> DialOf(std::wstring_view interactionClass)
+    {
+        if (interactionClass == L"BP_Radio_C") return Dial{L"RadioDialPosition", 3, L"IA_RotateAxisGesture", L"IA_RotateRightGesture"};
+        return std::nullopt;
+    }
+
+    std::optional<Sides> SidesOf(std::wstring_view interactionClass)
+    {
+        // DA_CharacterMeta_Ashley and _Josh: LocalisedName SMG013_66601 and SMG013_66604.
+        if (interactionClass == L"BP_Deathmachinelever_C") return Sides{L"SMG013_66601", L"SMG013_66604", L"grab_idle"};
+        return std::nullopt;
     }
 
     void HintFirst::Interaction(bool in)

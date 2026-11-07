@@ -3,6 +3,7 @@
 // question is new and when it is said, which lines of the action bar are said, and the blips
 // that follow the phone's unlock swipe.
 
+#include <optional>
 #include <set>
 #include <string>
 #include <string_view>
@@ -72,11 +73,56 @@ namespace da::prompt
     // states that read nothing.
     std::vector<int> MachineIndices(const std::vector<bool>& nodeIsMachine);
 
-    // Whether a stage on a clock has run out as its answer: its own count past its seconds
-    // (UBatesInteractionStageBase::UpdateStage raises bHasTimedOut then, whatever she does) while she
-    // has not taken hold of the item. Picking Jessica's phone up at 4.9 of its 5 s, Mike held it as
-    // the stage's count went on past them (2026-11-06): no time's up.
-    bool StageRanOut(double spent, double limit, bool grabbing, bool holding);
+    // Whether a stage on a clock has run out as its answer. The stage's own count passes its seconds
+    // (UBatesInteractionStageBase::UpdateStage raises bHasTimedOut on its anim graphs then, every
+    // frame, whatever she does), and a graph takes it only from a state that waits for her (its
+    // name says idle or loop: the death machine's grab_idle goes to grab_timeout_end, the psycho
+    // door's lifted_bolt_idle to lifted_bolt_fail, Emily's GrabLoop to emily_pullsupself). So the
+    // clock has run out as the answer where a graph stood waiting as the count passed and the graph
+    // has moved on since (or the interaction ended at once). Jessica's phone, picked up at 4.9 of its
+    // 5 s, stood in ik_animation as its count went on: no time's up.
+    bool WaitingState(std::wstring_view state);
+    bool TimeoutTaken(const std::vector<std::wstring>& atLimit, const std::vector<std::wstring>& now);
+
+    // An interaction whose stick's side is the choice, with no word for either side on the screen:
+    // chapter 4's death machine (act4_1's BP_Deathmachinelever). Its graph pulls the lever left once
+    // the stick passes its threshold that way with R2 held (pull_lever_left_to_end, which sets
+    // ChrisMovedLeverAsh), right the other way (ChrisMovedLeverJosh), and its stage's 30 s running out
+    // spares neither (ChrisChoseNobody). A sighted player sees whom each side's blade hangs over. The
+    // sides are said in the game's own names for the two (the string-table keys of their characters'
+    // LocalisedName), as the graph comes to the state that takes the stick (`state`).
+    struct Sides
+    {
+        std::wstring_view left;
+        std::wstring_view right;
+        std::wstring_view state;
+    };
+    std::optional<Sides> SidesOf(std::wstring_view interactionClass);
+
+    // A dial the stick turns whose place the game keeps as one of its global states: chapter 6's tower
+    // radio (act5_2's BP_Radio keeps it in the global int RadioDialPosition, 0 to 3; at 3 the ranger
+    // station answers). Its stage takes IA_RotateAxisGesture, whose positive half (a clockwise half
+    // circle, D on the keyboard: MC_Gameplay) turns the needle up the scale toward the station, the
+    // game's own one-way action for that half being IA_RotateRightGesture, bound to the same keys. A
+    // sighted player sees the needle move: its place is said as it changes, and the way to the
+    // station once the stage asks for the turn.
+    struct Dial
+    {
+        std::wstring_view state;      // the global int it keeps its place in
+        int station = 0;              // the place the stage waits for
+        std::wstring_view turnAction; // the stage's own input
+        std::wstring_view forward;    // the game's one-way action that turns it toward the station
+    };
+    std::optional<Dial> DialOf(std::wstring_view interactionClass);
+
+    // The way a staged climb or shimmy goes on (UBatesInteractionLinearStaged: the positive half of its
+    // input raises its stage, the negative half lowers it, unless bInvertInput): for an axis action
+    // (IA_InteractionMovement_LeftRight, _UpDown), the game's own one-way action for the half that goes
+    // on, whose key the player is told; empty for any other action, whose prompt names its one way
+    // already. act4_3's ledge shimmy asks for "the left stick left and right" and only one of them
+    // takes Matt and Emily along the ledge: Andrey stepped back and forth until he held right
+    // (research/sessions/s55-full.log).
+    std::wstring LinearForward(std::wstring_view action, bool invert);
 
     // The first question an interaction asks waits a moment for a hint the game shows with it, so
     // that the hint comes first and its keys after, whichever the game draws first: at the danger

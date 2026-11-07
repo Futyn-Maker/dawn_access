@@ -13,6 +13,7 @@
 #include "hooks/HookDispatcher.hpp"
 #include "hotkeys/Hotkeys.hpp"
 #include "input/InputNames.hpp"
+#include "locale/GameText.hpp"
 #include "locale/Locale.hpp"
 #include "speech/Sounds.hpp"
 #include "speech/Speech.hpp"
@@ -23,6 +24,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <format>
 #include <memory>
 #include <numbers>
 #include <string>
@@ -80,8 +82,19 @@ namespace da::features
             bool timed = false;
             double timeLimit = 0.0;
             bool aimingOnly = false;
+            std::vector<shoot::AimCondition> conditions; // an aim-only stage's, which complete it
             bool targetsHidden = false;
             bool reticleHidden = false;
+            // The Chris and Ashley dilemma (shoot::DilemmaAt): its limits, its middle, whether the
+            // turn commits on the highlight, whether the aiming's X axis is inverted, and the region
+            // the aim stood in at the last look.
+            bool dilemma = false;
+            bool finishOnHighlight = false;
+            double middle = 0.5;
+            double minYaw = 0.0;
+            double maxYaw = 0.0;
+            bool invertX = false;
+            int dilemmaRegion = -2;
             UObject* shotWidget = nullptr; // a target's circle the game destroyed as shot
             int chosen = -1;               // the target the player chose by key
             int leading = -1;              // the target the sound led to at the last look
@@ -263,6 +276,24 @@ namespace da::features
             return gamestate::Paused() || watch::CurrentScreen() != nullptr;
         }
 
+        // The dilemma's measure as the stage keeps it (shoot::DilemmaAt): the yaw's limits from its
+        // camera settings (ShootingStageCameraSettings, MinYawAngle and MaxYawAngle), its middle
+        // (ChrisAshleyMiddleChoiceSize), whether a side reached commits (bFinishOnHighlight), and the
+        // player's setting that inverts the aiming's X axis (bInvertAimingXAxis).
+        void ReadDilemma(UObject* stage, Stage& s)
+        {
+            obj::ReadBool(stage, L"bFinishOnHighlight", s.finishOnHighlight);
+            obj::ReadFloat(stage, L"ChrisAshleyMiddleChoiceSize", s.middle);
+            auto* camera = obj::FindProperty(stage, L"ShootingStageCameraSettings");
+            void* settings = camera ? obj::ValuePtr(stage, camera) : nullptr;
+            if (settings)
+            {
+                obj::ReadFloatAt(settings, obj::StructMember(camera, L"MinYawAngle"), s.minYaw);
+                obj::ReadFloatAt(settings, obj::StructMember(camera, L"MaxYawAngle"), s.maxYaw);
+            }
+            if (UObject* user = obj::FindFirstLive(L"BatesGameUserSettings")) obj::ReadBool(user, L"bInvertAimingXAxis", s.invertX);
+        }
+
         void Begin(UObject* stage, const wchar_t* why)
         {
             g_stage = Stage{};
@@ -276,8 +307,35 @@ namespace da::features
             obj::ReadBool(stage, L"bShouldTimeOut", s.timed);
             obj::ReadFloat(stage, L"SecondsUntilTimeout", s.timeLimit);
             obj::ReadBool(stage, L"bStageIsAimingOnly", s.aimingOnly);
+            if (s.aimingOnly)
+            {
+                if (auto* list = obj::FindProperty(stage, L"AimOnlyStageCompletionConditions"))
+                {
+                    obj::ForEachArrayElement(stage, list,
+                                             [&](void* element, FProperty* inner)
+                                             {
+                                                 shoot::AimCondition c;
+                                                 int64_t axis = 1, op = 5;
+                                                 double value = 0.0;
+                                                 obj::ReadIntAt(element, obj::StructMember(inner, L"AimAxis"), axis);
+                                                 obj::ReadIntAt(element, obj::StructMember(inner, L"Operator"), op);
+                                                 obj::ReadFloatAt(element, obj::StructMember(inner, L"ExpectedValue"), value);
+                                                 c.axis = static_cast<int>(axis);
+                                                 c.op = static_cast<int>(op);
+                                                 c.value = value;
+                                                 s.conditions.push_back(c);
+                                             });
+                }
+                std::vector<std::wstring> said;
+                static const wchar_t* const kOps[] = {L"==", L"!=", L"<", L"<=", L">", L">="};
+                for (const auto& c : s.conditions)
+                    said.push_back(std::format(L"{} {} {:g}", c.axis == 0 ? L"pitch" : L"yaw", c.op >= 0 && c.op < 6 ? kOps[c.op] : L"?", c.value));
+                log::Info(L"shooting: {} is aimed only, done once {}", s.name, said.empty() ? L"(no condition)" : str::Join(said, L" and "));
+            }
             obj::ReadBool(stage, L"bHideTargets", s.targetsHidden);
             obj::ReadBool(stage, L"bHideReticule", s.reticleHidden);
+            obj::ReadBool(stage, L"bIsChrisAshleyDilemma", s.dilemma);
+            if (s.dilemma) ReadDilemma(stage, s);
             int64_t type = -1;
             obj::ReadInt(stage, L"ShootingType", type);
             std::vector<UObject*> options;
@@ -310,6 +368,19 @@ namespace da::features
                                              byName ? L", found by name " + actorName : std::wstring(), initial, selected, next.empty() ? L"?" : next));
                 FindPlace(t);
                 s.targets.push_back(t);
+            }
+            // The dilemma's sides by the game's own names for the two (DA_CharacterMeta_Chris and
+            // _Ashley: LocalisedName SMG013_66598 and SMG013_66601), the first option Chris's.
+            if (s.dilemma && s.targets.size() == 2)
+            {
+                s.targets[0].label = gametext::Resolve(L"SMG013_66598");
+                s.targets[1].label = gametext::Resolve(L"SMG013_66601");
+                const auto& left = s.targets[s.invertX ? 1 : 0].label;
+                const auto& right = s.targets[s.invertX ? 0 : 1].label;
+                log::Info(L"shooting: {} is the dilemma: the stick's left takes the aim to {}, its right to {}; yaw {:g} to {:g}, the middle {:g}{}", s.name,
+                          left, right, s.minYaw, s.maxYaw, s.middle, s.finishOnHighlight ? L"; a side reached commits" : L"");
+                if (!left.empty() && !right.empty())
+                    speech::Announce(locale::Mod(L"dir.left") + L": " + left + L". " + locale::Mod(L"dir.right") + L": " + right + L".");
             }
             log::Info(L"shooting: {} begins ({}): type {}, {} target(s) [{}]; {}; aim assist {}; aiming only {}; targets {}, reticle {}", s.name, why, type,
                       s.targets.size(), str::Join(logged, L"; "), s.timed ? std::format(L"{:.1f} s on the clock", s.timeLimit) : std::wstring(L"no clock"),
@@ -362,12 +433,21 @@ namespace da::features
                 e.limit = s.timeLimit;
                 e.aimingOnly = s.aimingOnly;
                 e.aimReached = Flag(s.stage, kAimOnlyDone);
+                e.unseen = s.targetsHidden && s.reticleHidden && !s.dilemma;
             }
             switch (shoot::Judge(e))
             {
             case shoot::Verdict::Hit:
             {
                 const Target* t = TargetAt(s, hit);
+                // The dilemma's first turn shoots nobody: reaching a side turns the gun on that one.
+                if (s.dilemma && s.finishOnHighlight)
+                {
+                    log::Info(L"shooting: {} ended: the aim turned to {} after {:.2f} s ({})", s.name, t ? t->label : L"?", now - s.startedAt, why);
+                    sounds::Play(sounds::Cue::Confirm);
+                    if (cfg::Detailed() && t && !t->label.empty()) speech::Announce(t->label + L".");
+                    break;
+                }
                 log::Info(L"shooting: {} ended: target {} \"{}\" shot after {:.2f} s ({})", s.name, hit, t ? t->label : L"", now - s.startedAt, why);
                 sounds::Play(sounds::Cue::Confirm);
                 if (cfg::Detailed()) speech::Announce(locale::Mod(L"shoot.hit"));
@@ -385,7 +465,10 @@ namespace da::features
                 if (cfg::Detailed()) speech::Announce(locale::Mod(L"result.timeout"));
                 break;
             case shoot::Verdict::None:
-                log::Info(L"shooting: {} ended with no verdict after {:.2f} s ({}{})", s.name, now - s.startedAt, why, e.still ? L", standing still" : L"");
+                log::Info(L"shooting: {} ended with no verdict after {:.2f} s ({}{})", s.name, now - s.startedAt, why,
+                          e.still    ? L", standing still"
+                          : e.unseen ? L", its targets and reticle hidden: the game resolved it by itself"
+                                     : L"");
                 break;
             }
             g_stage = Stage{};
@@ -410,22 +493,49 @@ namespace da::features
                                             c.sight.horizontal >= 0 ? L"right" : L"left", std::fabs(c.sight.vertical), c.sight.vertical >= 0 ? L"up" : L"down",
                                             c.sight.angle, c.sight.onTarget ? L", highlighted" : L""));
             }
-            log::Verbose(L"shooting: aim yaw {:.2f} pitch {:.2f} (the game's), {:.1f} px from the nearest target, {:.1f} of {:.1f} s; {}",
-                         FloatAt(s.stage, L"UBatesShootingStage.CachedYaw"), FloatAt(s.stage, L"UBatesShootingStage.CachedPitch"),
-                         FloatAt(s.stage, L"UBatesShootingStage.CachedScreenDistanceToClosestTarget"), FloatAt(s.stage, kSecondsIn), s.timeLimit,
-                         str::Join(parts, L"; "));
+            // With no target on the screen the game keeps its largest float as the distance.
+            const double px = FloatAt(s.stage, L"UBatesShootingStage.CachedScreenDistanceToClosestTarget");
+            log::Verbose(L"shooting: aim yaw {:.2f} pitch {:.2f} (the game's), {}, {:.1f} of {:.1f} s; {}", FloatAt(s.stage, L"UBatesShootingStage.CachedYaw"),
+                         FloatAt(s.stage, L"UBatesShootingStage.CachedPitch"),
+                         px < 1e6 ? std::format(L"{:.1f} px from the nearest target", px) : std::wstring(L"no target on the screen"), FloatAt(s.stage, kSecondsIn),
+                         s.timeLimit, str::Join(parts, L"; "));
         }
 
         // The aim sound: a blip on the side of the target, higher when it stands above the aim
         // and lower below, quicker as the aim nears it, and the double ping while the game would
         // take a shot on it. Where the game hides its targets, nothing leads to them: only the
         // double ping, while the reticle shows the game's highlight.
+        void GuideDilemma(Stage& s, double now);
+
         void Guide(Stage& s, double now)
         {
+            if (s.dilemma && s.targets.size() == 2)
+            {
+                GuideDilemma(s, now);
+                return;
+            }
             Vec eye;
             double pitch = 0.0;
             double yaw = 0.0;
             if (!CameraLine(eye, pitch, yaw)) return;
+            // An aim-only stage with conditions: the sound leads past the turn that completes it
+            // (shoot::AimGoal), in the stage's own measure of its aim.
+            if (s.aimingOnly && !s.conditions.empty())
+            {
+                const double aimYaw = FloatAt(s.stage, L"UBatesShootingStage.CachedYaw");
+                const double aimPitch = FloatAt(s.stage, L"UBatesShootingStage.CachedPitch");
+                s.sight = shoot::AimGoal(s.conditions, aimYaw, aimPitch);
+                if (now - s.loggedAt >= 0.5)
+                {
+                    s.loggedAt = now;
+                    log::Verbose(L"shooting: aim yaw {:.2f} pitch {:.2f}; the turn that completes the stage lies {:.1f} deg right and {:.1f} deg up{}", aimYaw,
+                                 aimPitch, s.sight.horizontal, s.sight.vertical, s.sight.onTarget ? L", reached" : L"");
+                }
+                if (!g_aimSound || !s.sight.placed || !s.blips.Due(now, s.sight.onTarget, shoot::BlipInterval(s.sight))) return;
+                const auto blip = shoot::BlipOf(s.sight);
+                sounds::Aim(blip.pan, blip.level, blip.locked, blip.muffled);
+                return;
+            }
             UObject* highlightedOption = nullptr;
             if (!s.aimingOnly) obj::ReadObject(s.stage, L"HighlightedOption", highlightedOption);
             std::vector<shoot::Candidate> candidates;
@@ -472,6 +582,61 @@ namespace da::features
             if (!s.blips.Due(now, s.sight.onTarget, shoot::BlipInterval(s.sight))) return;
             const auto blip = shoot::BlipOf(s.sight);
             sounds::Aim(blip.pan, blip.level, blip.locked, blip.muffled);
+        }
+
+        // The dilemma's aim (shoot::LeadDilemma): its place between the two sides, led to the side the
+        // player chose by key, the double ping while the game highlights a side.
+        void GuideDilemma(Stage& s, double now)
+        {
+            const double yaw = FloatAt(s.stage, L"UBatesShootingStage.CachedYaw");
+            const auto place = shoot::DilemmaAt(yaw, s.minYaw, s.maxYaw, s.middle);
+            UObject* highlightedOption = nullptr;
+            obj::ReadObject(s.stage, L"HighlightedOption", highlightedOption);
+            int highlighted = -1;
+            for (const auto& t : s.targets)
+            {
+                if (highlightedOption && t.option == highlightedOption) highlighted = t.index;
+            }
+            if (highlighted != s.highlighted)
+            {
+                const Target* t = TargetAt(s, highlighted);
+                log::Info(L"shooting: {}", t ? std::format(L"the game highlights {}", t->label) : std::wstring(L"the game highlights neither side"));
+                s.highlighted = highlighted;
+            }
+            if (place.region != s.dilemmaRegion)
+            {
+                const Target* t = TargetAt(s, place.region);
+                log::Info(L"shooting: the aim stands {} (yaw {:.2f}, {:.2f} of the way from the first side to the second)",
+                          t ? L"on the side of " + t->label : std::wstring(L"between the two sides"), yaw, place.t);
+                s.dilemmaRegion = place.region;
+            }
+            const int about = s.chosen >= 0 ? s.chosen : highlighted;
+            s.leading = about;
+            s.sight = shoot::Sight{};
+            if (about >= 0)
+            {
+                s.sight.placed = true;
+                s.sight.onTarget = place.region == about;
+                s.sight.solid = s.sight.onTarget;
+                s.sight.horizontal = s.sight.onTarget ? 0.0 : (s.invertX ? -1.0 : 1.0) * (about == 0 ? place.toFirst : place.toSecond);
+                s.sight.angle = std::fabs(s.sight.horizontal);
+            }
+            // The word to fire where a press shoots: not in the first turn, which commits by itself.
+            if (!s.finishOnHighlight && s.fire.Update(now, highlighted, highlighted >= 0))
+            {
+                log::Info(L"shooting: the game has highlighted {} for a fifth of a second: the word to fire", highlighted);
+                if (cfg::Detailed()) speech::Announce(locale::Mod(L"shoot.fire"));
+            }
+            if (now - s.loggedAt >= 0.5)
+            {
+                s.loggedAt = now;
+                log::Verbose(L"shooting: aim yaw {:.2f} (the game's), {:.2f} of the way, region {}, {:.1f} of {:.1f} s", yaw, place.t, place.region,
+                             FloatAt(s.stage, kSecondsIn), s.timeLimit);
+            }
+            if (!g_aimSound) return;
+            const auto lead = shoot::LeadDilemma(place, s.chosen, highlighted >= 0, s.invertX);
+            if (!s.blips.Due(now, lead.blip.locked, lead.interval)) return;
+            sounds::Aim(lead.blip.pan, lead.blip.level, lead.blip.locked, lead.blip.muffled);
         }
 
         void PollImpl()
@@ -593,9 +758,11 @@ namespace da::features
         std::wstring CurrentText()
         {
             const Stage& s = g_stage;
+            // An aim-only stage: where the turn it waits for lies.
+            if (s.aimingOnly && !s.conditions.empty()) return PlaceText(s.sight);
             const Target* t = TargetAt(s, s.leading);
-            // Targets the game hides are not named, nor placed.
-            if (!t || s.targetsHidden) return locale::Mod(L"explore.notarget");
+            // Targets the game hides are not named, nor placed; the dilemma's two sides are.
+            if (!t || (s.targetsHidden && !s.dilemma)) return locale::Mod(L"explore.notarget");
             return TargetText(s, *t, s.sight);
         }
 
@@ -606,7 +773,7 @@ namespace da::features
         {
             Stage& s = g_stage;
             if (!ShootingActive()) return false;
-            if (s.targets.empty() || s.targetsHidden)
+            if (s.targets.empty() || (s.targetsHidden && !s.dilemma))
             {
                 speech::Now(locale::Mod(L"explore.notarget"));
                 return true;
