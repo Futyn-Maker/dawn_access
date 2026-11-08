@@ -108,9 +108,12 @@ namespace da::features
             double grace = 0.0;
             obj::ReadFloat(e.widget, L"TimeOverThresholdLimit", pool);
             obj::ReadFloat(e.widget, recorded ? L"GraceTimerLimitPassive" : L"GraceTimerLimitActive", grace);
-            log::Info(L"dontmove: {} runs the {} version (the game's function says {}, {}motion input); its clock allows {:.2f} s past the edge in all, after "
-                      L"a grace of {:.2f} s each time",
-                      obj::ObjectName(e.widget), recorded ? L"passive" : L"active", asked ? L"passive" : L"active", motion ? L"" : L"no ", pool, grace);
+            // The passive version counts the controller's motion after one grace at its start; the active
+            // one counts the marker past the edge, its grace begun again each time the marker is back.
+            log::Info(L"dontmove: {} runs the {} version (the game's function says {}, {}motion input); its clock allows {:.2f} s {} in all, after a grace "
+                      L"of {:.2f} s {}",
+                      obj::ObjectName(e.widget), recorded ? L"passive" : L"active", asked ? L"passive" : L"active", motion ? L"" : L"no ", pool,
+                      recorded ? L"of the controller moving" : L"past the edge", grace, recorded ? L"at its start" : L"each time");
         }
 
         // The mod's own words for the version are kept for the help key alone: during the
@@ -236,6 +239,7 @@ namespace da::features
             obj::ReadFloat(widget, L"GraceTimer", m.grace);
             obj::ReadFloat(widget, passive ? L"GraceTimerLimitPassive" : L"GraceTimerLimitActive", m.graceLimit);
             obj::ReadBool(widget, L"CanFail", m.canFail);
+            obj::ReadFloat(widget, L"CurrentInstability", m.instability);
             if (m.edge <= 0.0) m.edge = 0.8;
             return true;
         }
@@ -257,15 +261,19 @@ namespace da::features
                 e.lastTraceAt = now;
                 int64_t stage = -1;
                 obj::ReadInt(e.widget, L"Stage", stage);
-                log::Verbose(L"dontmove: {} marker {:.2f}, {:.2f} {} (flag {}), {} {:.2f}, {:.2f}, clock {:.2f} of {:.2f}, grace {:.2f} of {:.2f}, stage {}",
+                log::Verbose(L"dontmove: {} marker {:.2f}, {:.2f} {} (flag {}), {} {:.2f}, {:.2f}, clock {:.2f} of {:.2f}, grace {:.2f} of {:.2f}, "
+                             L"instability {:.2f}, stage {}",
                              obj::ObjectName(e.widget), m.x, m.y, beyond ? L"past the edge" : L"inside", m.flagWithin ? L"within" : L"outside",
-                             m.pulled ? L"pulled to" : L"last pull", m.pullX, m.pullY, m.clock, m.pool, m.grace, m.graceLimit, stage);
+                             m.pulled ? L"pulled to" : L"last pull", m.pullX, m.pullY, m.clock, m.pool, m.grace, m.graceLimit, m.instability, stage);
             }
             const calm::Step step = e.follower.Update(now, m, e.modeKnown, e.passive);
             const auto name = [&] { return obj::ObjectName(e.widget); };
-            if (step.beyondChanged)
+            if (step.beyondChanged && !e.passive)
                 log::Info(L"dontmove: {} marker {} at {:.2f}, {:.2f}, clock {:.2f} of {:.2f}", name(), step.beyond ? L"past the edge" : L"back inside", m.x,
                           m.y, m.clock, m.pool);
+            if (step.movingChanged)
+                log::Info(L"dontmove: {} the game {} (instability {:.2f}), clock {:.2f} of {:.2f}: sound: {}", name(),
+                          step.moving ? L"sees the controller move" : L"sees it still", m.instability, m.clock, m.pool, step.moving ? L"thud" : L"ping");
             if (step.drainingChanged && step.draining) log::Info(L"dontmove: {} clock running, {:.2f} of {:.2f} s used", name(), m.clock, m.pool);
             if (step.clockStep > 0) log::Info(L"dontmove: {} {} of the clock gone: sound: clock", name(), step.clockStep == 2 ? L"three quarters" : L"half");
             if (step.steered)
@@ -293,6 +301,7 @@ namespace da::features
                     break;
                 case calm::Sound::Kind::Steer: sounds::Steer(sound.right, sound.up, sound.beyond); break;
                 case calm::Sound::Kind::Blip: sounds::Marker(sound.right, sound.up, false, sound.beyond); break;
+                case calm::Sound::Kind::Moving: sounds::Marker(0.0, 0.0, false, true); break;
                 case calm::Sound::Kind::Clock:
                     sounds::Play(sounds::Cue::Timer);
                     if (cfg::Detailed()) speech::Announce(locale::Mod(step.clockStep == 2 ? L"dontmove.clock.most" : L"dontmove.clock.half"));

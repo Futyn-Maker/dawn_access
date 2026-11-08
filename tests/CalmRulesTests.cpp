@@ -3,6 +3,7 @@
 #include "Support.hpp"
 #include "features/CalmRules.hpp"
 
+#include <algorithm>
 #include <vector>
 
 using namespace da;
@@ -219,28 +220,82 @@ TEST_CASE("calm: back inside as half the pool goes, the clock cue waits for the 
     CHECK(Kinds(step) == std::vector<Sound::Kind>{Sound::Kind::Clock});
 }
 
-TEST_CASE("calm: the passive version: the blip where the marker is, quicker toward the edge, the ping in the middle")
+TEST_CASE("calm: the passive version follows the game's judgement of the controller's motion, not the marker, 2026-11-08")
 {
-    // In the middle: the double ping every half second.
-    calm::Follower centred;
-    CHECK(Times(centred, At(0.05, 0.05), true, true, 0, 9, Sound::Kind::Ping) == std::vector<double>{0.0, 0.5, 1.0});
-    // Halfway to the edge: a blip on its side, by its height, every 0.26 s.
-    calm::Follower half;
-    const auto step = half.Update(T(0), At(0.4, -0.4), true, true);
-    REQUIRE(step.sounds.size() == 1);
-    CHECK(step.sounds[0].kind == Sound::Kind::Blip);
-    CHECK(step.sounds[0].right == doctest::Approx(0.5));
-    CHECK(step.sounds[0].up == doctest::Approx(0.75));
-    CHECK_FALSE(step.sounds[0].beyond);
-    CHECK(half.Update(T(2), At(0.4, -0.4), true, true).sounds.empty());
-    CHECK(half.Update(T(3), At(0.4, -0.4), true, true).sounds.size() == 1);
-    // Past the edge: the thudded blip every fifth of a second.
-    calm::Follower out;
-    CHECK(Times(out, At(-0.9, 0.0), true, true, 0, 9, Sound::Kind::Blip) == std::vector<double>{0.0, 0.25, 0.5, 0.75, 1.0});
-    const auto thud = out.Update(1.25, At(-0.9, 0.0), true, true);
-    REQUIRE(thud.sounds.size() == 1);
-    CHECK(thud.sounds[0].beyond);
-    CHECK(thud.sounds[0].right == doctest::Approx(-1.0));
+    // Still (the border safe) with the marker drifted off the middle: the double ping every half
+    // second, no blip where the marker is: the game counts nothing.
+    calm::Follower still;
+    calm::Marker drifted = At(0.4, -0.4);
+    CHECK(Times(still, drifted, true, true, 0, 9, Sound::Kind::Ping) == std::vector<double>{0.0, 0.5, 1.0});
+    calm::Follower still2;
+    CHECK(Times(still2, drifted, true, true, 0, 9, Sound::Kind::Blip).empty());
+    // Moving (the border red) with the marker still in the middle: the low thud every fifth of a
+    // second (at the polls' eighths: 0, 0.25, 0.5, ...), no ping.
+    calm::Follower moving;
+    calm::Marker shaken = At(0.05, 0.05);
+    shaken.instability = 0.9;
+    CHECK(Times(moving, shaken, true, true, 0, 9, Sound::Kind::Moving) == std::vector<double>{0.0, 0.25, 0.5, 0.75, 1.0});
+    calm::Follower moving2;
+    CHECK(Times(moving2, shaken, true, true, 0, 9, Sound::Kind::Ping).empty());
+    // A change is sounded at once: still to moving an eighth after a ping, and back.
+    calm::Follower turns;
+    CHECK(Kinds(turns.Update(T(0), drifted, true, true)) == std::vector<Sound::Kind>{Sound::Kind::Ping});
+    auto step = turns.Update(T(1), shaken, true, true);
+    CHECK(step.movingChanged);
+    CHECK(step.moving);
+    CHECK(Kinds(step) == std::vector<Sound::Kind>{Sound::Kind::Moving});
+    step = turns.Update(T(2), drifted, true, true);
+    CHECK(step.movingChanged);
+    CHECK_FALSE(step.moving);
+    CHECK(Kinds(step) == std::vector<Sound::Kind>{Sound::Kind::Ping});
+    // The border just under half red counts as still.
+    calm::Marker settling = drifted;
+    settling.instability = calm::kMoving - 0.01;
+    CHECK_FALSE(turns.Update(T(3), settling, true, true).moving);
+}
+
+TEST_CASE("calm: the passive version's pool drains while the controller moves, the marker in the middle: Beth's encounter in the prologue")
+{
+    // research/sessions/s37-old.log, 22:00:04.337 to 22:00:07.315: the passive version, a pool of
+    // 1.50 s after a grace of 0.50 s; the marker never past 0.50 of its limit while the pool ran out
+    // and the encounter failed. Between each two of the mod's looks the pool grew: the game counted
+    // the controller moving there (its instability up). The mod had pinged and blipped the marker in
+    // the middle.
+    struct Look
+    {
+        double at, x, y, clock, grace;
+    };
+    const std::vector<Look> looks{{4.337, -0.16, 0.07, 0.00, 0.11}, {4.880, -0.07, 0.08, 0.03, 0.50}, {5.418, -0.12, 0.05, 0.34, 0.50},
+                                  {5.954, -0.12, 0.12, 0.67, 0.50}, {6.488, -0.25, 0.17, 0.99, 0.50}, {7.029, -0.50, 0.01, 1.36, 0.50}};
+    calm::Follower f;
+    double clockBefore = 0.0;
+    int thuds = 0;
+    std::vector<int> clockSteps;
+    for (const auto& look : looks)
+    {
+        calm::Marker m = At(look.x, look.y);
+        m.canFail = true;
+        m.pool = 1.5;
+        m.graceLimit = 0.5;
+        m.grace = look.grace;
+        m.clock = look.clock;
+        m.instability = look.clock > clockBefore + 0.01 ? 1.0 : 0.0;
+        clockBefore = look.clock;
+        const auto step = f.Update(look.at, m, true, true);
+        CAPTURE(look.at);
+        if (m.instability > 0.0)
+        {
+            CHECK(step.moving);
+            for (const auto& sound : step.sounds)
+                CHECK(sound.kind != Sound::Kind::Ping);
+            thuds += static_cast<int>(std::count_if(step.sounds.begin(), step.sounds.end(), [](const Sound& sound) { return sound.kind == Sound::Kind::Moving; }));
+            CHECK(step.draining == (look.grace >= 0.5));
+        }
+        if (step.clockStep > 0) clockSteps.push_back(step.clockStep);
+    }
+    CHECK(thuds == 5);
+    // The clock cue as half and three quarters of the pool went.
+    CHECK(clockSteps == std::vector<int>{1, 2});
 }
 
 TEST_CASE("calm: before the version is known, the marker is followed as in the passive version")

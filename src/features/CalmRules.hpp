@@ -27,6 +27,10 @@ namespace da::calm
         double grace = 0.0;
         double graceLimit = 0.0;
         bool canFail = false;
+        // The passive version's own judgement, its widget's CurrentInstability: 0 while the controller
+        // is held still, rising to 1 within a few frames as it turns faster than the version allows,
+        // falling slowly once it stops; it colours the encounter's border from safe to red.
+        double instability = 0.0;
     };
 
     // Whether the game counts the marker past the edge (its own test for its clock).
@@ -43,6 +47,9 @@ namespace da::calm
     constexpr double kSteerApart = 0.35;
     constexpr double kBeyondBlip = 0.2;
     constexpr double kPingHeard = 0.25;
+    // The passive version counts the controller moving where its instability stands from here on:
+    // the border half red.
+    constexpr double kMoving = 0.5;
 
     // A sound of the marker's.
     struct Sound
@@ -51,8 +58,9 @@ namespace da::calm
         {
             Ping,  // the double ping
             Steer, // the signal of where to push
-            Blip,  // the passive version's blip where the marker is
-            Clock, // the clock cue
+            Blip,   // the marker's blip where it is, before the version is known
+            Clock,  // the clock cue
+            Moving, // the passive version: the low thud, the game sees the controller move
         };
         Kind kind = Kind::Ping;
         double right = 0.0;  // Steer: the way to push, -1 to 1 in halves; Blip: its pan
@@ -74,6 +82,8 @@ namespace da::calm
         bool steerChanged = false; // with a new way to push (else a repeat past the edge)
         int steerRight = 0;        // the way, in halves
         int steerUp = 0;
+        bool moving = false;        // the passive version: the game counts the controller moving
+        bool movingChanged = false;
     };
 
     // The sounds of the marker, told apart by how many notes they have.
@@ -84,9 +94,20 @@ namespace da::calm
     // pull begins or turns, and, past the edge, every third of a second with a low thud in front,
     // pointing back to the middle.
     //
-    // Passive version (and while the version is not known yet): the marker's place is the sound.
-    // A blip sounds on the side the marker has drifted to, higher when it is high; past the edge a
-    // low thud comes first; the double ping when it sits in the middle.
+    // Passive version: the game judges the controller's motion and nothing else (WBP_DontMove's
+    // Tick: each frame it asks whether the controller turns faster than PassiveSettleStrength allows,
+    // and while it does, past the grace at the encounter's start, every frame drains the pool; the
+    // marker only drifts the way it turns, slowly, and plays no part). Followed by the marker, the
+    // mod had said "in the middle" while the pool ran out: at Beth's encounter in the prologue's woods
+    // the marker sat within 0.25 of the middle, its double ping sounding, while 1.36 of 1.50 s drained
+    // and the encounter failed (research/sessions/s37-old.log, 22:00:03 to 22:00:07). So the sound is
+    // the game's own judgement, as the border's colour shows it (Marker::instability): the low thud
+    // every fifth of a second while the game sees the controller move, the double ping every half
+    // second while it is still, each change at once.
+    //
+    // Before the version is known: the marker's place is the sound. A blip sounds on the side the
+    // marker has drifted to, higher when it is high; past the edge a low thud comes first; the
+    // double ping when it sits in the middle.
     //
     // The game's clock: the clock cue sounds as half and three quarters of the pool are gone.
     class Follower
@@ -96,6 +117,7 @@ namespace da::calm
 
     private:
         bool m_beyond = false;
+        bool m_moving = false;   // the passive version: the game counts the controller moving
         bool m_draining = false; // the game's clock is eating the pool
         int m_poolStep = 0;      // the shares of the pool already told
         double m_lastBlipAt = -10.0;

@@ -33,9 +33,22 @@ namespace da::calm
             step.sounds.push_back({Sound::Kind::Ping});
         }
         const bool pingHeard = now - m_lastPingAt < kPingHeard;
-        // The clock: its grace spent and the marker still out, the pool drains; the clock cue
-        // sounds as half and three quarters of the pool are gone.
-        const bool draining = m.canFail && m.graceLimit > 0.0 && m.grace >= m.graceLimit && beyond;
+        // The passive version judges the controller's motion, not the marker.
+        const bool byMotion = modeKnown && passive;
+        const bool moving = byMotion && m.instability >= kMoving;
+        if (byMotion)
+        {
+            step.moving = moving;
+            if (moving != m_moving)
+            {
+                m_moving = moving;
+                step.movingChanged = true;
+            }
+        }
+        // The clock: its grace spent and what the game judges out (the marker past the edge, in the
+        // passive version the controller moving), the pool drains; the clock cue sounds as half and
+        // three quarters of the pool are gone.
+        const bool draining = m.canFail && m.graceLimit > 0.0 && m.grace >= m.graceLimit && (byMotion ? moving : beyond);
         step.draining = draining;
         if (draining != m_draining)
         {
@@ -102,7 +115,18 @@ namespace da::calm
             }
             return step;
         }
-        // Passive: the blip where the marker is; the double ping when it sits in the middle.
+        // Passive: the low thud while the game sees the controller move, the double ping while it is
+        // still, each change at once.
+        if (byMotion)
+        {
+            const double pace = moving ? kBeyondBlip : kInsideTick;
+            if (!step.movingChanged && now - m_lastBlipAt < pace) return step;
+            m_lastBlipAt = now;
+            step.sounds.push_back({moving ? Sound::Kind::Moving : Sound::Kind::Ping});
+            return step;
+        }
+        // Before the version is known: the blip where the marker is; the double ping when it sits in
+        // the middle.
         const bool centred = offset < kCentred;
         const double interval = centred ? kInsideTick : beyond ? kBeyondBlip : kSlowestBlip - (kSlowestBlip - kFastestBlip) * share;
         if (now - m_lastBlipAt < interval) return step;
