@@ -231,6 +231,11 @@ namespace da::shoot
         return stage.targets > 0 && !stage.aimingOnly && !stage.targetsHidden && !stage.finishOnHighlight && !stage.dilemma;
     }
 
+    bool Asks(size_t targets, bool aimingOnly)
+    {
+        return targets > 0 || aimingOnly;
+    }
+
     Lock LockHolds(bool stageRuns, bool targetPlaced, bool playerAims, bool aimKnown)
     {
         if (!stageRuns) return Lock::StageOver;

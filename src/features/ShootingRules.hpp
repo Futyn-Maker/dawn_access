@@ -243,6 +243,11 @@ namespace da::shoot
     };
     bool Snaps(const SnapStage& stage);
 
+    // Whether a stage asks anything of the player as it begins: a target to shoot, or an aim it waits
+    // for. act7_2's barrelidle_combat has neither, stands a second and goes on by itself
+    // (A_barrelending_combat in LV_scene10_final_fight): its "Aim" and fire key would ask for nothing.
+    bool Asks(size_t targets, bool aimingOnly);
+
     // Whether the aim stays held on its target: until the stage ends, the target is no longer
     // placed, or the player aims by herself, the stick, the mouse or the keys the game maps to its
     // aim (IA_SequenceAim) moved; her own aim always wins, as her own steering ends the walk. Where

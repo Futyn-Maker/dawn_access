@@ -431,3 +431,10 @@ TEST_CASE("the walk key puts the aim on nothing while the fire key is held")
     CHECK(shoot::SnapNow(false));
     CHECK_FALSE(shoot::SnapNow(true));
 }
+
+TEST_CASE("a stage with no target that is not aimed asks nothing as it begins: the barrel's second in act7_2")
+{
+    CHECK_FALSE(shoot::Asks(0, false)); // barrelidle_combat
+    CHECK(shoot::Asks(0, true));        // the rifle scope, aimed only
+    CHECK(shoot::Asks(1, false));
+}

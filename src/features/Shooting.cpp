@@ -404,6 +404,13 @@ namespace da::features
                       s.snaps ? L"the walk key puts the aim on a target" : L"the walk key puts the aim on nothing here");
             // A timed stage draws its clock on every target as a ring: the timer cue marks it, as it
             // marks a timed choice. The key a shot takes is what the circles show, said once.
+            // A stage with no target that is not aimed either asks nothing of the player: act7_2's
+            // barrelidle_combat stands a second and goes on by itself (A_barrelending_combat).
+            if (!shoot::Asks(s.targets.size(), s.aimingOnly))
+            {
+                log::Info(L"shooting: {} has nothing to aim at and nothing to shoot: nothing is said", s.name);
+                return;
+            }
             if (s.timed) sounds::Play(sounds::Cue::Timer);
             std::vector<std::wstring> parts;
             if (cfg::Detailed()) parts.push_back(locale::Mod(L"shoot.aim"));
