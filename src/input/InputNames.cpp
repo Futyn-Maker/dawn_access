@@ -1,4 +1,5 @@
 #include "input/InputNames.hpp"
+#include "input/KeyChoice.hpp"
 
 #include "core/Fault.hpp"
 #include "core/GameThread.hpp"
@@ -187,15 +188,17 @@ namespace da::input
             return str::CollapseWhitespace(out);
         }
 
-        std::wstring EngineDisplayName(std::wstring_view keyName)
+        // A call of the engine's input library on one key (an FKey made of its name alone; the engine
+        // looks its details up by the name, and keeps them in the key, which is given back to it as
+        // the call ends).
+        template <class Read>
+        bool CallOnKey(const wchar_t* function, std::wstring_view keyName, const Read& read)
         {
             auto* lib = obj::FindObject(L"/Script/Engine.Default__KismetInputLibrary");
-            if (!lib) return {};
-            auto* fn = obj::FindFunction(lib, L"Key_GetDisplayName");
-            if (!fn) return {};
-            std::wstring result;
+            auto* fn = lib ? obj::FindFunction(lib, function) : nullptr;
+            if (!fn) return false;
             const std::wstring name(keyName);
-            obj::Call(
+            return obj::Call(
                 lib, fn,
                 [&](void* params)
                 {
@@ -212,10 +215,38 @@ namespace da::input
                 {
                     for (auto* prop : fn->ForEachProperty())
                     {
-                        if (prop && prop->GetName() == L"ReturnValue") obj::ReadStringAt(params, prop, result);
+                        if (!prop) continue;
+                        if (prop->GetName() == L"ReturnValue") read(params, prop);
+                        else if (prop->GetName() == L"Key") prop->DestroyValue(prop->ContainerPtrToValuePtr<void>(params));
                     }
                 });
+        }
+
+        std::wstring EngineDisplayName(std::wstring_view keyName)
+        {
+            std::wstring result;
+            CallOnKey(L"Key_GetDisplayName", keyName, [&](void* params, FProperty* prop) { obj::ReadStringAt(params, prop, result); });
             return result;
+        }
+
+        // Whether the engine counts a key as a gamepad's (input::KeysForDevice), asked once a key.
+        std::map<std::wstring, bool> g_gamepadKeys;
+
+        bool IsGamepadKey(const std::wstring& keyName)
+        {
+            {
+                fault::Guard lock(g_mutex, L"input");
+                const auto it = g_gamepadKeys.find(keyName);
+                if (it != g_gamepadKeys.end()) return it->second;
+            }
+            bool pad = false;
+            const bool asked = CallOnKey(L"Key_IsGamepadKey", keyName, [&](void* params, FProperty* prop) { obj::ReadBoolAt(params, prop, pad); });
+            if (asked)
+            {
+                fault::Guard lock(g_mutex, L"input");
+                g_gamepadKeys[keyName] = pad;
+            }
+            return pad;
         }
     }
 
@@ -378,19 +409,13 @@ namespace da::input
     namespace
     {
         // The keys of an action that belong to the scheme in hand, in the game's order: the
-        // gamepad's for the gamepad, the keyboard's and the mouse's otherwise, never the
-        // touch pad's or a gesture's.
+        // gamepad's for the gamepad, its touch pad's among them, the keyboard's and the mouse's
+        // otherwise (input::KeysForDevice, by the engine's own flag).
         std::vector<std::wstring> SchemeKeys(const std::wstring& action, Scheme scheme)
         {
             const std::vector<std::wstring> keys = KeysOfAction(ActionByName(action));
-            std::vector<std::wstring> chosen;
             const bool wantPad = scheme == Scheme::Gamepad;
-            for (const auto& k : keys)
-            {
-                if (str::StartsWith(k, L"Touch") || str::StartsWith(k, L"Gesture")) continue;
-                if (str::StartsWith(k, L"Gamepad_") == wantPad) chosen.push_back(k);
-            }
-            if (chosen.empty() && !keys.empty()) chosen.push_back(keys.front());
+            const auto chosen = KeysForDevice(keys, wantPad, [](const std::wstring& key) { return IsGamepadKey(key); });
             log::Verbose(L"input: action {} -> keys [{}] -> [{}] (scheme {})", action, str::Join(keys, L", "), str::Join(chosen, L", "), SchemeName(scheme));
             return chosen;
         }

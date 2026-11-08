@@ -49,6 +49,7 @@ add_executable(tests
     SpeechRulesTests.cpp
     WorldStreamTests.cpp
     GroundRecheckTests.cpp
+    KeyChoiceTests.cpp
     "${DA_SRC}/core/Strings.cpp"
     "${DA_SRC}/core/Config.cpp"
     "${DA_SRC}/core/Symbols.cpp"
@@ -76,7 +77,8 @@ add_executable(tests
     "${DA_SRC}/features/Rooms.cpp"
     "${DA_SRC}/speech/SpeechRules.cpp"
     "${DA_SRC}/features/WorldStream.cpp"
-    "${DA_SRC}/features/GroundRecheck.cpp")
+    "${DA_SRC}/features/GroundRecheck.cpp"
+    "${DA_SRC}/input/KeyChoice.cpp")
 
 target_include_directories(tests PRIVATE "${DA_SRC}" "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(tests PRIVATE doctest::doctest)
