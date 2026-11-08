@@ -293,6 +293,43 @@ namespace da::prompt
     // stick nothing), the keyboard taking it all the same.
     const wchar_t* ShakeHelp(bool pad, bool playStation, bool motionSensor);
 
+    // The help line for a prompt that shows a move of the stick beside the grab: the move is made with
+    // the grab held, the item's graph taking it only while both stand. act6_3's flare asks for a swipe
+    // right and R2 at once (BP_Lightflareescaped: its stage bStageShouldAlwaysUseHoldGrab, its graph
+    // BooleanAND of bIsInputPressed, raised for the moment the swipe is made, and bGrabButtonInput,
+    // held with R2); Andrey stood two minutes there pushing the stick and then R2
+    // (research/sessions/s60-full.log 17:56:50 to 17:58:29). Chapter 3's lantern makes a half circle
+    // with R2 held, and letting go drops it. The key of the line by the prompt's actions, none for any
+    // other prompt.
+    const wchar_t* HeldMoveHelp(std::wstring_view actions);
+
+    // A prompt that draws the grab beside a move of the stick (a push, a swipe, a half circle): the
+    // move is made with the grab held. Of the interaction stages of the whole game, 79 draw such a
+    // pair, and they say it in the stage's own UI keys: "hold" draws the grab alone, and once it is
+    // held "move_left", "swipe_down", "rotate_right" draw the move with the grab beside it, its key
+    // lit while it is down; let go, the stage goes back to "hold" (research/interactions/analysis).
+    // act6_3's flare draws only the pair ("swipe_right": IA_Swipe_Right and IA_GrabInteraction), and
+    // Andrey, reading "left stick right, R2" as two ways to do one thing, stood two minutes there
+    // (research/sessions/s60-full.log). Such a prompt is said in the game's own way of naming an
+    // action and its key, the grab first: "Hold: R2, left stick right" (Andrey on 2026-11-08: "an
+    // in-game style prompt like 'hold R2 and push left stick right', and similarly for the mouse").
+    // The places of the grab and of the move among the prompt's actions, in the order the widget
+    // draws them; none unless the prompt holds the grab and one move and nothing else.
+    struct HeldPair
+    {
+        size_t grab = 0;
+        size_t move = 0;
+    };
+    std::optional<HeldPair> HeldMoveOf(const std::vector<std::wstring>& actions);
+
+    // Whether the grab is held through such a move, as the stage itself has it: it toggles only where
+    // the player's "toggle grab" setting is on and the stage does not insist on holding
+    // (UBatesInteractionStageBase::InitialiseStage writes bUsingToggleGrab = the setting
+    // bUseToggleGrabForInteractions and not bStageShouldAlwaysUseHoldGrab, and ProcessGrabReleased
+    // lets go on release only without it). The stage's own answer where it is known, else the
+    // setting: a stage that toggles has the grab on between two presses, and "hold" would be wrong.
+    bool GrabHeld(std::optional<bool> stageToggles, bool settingToggles);
+
     constexpr double kBlipStep = 0.095;
     constexpr double kBlipApart = 0.08;
     class Swipe

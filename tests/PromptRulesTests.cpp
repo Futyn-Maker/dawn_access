@@ -526,6 +526,57 @@ TEST_CASE("prompts: an activity's input stage that does not wait is a quick-time
     CHECK(missed == 8);
 }
 
+TEST_CASE("prompts: a move of the stick drawn beside the grab is made with the grab held: the flare, 2026-11-08")
+{
+    // act6_3's flare: "левый стик вправо, R2" [IA_Swipe_Right, IA_GrabInteraction].
+    CHECK(std::wstring(prompt::HeldMoveHelp(L"IA_Swipe_Right, IA_GrabInteraction")) == L"help.swipe.held");
+    // Chapter 3's lantern: a half circle beside the grab.
+    CHECK(std::wstring(prompt::HeldMoveHelp(L"IA_RotateRightGesture, IA_GrabInteraction")) == L"help.gesture.held");
+    // A swipe alone (the zippo's first prompt), the grab alone, and the hub ladder's stick: none.
+    CHECK(prompt::HeldMoveHelp(L"IA_Swipe_Right") == nullptr);
+    CHECK(prompt::HeldMoveHelp(L"IA_GrabInteraction") == nullptr);
+    CHECK(prompt::HeldMoveHelp(L"IA_InteractionMovement_UpDown") == nullptr);
+}
+
+TEST_CASE("prompts: a move drawn beside the grab is said with the grab held, the grab first, 2026-11-08")
+{
+    // act6_3's flare draws the swipe first and the grab beside it.
+    auto pair = prompt::HeldMoveOf({L"IA_Swipe_Right", L"IA_GrabInteraction"});
+    REQUIRE(pair);
+    CHECK(pair->grab == 1);
+    CHECK(pair->move == 0);
+    // act5_2's radio draws the grab first and the half circle beside it.
+    pair = prompt::HeldMoveOf({L"IA_GrabInteraction", L"IA_RotateAxisGesture"});
+    REQUIRE(pair);
+    CHECK(pair->grab == 0);
+    CHECK(pair->move == 1);
+    // The doors' and lids' pushes and pulls, once the grab is held ("move_towards", "move_left").
+    CHECK(prompt::HeldMoveOf({L"IA_InteractionMovement_Down", L"IA_GrabInteraction"}));
+    CHECK(prompt::HeldMoveOf({L"IA_InteractionMovement_LeftRight", L"IA_GrabInteraction"}));
+    CHECK(prompt::HeldMoveOf({L"IA_RotateLeftGestureOppositeKeyboard", L"IA_GrabInteraction"}));
+    // The grab alone ("hold"), a move alone (the journal's pages), the grab beside the way back or
+    // beside a press that is no move, and a third action: none.
+    CHECK_FALSE(prompt::HeldMoveOf({L"IA_GrabInteraction"}));
+    CHECK_FALSE(prompt::HeldMoveOf({L"IA_SwipeLeftRight"}));
+    CHECK_FALSE(prompt::HeldMoveOf({L"IA_GrabInteraction", L"IA_BackoutInteraction"}));
+    CHECK_FALSE(prompt::HeldMoveOf({L"IA_GrabInteraction", L"IA_Continue"}));
+    CHECK_FALSE(prompt::HeldMoveOf({L"IA_Swipe_Right", L"IA_GrabInteraction", L"IA_BackoutInteraction"}));
+    CHECK_FALSE(prompt::HeldMoveOf({L"IA_Swipe_Right", L"IA_Swipe_Left"}));
+}
+
+TEST_CASE("prompts: the grab is held as the stage holds it, the setting where the stage is not known")
+{
+    // The flare's stage insists on holding (bStageShouldAlwaysUseHoldGrab): bUsingToggleGrab false
+    // whatever the setting.
+    CHECK(prompt::GrabHeld(false, true));
+    CHECK(prompt::GrabHeld(false, false));
+    // A door's stage with the player's "toggle grab" setting on: the grab is on between two presses.
+    CHECK_FALSE(prompt::GrabHeld(true, true));
+    // No stage drew the widget: the setting decides.
+    CHECK(prompt::GrabHeld(std::nullopt, false));
+    CHECK_FALSE(prompt::GrabHeld(std::nullopt, true));
+}
+
 TEST_CASE("prompts: the snow globe's hidden shake is named by what takes it, chapter 7")
 {
     // The keyboard: W or S.

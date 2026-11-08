@@ -145,6 +145,37 @@ namespace da::prompt
         return last;
     }
 
+    const wchar_t* HeldMoveHelp(std::wstring_view actions)
+    {
+        if (actions.find(L"IA_GrabInteraction") == std::wstring_view::npos) return nullptr;
+        if (actions.find(L"Gesture") != std::wstring_view::npos) return L"help.gesture.held";
+        if (actions.find(L"IA_Swipe") != std::wstring_view::npos) return L"help.swipe.held";
+        return nullptr;
+    }
+
+    std::optional<HeldPair> HeldMoveOf(const std::vector<std::wstring>& actions)
+    {
+        const auto isMove = [](const std::wstring& action)
+        {
+            for (const wchar_t* kind : {L"IA_InteractionMovement", L"IA_Swipe", L"IA_Rotate"})
+            {
+                if (action.rfind(kind, 0) == 0) return true;
+            }
+            return false;
+        };
+        if (actions.size() != 2) return std::nullopt;
+        for (size_t grab = 0; grab < 2; ++grab)
+        {
+            if (actions[grab] == L"IA_GrabInteraction" && isMove(actions[1 - grab])) return HeldPair{grab, 1 - grab};
+        }
+        return std::nullopt;
+    }
+
+    bool GrabHeld(std::optional<bool> stageToggles, bool settingToggles)
+    {
+        return stageToggles ? !*stageToggles : !settingToggles;
+    }
+
     std::optional<int64_t> LastStep(bool clamp, int64_t named, std::optional<int64_t> graph)
     {
         if (clamp && named > 0) return named;

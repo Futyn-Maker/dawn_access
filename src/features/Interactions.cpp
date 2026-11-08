@@ -1233,4 +1233,27 @@ namespace da::features
         if (!obj::ReadInt(g_interaction, L"CurrentStage", current) || current < 0 || !g_linearLast.count(current)) return -1;
         return g_bindings * 1024 + current;
     }
+
+    std::optional<bool> GrabTogglesFor(UObject* widget)
+    {
+        if (!widget || !g_interaction || !obj::IsSame(g_interactionKey)) return std::nullopt;
+        int64_t current = -1;
+        obj::ReadInt(g_interaction, L"CurrentStage", current);
+        std::vector<UObject*> components;
+        obj::ReadObjectArray(g_interaction, L"BlueprintCreatedComponents", components);
+        std::optional<bool> found;
+        for (UObject* component : components)
+        {
+            if (!obj::IsLive(component) || !obj::IsA(component, L"BatesInteractionStageBase")) continue;
+            UObject* shown = nullptr;
+            if (!obj::ReadObject(component, L"InteractionWidget", shown) || shown != widget) continue;
+            const auto* toggles = static_cast<const uint8_t*>(sym::MemberOf(component, L"UBatesInteractionStageBase.bUsingToggleGrab"));
+            if (!toggles) continue;
+            int64_t index = -2;
+            obj::ReadInt(component, L"Stage", index);
+            if (index == current) return *toggles != 0;
+            if (!found) found = *toggles != 0;
+        }
+        return found;
+    }
 }

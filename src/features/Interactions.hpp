@@ -7,8 +7,14 @@
 #include "features/Feature.hpp"
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
+
+namespace RC::Unreal
+{
+    class UObject;
+}
 
 namespace da::features
 {
@@ -33,4 +39,8 @@ namespace da::features
     // The staged stage the interaction stands in, where its steps sound (prompt::SayAtStep): a number
     // for that stage of that interaction, another for the next interaction bound; -1 for none.
     int64_t SoundingStagedStage();
+    // Whether the stage of the bound interaction that drew a prompt widget toggles the grab
+    // (UBatesInteractionStageBase.bUsingToggleGrab): its current stage's answer where several share
+    // the widget, none where no stage of the bound interaction drew it.
+    std::optional<bool> GrabTogglesFor(RC::Unreal::UObject* widget);
 }

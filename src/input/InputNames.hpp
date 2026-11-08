@@ -61,6 +61,11 @@ namespace da::input
     // shake and tilt readings ask it (UBatesGameUserSettings::GetUseSixAxis).
     bool MotionSensorOn();
 
+    // Whether the game's "toggle grab" setting is on
+    // (UBatesGameUserSettings::GetUseToggleGrabForInteractions): one press takes hold of a thing and
+    // the next lets it go; with it off, the grab lasts as long as the key is held.
+    bool ToggleGrabOn();
+
     void InvalidateCache();
 
     // Watches the keyboard, mouse and gamepad so speech can tell what the player asked for

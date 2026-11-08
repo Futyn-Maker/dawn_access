@@ -53,6 +53,9 @@ namespace da::features
             bool windowOpen = false;
             bool saidAhead = false;
             double aheadAt = -100.0;
+            // A move of the stick drawn beside the grab, made with the grab held as the stage holds it
+            // (prompt::HeldMoveOf, prompt::GrabHeld): said "Hold: R2, left stick right".
+            bool held = false;
         };
         std::vector<Shown> g_shown;
 
@@ -180,6 +183,20 @@ namespace da::features
                 }
             }
             if (actions) *actions = Actions(prompts);
+            // A move of the stick beside the grab is made with the grab held, where the stage holds it:
+            // the grab first, as the game names an action and its key (prompt::HeldMoveOf).
+            s.held = false;
+            if (!s.glint)
+            {
+                std::vector<std::wstring> names;
+                for (const auto& p : prompts)
+                    names.push_back(p.action);
+                if (const auto pair = prompt::HeldMoveOf(names); pair && prompts[pair->grab].label.empty() && !prompts[pair->grab].key.empty())
+                {
+                    s.held = prompt::GrabHeld(GrabTogglesFor(s.widget), input::ToggleGrabOn());
+                    if (s.held) return locale::Mod(L"prompt.held", prompts[pair->grab].key, ui::PromptLines({prompts[pair->move]}));
+                }
+            }
             return ui::PromptLines(prompts);
         }
 
@@ -611,15 +628,19 @@ namespace da::features
         const bool gesture = std::any_of(g_shown.begin(), g_shown.end(),
                                          [](const Shown& s) { return obj::IsLive(s.widget) && !s.hidden && s.actions.find(L"Gesture") != std::wstring::npos; });
         if (gesture) out.push_back(locale::Mod(L"help.gesture"));
-        // A half circle drawn with the grab beside it: the item is let go with the button (the
-        // lantern of chapter 3), where the boiler of chapter 2 wanted R2 released.
-        const bool held = std::any_of(g_shown.begin(), g_shown.end(),
-                                      [](const Shown& s)
-                                      {
-                                          return obj::IsLive(s.widget) && !s.hidden && s.actions.find(L"Gesture") != std::wstring::npos &&
-                                                 s.actions.find(L"IA_GrabInteraction") != std::wstring::npos;
-                                      });
-        if (held) out.push_back(locale::Mod(L"help.gesture.held", input::KeyForAction(L"IA_GrabInteraction")));
+        // A move of the stick drawn with the grab beside it is made with the grab held
+        // (prompt::HeldMoveHelp): the lantern of chapter 3, the flare of chapter 8; where the boiler
+        // of chapter 2 wanted R2 released. Not where the stage toggles the grab: it is on between two
+        // presses there.
+        std::vector<const wchar_t*> held;
+        for (const auto& s : g_shown)
+        {
+            if (!obj::IsLive(s.widget) || s.hidden || !s.held) continue;
+            const wchar_t* line = prompt::HeldMoveHelp(s.actions);
+            if (line && std::find(held.begin(), held.end(), line) == held.end()) held.push_back(line);
+        }
+        for (const wchar_t* line : held)
+            out.push_back(locale::Mod(line, input::KeyForAction(L"IA_GrabInteraction")));
     }
 
     std::wstring LastInteractionPrompt()
