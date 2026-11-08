@@ -20,6 +20,7 @@
 #include "features/Vec.hpp"
 
 #include <climits>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <set>
@@ -182,6 +183,27 @@ namespace da::recheck
 
     constexpr double kPropTolerance = 3.0; // cm a prop's box may shift without moving (animation's breath)
     constexpr double kPropRest = 1.0;      // seconds a prop that moved must stand still before its ground is asked
+
+    // The widest a prop's box can be across the ground, in cm: the props the game moves are doors,
+    // gates, a lift's cage and its cog (the widest moved yet a cupboard door's 232 cm; the cog of
+    // act6_1's lift stands 19 m tall on 2 by 2 m). That cog's bounds read 2 km across and 19 km high
+    // as the lift began to go down on 2026-11-08, and the ground under that box was laid out column
+    // by column, a hundred million columns in one frame: the game stood 62 s
+    // (research/sessions/s59-full.log 16:11:59 to 16:13:01). A reading wider than this is no place a
+    // prop stands, and is taken for no reading at all. The height is free: the ground is laid out by
+    // columns.
+    constexpr double kPropSpanMost = 3000.0;
+    bool PropFills(const Box& box);
+
+    // The most steps a moved prop's ground is asked again over: a door's are a few thousand, and a box
+    // that holds more is the ground about her rather than a prop's place. Asking more again would
+    // stand the game still (each step forgotten and kept takes the ground's tables), so a move over
+    // more is left to the walk's own asking again (ColumnsAhead).
+    constexpr size_t kPropStepsMost = 50000;
+
+    // The columns under where a prop stood and where it stands, each box grown by `margin`: the two
+    // apart, not the box holding both, which a prop gone far would spread over the whole level.
+    std::set<Column> ColumnsUnder(const Grid& grid, const Box& before, const Box& after, double margin);
 
     // A prop's box (its colliding components, as the engine bounds them) watched as the game moves
     // it: Update gives each reading, or none where the prop has no collision now; it says once, when

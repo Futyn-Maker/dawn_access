@@ -4847,6 +4847,8 @@ namespace da::features
             return obj::IsLive(parent) && obj::IsA(parent, L"BatesCharacter");
         }
 
+        std::set<UObject*> g_propUnfilled; // props whose bounds read wider than any prop, told once
+
         void PollProps(const Vec& here, double now)
         {
             if (now - g_propsPolledAt < kPropPollApart) return;
@@ -4861,7 +4863,11 @@ namespace da::features
                     continue;
                 if (CarriedByCharacter(prop)) continue;
                 recheck::Box before, after;
-                if (!g_propWatch[prop].Update(now, CollidingBox(prop), before, after)) continue;
+                const auto box = CollidingBox(prop);
+                if (box && !recheck::PropFills(*box) && g_propUnfilled.insert(prop).second)
+                    log::Info(L"explore: the bounds of {} read {:.0f} by {:.0f} m across, no place a prop stands: not taken for where it is",
+                              obj::ObjectName(prop), (box->high.x - box->low.x) / 100.0, (box->high.y - box->low.y) / 100.0);
+                if (!g_propWatch[prop].Update(now, box, before, after)) continue;
                 std::wstring name;
                 UObject* core = nullptr;
                 if (obj::ReadObject(prop, L"CoreProperties", core) && obj::IsLive(core)) obj::ReadString(core, L"CoreName", name);
@@ -4878,9 +4884,15 @@ namespace da::features
                     log::Verbose(L"explore: the game moved {}, which stops no pawn", what);
                     continue;
                 }
-                const auto box = recheck::Union(before, after);
-                const auto under = recheck::ColumnsInBox(RecheckGrid(), box.low, box.high, g_grid.radius + kCellSize);
-                if (recheck::StepsIn(g_grid.steps, under).empty()) continue; // no ground felt out there
+                const auto under = recheck::ColumnsUnder(RecheckGrid(), before, after, g_grid.radius + kCellSize);
+                const size_t steps = recheck::StepsIn(g_grid.steps, under).size();
+                if (steps == 0) continue; // no ground felt out there
+                if (steps > recheck::kPropStepsMost)
+                {
+                    log::Info(L"explore: the game moved {}, over {} steps of the ground: more than a prop's place, left to the walk's own asking again", what,
+                              steps);
+                    continue;
+                }
                 columns.insert(under.begin(), under.end());
                 moved.push_back(what);
             }

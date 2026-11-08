@@ -132,8 +132,23 @@ namespace da::recheck
                    Vec{std::max(a.high.x, b.high.x), std::max(a.high.y, b.high.y), std::max(a.high.z, b.high.z)}};
     }
 
+    bool PropFills(const Box& box)
+    {
+        return box.high.x - box.low.x <= kPropSpanMost && box.high.y - box.low.y <= kPropSpanMost;
+    }
+
+    std::set<Column> ColumnsUnder(const Grid& grid, const Box& before, const Box& after, double margin)
+    {
+        auto columns = ColumnsInBox(grid, before.low, before.high, margin);
+        const auto now = ColumnsInBox(grid, after.low, after.high, margin);
+        columns.insert(now.begin(), now.end());
+        return columns;
+    }
+
     bool PropWatch::Update(double now, const std::optional<Box>& box, Box& before, Box& after)
     {
+        // A box no prop fills is no reading: everything stands as the last reading left it.
+        if (box && !PropFills(*box)) return false;
         if (!m_seen)
         {
             m_seen = true;

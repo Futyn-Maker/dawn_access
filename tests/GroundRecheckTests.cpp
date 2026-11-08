@@ -298,6 +298,57 @@ TEST_CASE("recheck: a prop the game moves is said once it comes to rest, with wh
     CHECK_FALSE(said);
 }
 
+TEST_CASE("recheck: a prop's bounds that read wider than any prop are no reading: act6_1's lift cog, 2026-11-08")
+{
+    // BP_Cog_lift stood (-30301, 5107, -8091) to (-30101, 5323, -6198): 2 by 2 m, 19 m high. As the
+    // lift began to go down its colliding bounds read (-130334, -102550, -953639) to (69933, 112980,
+    // 939349), and the ground under that box was laid out column by column in one frame: the game
+    // stood 62 s (research/sessions/s59-full.log 16:11:58 to 16:13:01).
+    const recheck::Box cog{{-30301, 5107, -8091}, {-30101, 5323, -6198}};
+    const recheck::Box blown{{-130334, -102550, -953639}, {69933, 112980, 939349}};
+    CHECK(recheck::PropFills(cog));
+    CHECK_FALSE(recheck::PropFills(blown));
+    // The cupboard door of the cellar and a lift's cage fill their place.
+    CHECK(recheck::PropFills(recheck::Box{{463, -9065, 2647}, {695, -9040, 2850}}));
+    CHECK(recheck::PropFills(recheck::Box{{0, 0, 0}, {400, 400, 300}}));
+    recheck::PropWatch watch;
+    recheck::Box before, after;
+    CHECK_FALSE(watch.Update(0.0, cog, before, after));
+    // The blown readings stand for nothing, however long they last.
+    bool said = false;
+    for (int i = 1; i <= 10; ++i)
+        said = said || watch.Update(i * 0.5, blown, before, after);
+    CHECK_FALSE(said);
+    // Read where it stood again: it never moved.
+    CHECK_FALSE(watch.Update(6.0, cog, before, after));
+    CHECK_FALSE(watch.Update(8.0, cog, before, after));
+    // Read at its place down the shaft after the blown readings: a move from where it stood, said once
+    // it stands.
+    recheck::Box down = cog;
+    down.low.z -= 1500.0;
+    down.high.z -= 1500.0;
+    CHECK_FALSE(watch.Update(9.0, blown, before, after));
+    CHECK_FALSE(watch.Update(9.5, down, before, after));
+    CHECK_FALSE(watch.Update(10.0, down, before, after));
+    REQUIRE(watch.Update(10.6, down, before, after));
+    CHECK_FALSE(recheck::Moved(before, cog, 0.5));
+    CHECK_FALSE(recheck::Moved(after, down, 0.5));
+}
+
+TEST_CASE("recheck: the ground asked again under a moved prop is where it stood and where it stands, not the box holding both")
+{
+    const recheck::Grid grid{recheck::Vec{0, 0, 0}, 20.0};
+    // A leaf carried 40 m off: two door-sized places, not the 40 m between.
+    const recheck::Box was{{100, 100, 0}, {300, 120, 200}};
+    const recheck::Box gone{{4100, 100, 0}, {4300, 120, 200}};
+    const auto columns = recheck::ColumnsUnder(grid, was, gone, 20.0);
+    CHECK(columns.count({5, 5}));
+    CHECK(columns.count({210, 5}));
+    CHECK_FALSE(columns.count({100, 5}));
+    const auto apart = recheck::ColumnsInBox(grid, was.low, was.high, 20.0).size() + recheck::ColumnsInBox(grid, gone.low, gone.high, 20.0).size();
+    CHECK(columns.size() == apart);
+}
+
 TEST_CASE("recheck: a step counts where it starts or where it lands")
 {
     std::map<recheck::StepKey, int> steps{{{0, 0, 1, 1, 0}, 1}, {{1, 0, 1, 0, 0}, 1}, {{5, 5, 1, 6, 5}, 1}};
