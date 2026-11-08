@@ -113,6 +113,20 @@ namespace da::recheck
         return doorLeaf || stopsHer;
     }
 
+    bool LeafOfDoor(bool heldItem)
+    {
+        return !heldItem;
+    }
+
+    bool LeafTouches(const Leaf& leaf, const Vec& from, const Vec& to, double radius, double halfHeight)
+    {
+        if (std::max(from.x, to.x) < leaf.low.x - radius || std::min(from.x, to.x) > leaf.high.x + radius ||
+            std::max(from.y, to.y) < leaf.low.y - radius || std::min(from.y, to.y) > leaf.high.y + radius ||
+            std::max(from.z, to.z) + halfHeight < leaf.low.z || std::min(from.z, to.z) - halfHeight > leaf.high.z)
+            return false;
+        return shapes::SweepTouches(leaf.shape, from, to, radius, halfHeight);
+    }
+
     bool StopsPawn(int64_t collisionEnabled, int64_t responseToPawn)
     {
         const bool queried = collisionEnabled == 1 || collisionEnabled == 3 || collisionEnabled == 5;

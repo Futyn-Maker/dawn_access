@@ -481,3 +481,66 @@ TEST_CASE("ways: a way round a companion standing at a corridor's mouth: Chris i
     CHECK(keep.StepClear(recheck::Vec{1007, -6316, 0}, recheck::Vec{987, -6316, 0}));
     CHECK_FALSE(keep.StepClear(recheck::Vec{987, -6316, 0}, recheck::Vec{1007, -6316, 0}));
 }
+
+namespace
+{
+    // Whether a flood reaches the entrails' place in act6_4: the use location stands at (7290, -3651),
+    // column (136, 201) of the grid laid at (4551.18, -7686.20).
+    bool ReachesEntrails(const grid::Flood& flood)
+    {
+        for (int x = 130; x <= 140; ++x)
+        {
+            for (int y = 196; y <= 206; ++y)
+            {
+                if (flood.LevelsAt(x, y)) return true;
+            }
+        }
+        return false;
+    }
+}
+
+TEST_CASE("recheck: a thing carried is no door's leaf: the shotgun in Chris's hands walled him in at the scarecrow, 2026-11-08")
+{
+    // tests/fixtures/ground-scarecrow-shotgun.tsv: the ground between the scarecrow and the entrails
+    // as the session's record had it at its end, cut by research/tools/cut_ground.py from where Chris
+    // stood after the scarecrow (6663, -3611) out of research/dumps/ground-20261108-181921.tsv, and
+    // the "leaf" the map laid out at 18:40:16: the two capsules of BP_Shotgun_jack_C_0, the shotgun
+    // he carried, which the locked kitchen door's interaction had bound for its animation.
+    auto record = ReadFixture("ground-scarecrow-shotgun.tsv");
+    const grid::Cell scarecrow{105, 203, 56};
+    // The ground as it is: the entrails 6 m on are reached from where he stood.
+    CHECK(ReachesEntrails(*Flood(record, scarecrow)));
+    // The shotgun taken for the door's leaf: every step whose sweep it touches refused, as the map's
+    // sweeps refused them ('D'), from the cells' middles as the grid lays them (the anchor's 20 cm
+    // cells, half height 100, radius 42, step 45).
+    REQUIRE(record.volumes.count("door:I_door_kitchenexterior_locked"));
+    recheck::Leaf shotgun;
+    shotgun.shape = record.volumes.at("door:I_door_kitchenexterior_locked");
+    shotgun.shape.Bounds(shotgun.low, shotgun.high);
+    const double radius = 42.0, half = 100.0, step = 45.0;
+    const double sweepHalf = std::max(25.0, half - step / 2.0);
+    const auto middle = [&](int x, int y, int level)
+    {
+        const auto floor = record.floors.find({x, y, level});
+        REQUIRE(floor != record.floors.end());
+        return recheck::Vec{4551.18 + (x + 0.5) * 20.0, -7686.20 + (y + 0.5) * 20.0, floor->second + half + step / 2.0};
+    };
+    std::vector<recheck::StepKey> shut;
+    for (const auto& [key, land] : record.stepLevels)
+    {
+        const auto& [ax, ay, alevel, bx, by] = key;
+        if (record.floors.count({bx, by, land}) == 0) continue;
+        if (recheck::LeafTouches(shotgun, middle(ax, ay, alevel), middle(bx, by, land), radius, sweepHalf)) shut.push_back(key);
+    }
+    // Among them the steps out of his own cell east and north, which the record refused so at
+    // 18:40:16 (S 105 203 56 106 203 X D, S 105 203 56 105 204 X D), and the way on north-east the
+    // map would have taken: the leaf stood between him and the corridor to the entrails. (The record
+    // keeps only part of the map's sweeps, and the refusals the leaf left on the corridor itself at
+    // 18:40:02, where he stood with it, are not all in it: the whole closure cannot be replayed.)
+    CHECK(std::find(shut.begin(), shut.end(), recheck::StepKey{105, 203, 56, 106, 203}) != shut.end());
+    CHECK(std::find(shut.begin(), shut.end(), recheck::StepKey{105, 203, 56, 105, 204}) != shut.end());
+    CHECK(std::find(shut.begin(), shut.end(), recheck::StepKey{105, 203, 56, 106, 204}) != shut.end());
+    // A held item is no door's leaf; the door's own prop is.
+    CHECK_FALSE(recheck::LeafOfDoor(true));
+    CHECK(recheck::LeafOfDoor(false));
+}

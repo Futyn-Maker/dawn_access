@@ -17,6 +17,7 @@
 // ColumnsInBox). What was found changed is forgotten for a stretch around it (ColumnsAround), and
 // the list is judged afresh by a map begun since.
 
+#include "features/Shapes.hpp"
 #include "features/Vec.hpp"
 
 #include <climits>
@@ -168,6 +169,26 @@ namespace da::recheck
     // UBatesSleepComponent::ApplySleepSettings, so a door a sequence swings open has none once it
     // rests), or a prop with a component that stops her (`stopsHer`, StopsPawn).
     bool Weighed(bool doorLeaf, bool stopsHer);
+
+    // Whether a prop an interaction binds is a leaf of the door the interaction opens: the door's own
+    // prop, never a thing a character carries. An interaction binds whatever its animation moves, and
+    // a door tried with something in her hands binds that too: act6_4's locked kitchen door, tried by
+    // Chris with the shotgun he carried (HI_shotgun_jack, an ABatesHeldItemBase), bound the shotgun,
+    // and the mod took it for the door's leaf. Laid out at every map where it was, in his hands, it
+    // walled him in on the side he held it: at the scarecrow the entrails 6 m on were "closed off" by
+    // "a door's leaf", and came back once he walked away (research/sessions/s61-play.log, 18:38:43 to
+    // 18:40:34; the steps out of his cell refused 'D' in research/dumps/ground-20261108-181921.tsv).
+    bool LeafOfDoor(bool heldItem);
+
+    // A door's leaf as the ground's sweeps meet it: its bodies' shape and the box around it.
+    struct Leaf
+    {
+        shapes::Shape shape;
+        Vec low, high;
+    };
+    // Whether the character's capsule, swept between two middles, runs into the leaf: at half way or
+    // where it ends (shapes::SweepTouches), so that a step away from a leaf she stands against is free.
+    bool LeafTouches(const Leaf& leaf, const Vec& from, const Vec& to, double radius, double halfHeight);
 
     // A box in the world, low and high corners.
     struct Box

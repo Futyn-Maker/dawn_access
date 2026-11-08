@@ -3586,13 +3586,10 @@ namespace da::features
         // is placed from the prop's physics bodies (its PhysicsAsset: for the lodge's interior door
         // one box of 128 by 7.5 by 236 cm on the hinge's bone) at their bones' places in the world as
         // the map begins, so that a door standing open is out of its doorway and a shut one fills it.
-        struct DoorLeaf
+        struct DoorLeaf : recheck::Leaf
         {
             std::wstring name; // the interaction's
             UObject* prop = nullptr;
-            shapes::Shape shape;
-            Vec low;
-            Vec high;
         };
         std::vector<DoorLeaf> g_doorLeaves;
         std::wstring g_doorLeavesLogged;
@@ -3706,6 +3703,13 @@ namespace da::features
                 bool any = false;
                 for (UObject* prop : props)
                 {
+                    // A thing a character carries, which the door's animation binds for her hands, is
+                    // no leaf of the door's (recheck::LeafOfDoor).
+                    if (!recheck::LeafOfDoor(obj::IsA(prop, L"BatesHeldItemBase")))
+                    {
+                        lines.push_back(std::format(L"{} (binds {}, a thing carried: no leaf)", name, obj::ObjectName(prop)));
+                        continue;
+                    }
                     DoorLeaf leaf;
                     leaf.name = name;
                     leaf.prop = prop;
@@ -3736,11 +3740,7 @@ namespace da::features
         {
             for (const auto& leaf : g_doorLeaves)
             {
-                if (std::max(from.x, to.x) < leaf.low.x - radius || std::min(from.x, to.x) > leaf.high.x + radius ||
-                    std::max(from.y, to.y) < leaf.low.y - radius || std::min(from.y, to.y) > leaf.high.y + radius ||
-                    std::max(from.z, to.z) + halfHeight < leaf.low.z || std::min(from.z, to.z) - halfHeight > leaf.high.z)
-                    continue;
-                if (shapes::SweepTouches(leaf.shape, from, to, radius, halfHeight))
+                if (recheck::LeafTouches(leaf, from, to, radius, halfHeight))
                 {
                     if (which) *which = &leaf;
                     return true;
@@ -4839,12 +4839,19 @@ namespace da::features
             return false;
         }
 
-        // Carried by a character (a torch in her hand): it moves as she does.
+        // Carried by a character (a torch in her hand): it moves as she does. A held item is carried
+        // the game's own way, kept where the character's animation puts it rather than attached, and
+        // knows who carries it (ABatesHeldItemBase.CachedCarryingCharacter): the attach parent missed
+        // the shotgun Chris carried in act6_4, and its moves were weighed at every step he took.
         bool CarriedByCharacter(UObject* actor)
         {
             UObject* parent = nullptr;
             obj::CallReturn(actor, L"GetAttachParentActor", [&](void* params, FProperty* returnValue) { obj::ReadObjectAt(params, returnValue, parent); });
-            return obj::IsLive(parent) && obj::IsA(parent, L"BatesCharacter");
+            if (obj::IsLive(parent) && obj::IsA(parent, L"BatesCharacter")) return true;
+            if (!obj::IsA(actor, L"BatesHeldItemBase")) return false;
+            const auto* carrier = static_cast<const RC::Unreal::FWeakObjectPtr*>(sym::MemberOf(actor, L"ABatesHeldItemBase.CachedCarryingCharacter"));
+            UObject* who = carrier ? carrier->Get() : nullptr;
+            return obj::IsLive(who) && obj::IsA(who, L"BatesCharacter");
         }
 
         std::set<UObject*> g_propUnfilled; // props whose bounds read wider than any prop, told once

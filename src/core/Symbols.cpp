@@ -140,6 +140,12 @@ namespace da::sym
             // 0x4659600): the share of the turn, and whether it is past the reveal (both handed to
             // the item's anim instances every frame as InteractionEvaluation and bIsRevealing).
             {L"UBatesInteractionStageBase.bIsGrabbing", 0x1c9},                    // bool
+            // Who carries a held item, kept by the item itself rather than by attaching it
+            // (ABatesHeldItemBase::HandleCarryingCharacterChange, 0x4618920).
+            {L"ABatesHeldItemBase.CachedCarryingCharacter", 0x478},                // TWeakObjectPtr<ABatesCharacter>
+            // Whether the stage toggles the grab rather than holding it (InitialiseStage, 0x46455c0:
+            // the setting bUseToggleGrabForInteractions and not bStageShouldAlwaysUseHoldGrab).
+            {L"UBatesInteractionStageBase.bUsingToggleGrab", 0x1ca},               // bool
             {L"UBatesInteractionStageBase.bIsFullyHolding", 0x1ce},                // bool
             // The time a stage has run, which a stage on a clock times out by (SecondsUntilTimeout).
             {L"UBatesInteractionStageBase.TimeSpentInStage", 0x1d4},               // float
