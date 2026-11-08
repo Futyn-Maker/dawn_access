@@ -754,14 +754,27 @@ namespace da::features
             case nudge::TurnCourse::Event::Begins:
             {
                 int64_t axis = 0;
+                // The item's own numbers: the stick's value times InputMultiplier makes the turn's
+                // speed, and the speed times EvaluationMultiplier its share (nudge::Turn).
+                double inputMultiplier = 1.0;
+                double evaluationMultiplier = 1.0;
                 auto* data = obj::FindProperty(stage, L"InspectionData");
-                if (data) obj::ReadIntAt(obj::ValuePtr(stage, data), obj::StructMember(data, L"InputAxis"), axis);
+                if (data)
+                {
+                    void* inspect = obj::ValuePtr(stage, data);
+                    obj::ReadIntAt(inspect, obj::StructMember(data, L"InputAxis"), axis);
+                    obj::ReadFloatAt(inspect, obj::StructMember(data, L"InputMultiplier"), inputMultiplier);
+                    obj::ReadFloatAt(inspect, obj::StructMember(data, L"EvaluationMultiplier"), evaluationMultiplier);
+                }
                 g_turn.vertical = axis == 1;
                 g_turn.inverted = InvertedAxis(g_turn.vertical);
+                g_turn.reversed = inputMultiplier * evaluationMultiplier < 0.0;
                 g_turnLead = nudge::Toward(g_turn);
                 g_turnBlips.Reset();
-                log::Info(L"interactions: the item of {} is in hand; its turn is led {} from {:.2f} to the reveal at {:.2f}, along the stick's {} axis{}",
+                log::Info(L"interactions: the item of {} is in hand; its turn is led {} from {:.2f} to the reveal at {:.2f}, along the stick's {} axis "
+                          L"(InputMultiplier {:.2f}, EvaluationMultiplier {:.2f}{}){}",
                           obj::ObjectName(interaction), PushWord(g_turnLead), g_turn.share, g_turn.threshold, g_turn.vertical ? L"Y" : L"X",
+                          inputMultiplier, evaluationMultiplier, g_turn.reversed ? L": the item turns against the stick" : L"",
                           g_turn.inverted ? L", which the player's setting turns round" : L"");
                 break;
             }

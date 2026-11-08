@@ -156,6 +156,26 @@ TEST_CASE("nudge: the player's inverted setting and a turn along the stick's Y a
     CHECK(nudge::BlipOf(down).level < 0.5);
 }
 
+TEST_CASE("nudge: an item whose own numbers turn it the other way is led the other way: Hannah's locket, 2026-11-08")
+{
+    // act6_1's locket (BP_Hannahslocket) reveals at 0.95 along the stick's X axis. Its share stood at
+    // 0.49 when the stick was pushed right and fell to 0 (16:07:33.98 to 16:07:35.00); pushed left it
+    // rose to the reveal (16:07:43.15 to 16:07:44.04): its InputMultiplier and EvaluationMultiplier
+    // differ in sign, and the lead had said right all along.
+    nudge::Turn locket{0.49, 0.95, false, false};
+    locket.reversed = true;
+    const auto lead = nudge::Toward(locket);
+    CHECK(lead.right == -1);
+    CHECK(lead.up == 0);
+    CHECK(nudge::BlipOf(lead).pan < 0.0);
+    CHECK(nudge::PercentLeft(locket) == 48);
+    // The player's own setting turned round as well brings the way back to the right.
+    locket.inverted = true;
+    CHECK(nudge::Toward(locket).right == 1);
+    // Along the Y axis the same: a reversed item is pushed down to rise.
+    CHECK(nudge::Toward(nudge::Turn{0.2, 0.95, true, false, true}).up == -1);
+}
+
 TEST_CASE("nudge: what is left of a turn is said in per cent of the way, never 0 before the point")
 {
     CHECK(nudge::PercentLeft(Newspaper(0.0)) == 100);

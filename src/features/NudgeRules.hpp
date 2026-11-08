@@ -57,15 +57,21 @@ namespace da::nudge
     // An item in hand turned along one axis of the stick until the game's own measure of the turn
     // reaches the point where it reveals (an examine stage: NormalisedExamineEvaluation, the share
     // of the turn from 0 to 1, against RevealThreshold; the item's anim graph moves to its reveal
-    // on bIsRevealing). Pushing the stick the positive way along the stage's axis (right for X, up
-    // for Y) raises the share, unless the player's setting turns that axis round
-    // (bInvertInteractionInputX/Y, laid over the input itself); the other way lowers it.
+    // on bIsRevealing). The stage adds the stick's value along its axis times the item's
+    // InputMultiplier to the turn's speed, and the speed times its EvaluationMultiplier to the share
+    // (UBatesInteractionUtils::InspectionEvaluationActive), so the item's own two numbers say which
+    // way raises it: pushing the stick the positive way (right for X, up for Y) raises the share where
+    // they have the same sign, and lowers it where they differ (Hannah's locket of act6_1: a push right
+    // took its share from 0.48 to 0 and a push left to the reveal, while the lead said right,
+    // research/sessions/s59-full.log 16:07:33 to 16:07:44). The player's setting turns the axis round
+    // again (bInvertInteractionInputX/Y, laid over the input itself).
     struct Turn
     {
         double share = 0.0;
         double threshold = 0.95;
         bool vertical = false; // along the stick's Y axis rather than its X
         bool inverted = false; // the player's setting turns the axis round
+        bool reversed = false; // the item's InputMultiplier and EvaluationMultiplier differ in sign
     };
 
     // The way to push and how much is left. The way does not change on the way there, so the

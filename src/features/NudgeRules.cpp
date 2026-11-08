@@ -56,7 +56,7 @@ namespace da::nudge
     TurnLead Toward(const Turn& t)
     {
         TurnLead l;
-        const int raise = t.inverted ? -1 : 1;
+        const int raise = t.inverted != t.reversed ? -1 : 1;
         (t.vertical ? l.up : l.right) = raise;
         l.remaining = std::max(0.0, t.threshold - t.share);
         // UBatesInteractionStageExamine::UpdateMovementInput: revealing once the share is at the
