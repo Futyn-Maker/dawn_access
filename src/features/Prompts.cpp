@@ -26,6 +26,7 @@
 
 #include <algorithm>
 #include <format>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -387,8 +388,12 @@ namespace da::features
         }
 
         // How long after a page shown again as it is being read the bar's prompts shown again with it
-        // are taken for those already said behind it.
+        // are taken for those already said behind it, and how long before the page a prompt said is
+        // taken as said with it.
         constexpr double kBarWithPage = 1.5;
+        constexpr double kBarBeforePage = 1.0;
+        // When each of the bar's lines was last said (prompt::NotSaidWithin).
+        std::map<std::wstring, double> g_barSaidAt;
 
         std::wstring Line(const ui::Prompt& p)
         {
@@ -416,18 +421,26 @@ namespace da::features
             std::vector<std::wstring> lines;
             for (const auto& p : prompts)
                 lines.push_back(Line(p));
-            const auto fresh = g_bar.Update(now, false, lines);
+            auto fresh = g_bar.Update(now, false, lines);
             if (fresh.empty()) return;
-            const auto text = str::Join(fresh, L", ");
-            // The prompts shown again with a document's page shown again as it is being read are still
-            // to be said behind it (hud::PageResumedAt): Jack's journal, hidden for Ashley's comment
-            // and shown again, had its scroll and its key said twice in a row.
+            // The prompts shown again with a document's page shown again as it is being read, said with
+            // it before, are still to be said behind it (hud::PageResumedAt): Jack's journal, hidden for
+            // Ashley's comment and shown again, had its scroll and its key said twice in a row. Those
+            // not said since the page are new, and said (prompt::NotSaidWithin).
             if (now - hud::PageResumedAt() < kBarWithPage)
             {
-                log::Info(L"prompts: action bar \"{}\" [{}] shown again with the page being read: still to be said behind it", text, Actions(prompts));
-                return;
+                const auto unsaid = prompt::NotSaidWithin(fresh, g_barSaidAt, now, now - hud::PageSaidAt() + kBarBeforePage);
+                if (unsaid.size() < fresh.size())
+                    log::Info(L"prompts: action bar \"{}\" [{}] shown again with the page being read: still to be said behind it{}", str::Join(fresh, L", "),
+                              Actions(prompts), unsaid.empty() ? L"" : L", all but what is new");
+                fresh = unsaid;
+                if (fresh.empty()) return;
             }
+            const auto text = str::Join(fresh, L", ");
             log::Info(L"prompts: action bar \"{}\" [{}]", text, Actions(prompts));
+            if (g_barSaidAt.size() > 64) std::erase_if(g_barSaidAt, [&](const auto& said) { return now - said.second > 120.0; });
+            for (const auto& line : fresh)
+                g_barSaidAt[line] = now;
             speech::Announce(text);
         }
 

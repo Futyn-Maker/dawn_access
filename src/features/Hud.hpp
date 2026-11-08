@@ -43,6 +43,8 @@ namespace da::features
         // When a document's page was last shown again, unchanged, as it was being read, and left to
         // be read on; long ago when never. The prompts the bar shows again with it are not said again.
         double PageResumedAt();
+        // When the page left to be read on, or the last one, was said.
+        double PageSaidAt();
         // The card that changes the character (name, place, time) is up now.
         bool CharacterCardShown();
         // An objective is set and waits to be said (for a title card to go, or for play to run).

@@ -399,6 +399,73 @@ TEST_CASE("a clue's card and the page it comes with are said together, the card 
     CHECK(order.HoldPage(90.0, true));
 }
 
+TEST_CASE("a page shown again unchanged is left to be read on only while the player has done nothing since it went")
+{
+    // Ashley's comment hides the journal's page for three seconds and the game shows it again: the
+    // reader still on it, it is left to be read on.
+    CHECK(lines::LeaveShownAgain(true, false, false));
+    // The same words let through moments ago (lines::Echo), the reader done with a short page: not
+    // said again either.
+    CHECK(lines::LeaveShownAgain(false, true, false));
+    // Shown again after the player's input (the transcript's key twice, a key that silenced the
+    // reader): said again.
+    CHECK_FALSE(lines::LeaveShownAgain(true, false, true));
+    CHECK_FALSE(lines::LeaveShownAgain(false, true, true));
+    // Shown again long after it was read: said again.
+    CHECK_FALSE(lines::LeaveShownAgain(false, false, false));
+}
+
+TEST_CASE("of a page left to be read on, only the cards that came with it are said")
+{
+    const std::vector<std::wstring> cards{L"Улика найдена. Дневник Джека."};
+    const std::wstring page = L"Когда-то в этих горах жило племя";
+    const auto both = lines::PageWords(cards, page, false);
+    REQUIRE(both.size() == 2);
+    CHECK(both[0] == cards[0]); // the card first
+    CHECK(both[1] == page);
+    const auto left = lines::PageWords(cards, page, true);
+    REQUIRE(left.size() == 1);
+    CHECK(left[0] == cards[0]);
+    CHECK(lines::PageWords({}, page, true).empty());
+    CHECK(lines::PageWords({}, page, false) == std::vector<std::wstring>{page});
+}
+
+TEST_CASE("a card waits for a page still to come only as long as a page turns, and not once it has stood long")
+{
+    // The reading open: a page hidden as it turns (1.3 s in Jack's journal, 3 s for Ashley's
+    // comments) is still to come; hidden longer, the reading is over though she is not handed back.
+    CHECK(lines::PageComing(true, false, 0.2, false));
+    CHECK(lines::PageComing(true, false, lines::kPageTurnGap - 0.1, false));
+    CHECK_FALSE(lines::PageComing(true, false, lines::kPageTurnGap, false));
+    // Shown, it comes while its words are still to be said.
+    CHECK(lines::PageComing(true, true, 30.0, true));
+    CHECK_FALSE(lines::PageComing(true, true, 0.0, false));
+    // No reading open: no page comes.
+    CHECK_FALSE(lines::PageComing(false, false, 0.2, false));
+    CHECK_FALSE(lines::PageComing(false, true, 0.0, true));
+    // A card up long already is said at once, lest it go before it is said.
+    lines::CardFirst order;
+    CHECK(order.HoldCard(10.0, true, 0.0));
+    CHECK(order.HoldCard(10.2, true, lines::kCardLongest - 0.1));
+    CHECK_FALSE(order.HoldCard(10.3, true, lines::kCardLongest));
+}
+
+TEST_CASE("a page or a card waiting holds the prompts until the next poll, and no longer than kHoldLapse without one")
+{
+    lines::CardFirst order;
+    CHECK_FALSE(order.Holding(1.0));
+    CHECK(order.HoldPage(1.0, true));
+    CHECK(order.Holding(1.1));
+    CHECK(order.Holding(1.0 + lines::kHoldLapse - 0.01));
+    // No poll came: the wait lapses by itself.
+    CHECK_FALSE(order.Holding(1.0 + lines::kHoldLapse));
+    // A poll that held nothing ends it at once.
+    CHECK(order.HoldCard(5.0, true));
+    CHECK(order.Holding(5.1));
+    order.Settled();
+    CHECK_FALSE(order.Holding(5.1));
+}
+
 TEST_CASE("lines given back are given again at the next poll")
 {
     lines::Element page;

@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <map>
 #include <optional>
 #include <set>
 #include <string>
@@ -133,7 +134,9 @@ namespace da::prompt
     // right turns back to its first page, the foreword, with a clue of its own
     // (FoundJournalIntroduction), and with only the way on said Andrey went on and never saw it
     // (research/sessions/s61-play.log, 18:59:39; research/interactions/analysis/BP_Readjournal__act7_1.txt).
-    bool NamesWayBack(int64_t step);
+    // The step the graph stands at where it can be read (-1 where not), else the stage's own first
+    // (InitialAnimationStage, the journal's alone of the game's staged stages not 0).
+    bool NamesWayBack(int64_t step, int64_t initial);
 
     // The step a staged climb, shimmy or page turn stands at (the AnimationStage the stage writes into
     // its graphs, UBatesIntSimpleGrabAnimInst's) out of its stage's last
@@ -310,6 +313,12 @@ namespace da::prompt
     // with R2 held, and letting go drops it. The key of the line by the prompt's actions, none for any
     // other prompt.
     const wchar_t* HeldMoveHelp(std::wstring_view actions);
+
+    // The bar's lines shown again with a document's page shown again as it is being read
+    // (hud::PageResumedAt): those said within `within` seconds are still to be said behind the page,
+    // the others are new and said. `saidAt` holds when each line was last said.
+    std::vector<std::wstring> NotSaidWithin(const std::vector<std::wstring>& fresh, const std::map<std::wstring, double>& saidAt, double now,
+                                            double within);
 
     // A prompt that draws the grab beside a move of the stick (a push, a swipe, a half circle): the
     // move is made with the grab held. Of the interaction stages of the whole game, 79 draw such a

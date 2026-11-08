@@ -83,6 +83,11 @@ namespace da::lines
         {
             m_since = -1.0;
         }
+        // How long the card has been up, as of its first poll; 0 before it.
+        double ShownFor(double now) const
+        {
+            return m_since < 0.0 ? 0.0 : now - m_since;
+        }
 
     private:
         double m_since = -1.0; // since when the card has been shown
@@ -129,20 +134,50 @@ namespace da::lines
     // or not read yet), each for at most kCardWithPage; ready together, they are said as one. A page
     // with no card shown waits for nothing.
     constexpr double kCardWithPage = 1.5;
+    // A card stands about four seconds; one up this long already is said at once, lest it go unsaid.
+    constexpr double kCardLongest = 2.5;
     class CardFirst
     {
     public:
         // Whether a page ready to be said waits this poll, a card still coming (`cardComing`).
         bool HoldPage(double now, bool cardComing);
-        // Whether a card ready to be said waits this poll, a page still coming (`pageComing`).
-        bool HoldCard(double now, bool pageComing);
+        // Whether a card ready to be said waits this poll, a page still coming (`pageComing`), the card
+        // up for `shownFor` seconds.
+        bool HoldCard(double now, bool pageComing, double shownFor = 0.0);
         // Nothing waits this poll: the next wait begins afresh.
         void Settled();
+        // Whether a page or a card waits, as of `now`: from a poll that held one until the next poll's
+        // word, lapsing by itself kHoldLapse after it, lest a poll that never comes (the HUD stopped,
+        // the mod switched off) hold the prompts behind it for good.
+        bool Holding(double now) const;
 
     private:
         double m_pageSince = -1.0;
         double m_cardSince = -1.0;
+        double m_holdUntil = -1.0;
     };
+    // The HUD polls every sixth frame: 0.1 s at 60 frames a second, 0.4 s at 15.
+    constexpr double kHoldLapse = 0.5;
+
+    // A page still to come for a card to wait for: the reading's transcript not yet said, or hidden as
+    // its page turns, no longer than a turn hides it (Jack's journal: 1.3 s a turn, 3 s for Ashley's
+    // comments). Hidden longer, the reading is over though she is not yet handed back, and a card waits
+    // for nothing.
+    constexpr double kPageTurnGap = 3.0;
+    bool PageComing(bool readingOpen, bool shown, double hiddenFor, bool unsaid);
+
+    // A document's page shown again unchanged is left to be read on only while the reader may still be
+    // on it (`stillOn`, speech::StillOn) or the same words were let through moments ago (`echoed`,
+    // lines::Echo), and the player has done nothing since it was hidden: the game hid it itself
+    // (Ashley's comments on Jack's journal, three seconds each). Shown again after the player's input
+    // (the transcript's key pressed twice, a key that silenced the reader, a push of the stick), it is
+    // said again, as a transcript shown again always was.
+    bool LeaveShownAgain(bool stillOn, bool echoed, bool inputSinceHidden);
+
+    // What is said of a document's page ready to be said, with the cards that came with it: the cards
+    // first, then the page; of a page left to be read on (LeaveShownAgain), only the cards, said
+    // behind it.
+    std::vector<std::wstring> PageWords(const std::vector<std::wstring>& cards, const std::wstring& page, bool leave);
 
     // The same words can arrive through two elements at once: said once within kSameWords.
     constexpr double kSameWords = 5.0;

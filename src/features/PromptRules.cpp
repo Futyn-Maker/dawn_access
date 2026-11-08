@@ -153,6 +153,18 @@ namespace da::prompt
         return nullptr;
     }
 
+    std::vector<std::wstring> NotSaidWithin(const std::vector<std::wstring>& fresh, const std::map<std::wstring, double>& saidAt, double now,
+                                            double within)
+    {
+        std::vector<std::wstring> out;
+        for (const auto& line : fresh)
+        {
+            const auto said = saidAt.find(line);
+            if (said == saidAt.end() || now - said->second > within) out.push_back(line);
+        }
+        return out;
+    }
+
     std::optional<HeldPair> HeldMoveOf(const std::vector<std::wstring>& actions)
     {
         const auto isMove = [](const std::wstring& action)
@@ -221,9 +233,9 @@ namespace da::prompt
         return {};
     }
 
-    bool NamesWayBack(int64_t step)
+    bool NamesWayBack(int64_t step, int64_t initial)
     {
-        return step > 0;
+        return (step >= 0 ? step : initial) > 0;
     }
 
     std::optional<Dial> DialOf(std::wstring_view interactionClass)

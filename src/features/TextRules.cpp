@@ -88,18 +88,46 @@ namespace da::lines
 
     bool CardFirst::HoldPage(double now, bool cardComing)
     {
-        return Holds(m_pageSince, now, cardComing);
+        const bool hold = Holds(m_pageSince, now, cardComing);
+        if (hold) m_holdUntil = now + kHoldLapse;
+        return hold;
     }
 
-    bool CardFirst::HoldCard(double now, bool pageComing)
+    bool CardFirst::HoldCard(double now, bool pageComing, double shownFor)
     {
-        return Holds(m_cardSince, now, pageComing);
+        const bool hold = Holds(m_cardSince, now, pageComing && shownFor < kCardLongest);
+        if (hold) m_holdUntil = now + kHoldLapse;
+        return hold;
+    }
+
+    bool CardFirst::Holding(double now) const
+    {
+        return now < m_holdUntil;
+    }
+
+    bool PageComing(bool readingOpen, bool shown, double hiddenFor, bool unsaid)
+    {
+        if (!readingOpen) return false;
+        return shown ? unsaid : hiddenFor < kPageTurnGap;
+    }
+
+    bool LeaveShownAgain(bool stillOn, bool echoed, bool inputSinceHidden)
+    {
+        return (stillOn || echoed) && !inputSinceHidden;
+    }
+
+    std::vector<std::wstring> PageWords(const std::vector<std::wstring>& cards, const std::wstring& page, bool leave)
+    {
+        std::vector<std::wstring> words = cards;
+        if (!leave) words.push_back(page);
+        return words;
     }
 
     void CardFirst::Settled()
     {
         m_pageSince = -1.0;
         m_cardSince = -1.0;
+        m_holdUntil = -1.0;
     }
 
     bool Card::Ready(double now, bool bodyDrawn)

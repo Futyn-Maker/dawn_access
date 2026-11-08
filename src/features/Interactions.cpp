@@ -483,6 +483,7 @@ namespace da::features
         // way on has been said.
         std::map<int64_t, std::wstring> g_linearForward;
         std::map<int64_t, std::wstring> g_linearBack; // and its way back, named where the stage stands past its first step
+        std::map<int64_t, int64_t> g_linearInitial;   // the step each stage begins at (InitialAnimationStage)
         int64_t g_linearStage = -1;
         double g_linearSince = -1.0;
         bool g_linearSaid = false;
@@ -505,6 +506,7 @@ namespace da::features
         {
             g_linearForward.clear();
             g_linearBack.clear();
+            g_linearInitial.clear();
             g_linearLast.clear();
             g_linearUnclamped.clear();
             g_linearProgress.Reset();
@@ -540,6 +542,9 @@ namespace da::features
                 {
                     g_linearForward[index] = forward;
                     g_linearBack[index] = prompt::LinearForward(name, !invert);
+                    int64_t initial = 0;
+                    obj::ReadInt(component, L"InitialAnimationStage", initial);
+                    g_linearInitial[index] = initial;
                 }
             }
         }
@@ -647,7 +652,10 @@ namespace da::features
             // Standing past its first step, the stage's way back leads somewhere too (prompt::NamesWayBack).
             const int64_t step = LinearStep(interaction);
             const auto back = g_linearBack.find(current);
-            const auto backKey = back != g_linearBack.end() && prompt::NamesWayBack(step) ? input::KeyForAction(back->second) : std::wstring();
+            const auto initial = g_linearInitial.find(current);
+            const auto backKey = back != g_linearBack.end() && prompt::NamesWayBack(step, initial != g_linearInitial.end() ? initial->second : 0)
+                                     ? input::KeyForAction(back->second)
+                                     : std::wstring();
             log::Info(L"interactions: the stage goes on with {} ({}){}", forward->second, key,
                       backKey.empty() ? std::wstring() : std::format(L"; it stands at step {}, and {} ({}) goes back", step, back->second, backKey));
             if (key.empty()) return;

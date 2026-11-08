@@ -596,11 +596,33 @@ TEST_CASE("prompts: a staged stage standing past its first step names its way ba
 {
     // BP_Readjournal opens at its second page (InitialAnimationStage 1): its foreword lies a push right
     // back, with a clue of its own.
-    CHECK(prompt::NamesWayBack(1));
+    CHECK(prompt::NamesWayBack(1, 1));
     // A climb, a shimmy, a book opened at its first page: only the way on.
-    CHECK_FALSE(prompt::NamesWayBack(0));
-    CHECK_FALSE(prompt::NamesWayBack(-1));
+    CHECK_FALSE(prompt::NamesWayBack(0, 0));
+    CHECK_FALSE(prompt::NamesWayBack(-1, 0));
+    // The graph's step not readable: the stage's own first step tells.
+    CHECK(prompt::NamesWayBack(-1, 1));
+    // The graph's step read wins: turned back to the foreword before the prompt came, nothing lies
+    // behind; turned on from a first page, the way back leads somewhere.
+    CHECK_FALSE(prompt::NamesWayBack(0, 1));
+    CHECK(prompt::NamesWayBack(2, 0));
     // The way back is the way on turned round.
     CHECK(prompt::LinearForward(L"IA_SwipeLeftRight", true) == L"IA_Swipe_Left");
     CHECK(prompt::LinearForward(L"IA_SwipeLeftRight", false) == L"IA_Swipe_Right");
+}
+
+TEST_CASE("prompts: the bar's prompts shown again with a page being read are said only where they are new")
+{
+    // Jack's journal (research/sessions/s61-play.log): the page said at 100.0, the bar's scroll and its
+    // key at 101.2; Ashley's comment hides the page and the bar, both shown again at 104.5.
+    const std::map<std::wstring, double> saidAt{{L"Прокрутка: правый стик", 101.2}, {L"Скрыть текст: треугольник", 101.2}, {L"Назад: круг", 60.0}};
+    const double now = 104.6;
+    const double sincePage = now - 100.0 + 1.0;
+    // Said since the page: still to be said behind it, or said with it.
+    CHECK(prompt::NotSaidWithin({L"Прокрутка: правый стик", L"Скрыть текст: треугольник"}, saidAt, now, sincePage).empty());
+    // Said before the page, or never: new, and said.
+    const auto fresh = prompt::NotSaidWithin({L"Прокрутка: правый стик", L"Назад: круг", L"Дальше: левый стик влево"}, saidAt, now, sincePage);
+    REQUIRE(fresh.size() == 2);
+    CHECK(fresh[0] == L"Назад: круг");
+    CHECK(fresh[1] == L"Дальше: левый стик влево");
 }
