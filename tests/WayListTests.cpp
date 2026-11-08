@@ -2002,3 +2002,60 @@ TEST_CASE("the character standing in a walk's way: Chris in the cinema airlock, 
     CHECK(ways::InTheWay(here, corner, {ways::Vec{600, -9070, 0}}) == -1);
     CHECK(ways::InTheWay(here, corner, {ways::Vec{720, -9110, 0}, chris}) == 1);
 }
+
+TEST_CASE("a walk to a way on goes on to the thing that takes the way's place: the old kitchen's stairs, 2026-11-08")
+{
+    // research/sessions/s58-whole.log, 11:38:55: walking down to the old kitchen toward the streaming
+    // trigger, the game turned on the psycho revelation 4 m ahead; the trigger lay beside it and left
+    // the list for it, the walk ended "Target gone", and the mod chose the wine cellar's door 24 m back.
+    int streaming = 0, revelation = 0, cellarDoor = 0;
+    // The mod's choice moved on to the cellar door; the way's twin is the revelation: the walk goes on to it.
+    CHECK(ways::WalkGoesTo(&streaming, &cellarDoor, &revelation) == &revelation);
+    // Still chosen, the walk goes on to its own target.
+    CHECK(ways::WalkGoesTo(&streaming, &streaming, &revelation) == &streaming);
+    // No twin: nothing; the walk ends saying its target is gone.
+    CHECK(ways::WalkGoesTo(&streaming, &cellarDoor, nullptr) == nullptr);
+    CHECK(ways::WalkGoesTo(nullptr, &cellarDoor, &revelation) == nullptr);
+}
+
+TEST_CASE("the thing that stands for a way takes its place while its first verdict waits: the psycho revelation, 2026-11-08")
+{
+    // research/sessions/s58-whole.log, 11:38:55.212: the game turned the revelation on 4 m ahead of
+    // the walk; its room's verdict waited for the reach map in the same look as it took the
+    // streaming trigger's place, and the walk to the trigger ended "Target gone" at 11:38:55.244.
+    ways::LeftOut revelation;
+    revelation.hidden = true; // its room's verdict waiting for the map
+    CHECK(ways::TakesWayPlace(revelation));
+    // Listed, it does.
+    revelation.hidden = false;
+    CHECK(ways::TakesWayPlace(revelation));
+    // Left out for a reason of its own, it does not: the walk ends saying its target is gone.
+    const auto leftOutFor = [](bool ways::LeftOut::*reason)
+    {
+        ways::LeftOut thing;
+        thing.hidden = true;
+        thing.*reason = true;
+        return ways::TakesWayPlace(thing);
+    };
+    CHECK_FALSE(leftOutFor(&ways::LeftOut::behind));
+    CHECK_FALSE(leftOutFor(&ways::LeftOut::offPath));
+    CHECK_FALSE(leftOutFor(&ways::LeftOut::unreachable));
+    CHECK_FALSE(leftOutFor(&ways::LeftOut::superseded));
+    CHECK_FALSE(leftOutFor(&ways::LeftOut::onRoad));
+    CHECK_FALSE(leftOutFor(&ways::LeftOut::apart));
+    // The player's own choice is listed whatever the reasons: it does.
+    ways::LeftOut chosen;
+    chosen.behind = true;
+    CHECK(ways::TakesWayPlace(chosen));
+}
+
+TEST_CASE("a hold resumed after a scene that moved her begins a new map: the lodge's bedroom door, 2026-11-08")
+{
+    // research/sessions/s58-whole.log, 11:03:30: handed back 280 cm from where the map began, the
+    // airlock door's trigger the scene had turned on was judged by the roads from there, listed, and
+    // left out 0.3 s later as the map from where she stood ran through it.
+    CHECK(ways::MovedFromMap(280.0));
+    // A short exchange where she stands keeps the map: its roads hold.
+    CHECK_FALSE(ways::MovedFromMap(40.0));
+    CHECK_FALSE(ways::MovedFromMap(ways::kMovedFromMap));
+}

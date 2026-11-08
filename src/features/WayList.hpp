@@ -468,6 +468,41 @@ namespace da::ways
     // back to it.
     bool WalkGoesOn(const void* walkFor, const void* chosen);
 
+    // What a walk to a way on goes on to when the way leaves the list for a thing beside it that
+    // stands for it now (LeftForThing: `twin`, the way's twin, null for none): that thing, the way's
+    // place being its place; else nothing, and the walk ends saying its target is gone. On the stairs
+    // down to the old kitchen on 2026-11-08 the walk to the streaming trigger ended "Target gone" as
+    // the game turned on the psycho revelation 4 m ahead, which took the trigger's place, and the mod
+    // chose the wine cellar's door 24 m back (research/sessions/s58-whole.log, 11:38:55).
+    const void* WalkGoesTo(const void* walkFor, const void* chosen, const void* twin);
+
+    // Why a thing is left out of the list now, as a walk going on to it weighs it.
+    struct LeftOut
+    {
+        bool hidden = false;      // not listed
+        bool behind = false;      // behind her on the path she is held to
+        bool offPath = false;     // beside a path the game holds her to
+        bool unreachable = false; // no walk gets there for now
+        bool superseded = false;  // a streaming trigger, with a way of the story listed
+        bool onRoad = false;      // a way on the road of another listed one
+        bool apart = false;       // beyond a door (rooms::Verdict::Apart)
+    };
+
+    // Whether the thing that stands for a way on now (LeftForThing) takes the way's place for a walk
+    // to the way (WalkGoesTo): listed, or left out only while its first verdict waits (the game has
+    // just turned it on: unjudged, or its room's verdict waiting for the map, which the way's own
+    // ground has had); never one left out for a reason of its own. On the stairs down to the old
+    // kitchen on 2026-11-08 the psycho revelation's room verdict waited for the reach map in the
+    // same look as it took the streaming trigger's place (research/sessions/s58-whole.log,
+    // 11:38:55.212), and was said in the area 0.3 s later.
+    bool TakesWayPlace(const LeftOut& thing);
+
+    // Whether a hold resumed on the ground the last map reached begins a new map: the scene moved her
+    // more than kMovedFromMap from where that map began, and its roads (from there) no longer weigh
+    // the ways the scene turned on. Short of that the roads hold.
+    constexpr double kMovedFromMap = 150.0;
+    bool MovedFromMap(double fromOrigin);
+
     // The other character standing in a walk's way, if any: the nearest of `others` within
     // kInTheWayReach of her and within kInTheWayAngle of the way to `toward`, as the game's own steering
     // stops her short of a companion rather than walking her into him. In the lodge's cinema airlock on
@@ -477,6 +512,25 @@ namespace da::ways
     constexpr double kInTheWayReach = 150.0;
     constexpr double kInTheWayAngle = 60.0;
     int InTheWay(const Vec& here, const Vec& toward, const std::vector<Vec>& others);
+
+    // The ground about another character standing in a walk's way, kept clear by a way round him: a
+    // place within `clearance` of where he stands (her radius, his and a margin) is no place for her
+    // middle, nor a straight run that passes him nearer. The ground's sweeps leave the characters out,
+    // for they walk on; one who stays put, as Chris did in the cellar for five minutes at the mouth of
+    // the corridor to the creaky door on 2026-11-08, stops her by the game's own steering however the
+    // walk leans, while the room let a way round him on his far side
+    // (research/sessions/s58-whole.log, 11:13:49 to 11:18:27; replay fixture ground-cellar-chris.tsv).
+    struct KeepClear
+    {
+        std::vector<Vec> standing; // where they stand, on the flat
+        double clearance = 0.0;
+        bool Clear(const Vec& at) const;
+        // A step to `to` from `from`: clear, or no nearer any of them than she was (she may stand
+        // within the clearance already, pressed against him, and walks out of it).
+        bool StepClear(const Vec& from, const Vec& to) const;
+        bool RunClear(const Vec& a, const Vec& b) const;
+    };
+    constexpr double kKeepClearMargin = 10.0; // cm past touching
 
     // Whether a walk whose target left the list ended in arriving: a way on's volume she stands in
     // (`wayVolume` and `inside`), which the scene it set going took off the list in the same look,

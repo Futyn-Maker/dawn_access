@@ -279,6 +279,45 @@ TEST_CASE("look: the turn missing, as the glint judges it")
         CHECK(look::Missing(p) == Lead::None);
         CHECK(look::Leads(p) == Lead::None);
     }
+    SUBCASE("a framing camera the camera's movement ends: the right stick brings the glint in, the old hotel's chains, 2026-11-08")
+    {
+        // research/sessions/s58-whole.log, 11:43:17: after the kitchen's door slam the shot (layer 4)
+        // left the chains and knives out; the walk stepped her about for 8 s and said it could not get
+        // there. Its BP_InitialFramingCamera_Mover ends on the camera's movement.
+        look::Parts p = AtHand();
+        p.framingEndsOnLook = true;
+        p.characterOk = true;
+        CHECK(look::CanBeLed(p));
+        CHECK(look::Missing(p) == Lead::Camera);
+        CHECK(look::Leads(p) == Lead::Camera);
+        // On it, with the glint in the picture and she facing away, it is still her turn.
+        p.onScreen = true;
+        p.cameraOk = true;
+        p.characterOk = false;
+        CHECK(look::Missing(p) == Lead::Character);
+    }
+    SUBCASE("the camera looks at it by the game's measure, and the game shows no glint: the cellar's dollhouse, 2026-11-08")
+    {
+        // research/sessions/s58-whole.log, 11:15:59 to 11:17:28: on the exploration camera, inside the
+        // ellipse and the glint off the screen, again and again for 93 s; the walk said nothing more.
+        look::Parts p = AtHand();
+        p.explorationView = true;
+        p.characterOk = true;
+        CHECK(look::GlintMissing(p, true));
+        // Off the ellipse, the camera is merely turned away: the look is led as ever.
+        CHECK_FALSE(look::GlintMissing(p, false));
+        CHECK(look::Missing(p) == Lead::Camera);
+        // On the screen, the glint is up.
+        p.onScreen = true;
+        CHECK_FALSE(look::GlintMissing(p, true));
+        // A fixed shot or a press the game would take is no missing glint.
+        p.onScreen = false;
+        p.explorationView = false;
+        CHECK_FALSE(look::GlintMissing(p, true));
+        p.explorationView = true;
+        p.verdict = true;
+        CHECK_FALSE(look::GlintMissing(p, true));
+    }
     SUBCASE("the press would be taken, or the verdict is a tick behind: nothing is missing")
     {
         look::Parts p = AtHand();

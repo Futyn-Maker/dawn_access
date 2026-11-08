@@ -900,6 +900,11 @@ namespace da::scripts
         if (player) a.player = now;
     }
 
+    void Waits::Answered(double now, const std::wstring& trigger, bool yes)
+    {
+        if (yes) m_asked[trigger].yes = now;
+    }
+
     bool Waits::AskedNow(double now, const std::wstring& trigger, bool player) const
     {
         const auto found = m_asked.find(trigger);
@@ -952,6 +957,15 @@ namespace da::scripts
         if (story.empty()) return verdict;
         verdict.kind = Kind::NotNow;
         verdict.poll = story.front();
+        // The last question about her answered yes, and the scene has asked no more since: the wait
+        // is met. A state that asks on while she stands in it (a compound condition, a wait for her to
+        // leave) is still waiting.
+        if (const auto asked = m_asked.find(trigger); asked != m_asked.end() && asked->second.yes > -1000.0 &&
+                                                     asked->second.yes >= asked->second.player && now - asked->second.player > kAskedWithin)
+        {
+            verdict.kind = Kind::Met;
+            return verdict;
+        }
         if (!AskedNow(now, trigger, true)) return verdict;
         for (const Poll* p : story)
         {
@@ -974,6 +988,11 @@ namespace da::scripts
             else
                 m_held.insert(trigger);
             return true;
+        }
+        if (kind == Kind::Met)
+        {
+            m_held.erase(trigger);
+            return false;
         }
         if (kind == Kind::NotNow && m_held.count(trigger))
         {

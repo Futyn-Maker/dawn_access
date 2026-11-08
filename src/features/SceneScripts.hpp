@@ -238,6 +238,9 @@ namespace da::scripts
         // the player's. `now` is a clock that stands still while the game is paused or loading,
         // when its scripts do not run.
         void Asked(double now, const std::wstring& trigger, bool player);
+        // The game's own answer to that question about the player's character (the function's return
+        // value, read as it returns): a yes is the wait met, and the machine that asked moves on.
+        void Answered(double now, const std::wstring& trigger, bool yes);
         void Forget()
         {
             m_asked.clear();
@@ -249,6 +252,7 @@ namespace da::scripts
             NoStory, // the states that ask move no scene on
             NotNow,  // a state that would move the scene on is not the one asking now
             Waiting, // the scene waits for her to walk in
+            Met,     // the game has answered the scene's last question yes: she has walked in
         };
         struct Verdict
         {
@@ -273,18 +277,24 @@ namespace da::scripts
         {
             double any = -1000.0;
             double player = -1000.0;
+            double yes = -1000.0; // the last yes the game gave about the player's character
         };
         std::vector<Poll> m_polls;
         std::map<std::wstring, Asking> m_asked;
     };
 
-    // A volume a scene has waited on is a way on until the character walks into it or the story
+    // A volume a scene has waited on is a way on until the character walks into it (the game's own
+    // yes to the scene's question, Waits::Kind::Met, or her standing in it at a look) or the story
     // moves on, though the machine that waits leaves off asking for a while: a companion's machine
     // asks only while its character is not busy with her own (Jessica's lead out of the mine on
     // 2026-11-05: Aicontroller 44 asked about T_ExitMine after the cart, left off as Mike went to
     // the totem and asked again two minutes later, four times over in fourteen minutes, each time
     // round an interaction of his, and the way out came and went from the list with it). A volume no
-    // state of any scene would move on for is no way on whatever it was.
+    // state of any scene would move on for is no way on whatever it was. A wait met between two looks
+    // is over all the same: the cellar's ghost scare (2026-11-08) took Ashley as she walked into
+    // T_door_ghost_scare, no look saw her in it, and the volume was held as a way on for ten minutes
+    // after the scare, in and out of the list as she walked the cellar
+    // (research/sessions/s58-whole.log, 11:28:01 to 11:38:35); so did the old kitchen's door slam.
     class HeldWaits
     {
     public:

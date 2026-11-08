@@ -61,6 +61,64 @@ namespace da::recheck
         return out;
     }
 
+    void Reask::Begin(std::vector<std::pair<StepKey, int>> kept)
+    {
+        m_steps.clear();
+        m_steps.reserve(kept.size());
+        for (auto& [key, answer] : kept)
+            m_steps.push_back(Step{key, answer, kRefused});
+        m_next = 0;
+        m_active = !m_steps.empty();
+    }
+
+    std::optional<StepKey> Reask::Next()
+    {
+        if (!m_active || m_next >= m_steps.size())
+        {
+            m_active = false;
+            return std::nullopt;
+        }
+        return m_steps[m_next].key;
+    }
+
+    void Reask::Answer(int answer)
+    {
+        if (!m_active || m_next >= m_steps.size()) return;
+        m_steps[m_next].now = answer;
+        if (++m_next >= m_steps.size()) m_active = false;
+    }
+
+    std::vector<Column> Reask::Changed() const
+    {
+        std::vector<Column> out;
+        for (const auto& step : m_steps)
+        {
+            if ((step.now == kRefused) != (step.kept == kRefused)) out.emplace_back(std::get<0>(step.key), std::get<1>(step.key));
+        }
+        return out;
+    }
+
+    size_t Reask::Shut() const
+    {
+        return static_cast<size_t>(std::count_if(m_steps.begin(), m_steps.end(), [](const Step& s) { return s.kept != kRefused && s.now == kRefused; }));
+    }
+
+    size_t Reask::Opened() const
+    {
+        return static_cast<size_t>(std::count_if(m_steps.begin(), m_steps.end(), [](const Step& s) { return s.kept == kRefused && s.now != kRefused; }));
+    }
+
+    bool Weighed(bool doorLeaf, bool stopsHer)
+    {
+        return doorLeaf || stopsHer;
+    }
+
+    bool StopsPawn(int64_t collisionEnabled, int64_t responseToPawn)
+    {
+        const bool queried = collisionEnabled == 1 || collisionEnabled == 3 || collisionEnabled == 5;
+        return queried && responseToPawn == 2;
+    }
+
     bool Moved(const Box& a, const Box& b, double tolerance)
     {
         const auto off = [&](const Vec& p, const Vec& q)

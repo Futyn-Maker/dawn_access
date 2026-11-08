@@ -29,6 +29,10 @@ namespace da::look
         bool cameraOk = false;        // the camera's part of the look is in place
         bool characterOk = false;     // the character's part of the look is in place
         bool needCamera = false;      // the use location asks for the camera's look
+        // The view is a framing camera the camera's own movement ends (ABatesInitialFramingCamera
+        // with bCameraMovementEndsFramingCamera): the right stick turned brings the exploration
+        // camera back, so the camera's look is the player's to give there too.
+        bool framingEndsOnLook = false;
     };
 
     enum class Lead
@@ -40,12 +44,28 @@ namespace da::look
 
     // Whether a turn the player can make completes the look. On a fixed shot (any camera but the
     // exploration one) the camera is not the player's: a glint the picture leaves out stays out
-    // whichever way she faces, and the press is not taken there.
+    // whichever way she faces, and the press is not taken there. A framing camera that the camera's
+    // movement ends is the player's all the same: in the old hotel's kitchen on 2026-11-08 the shot
+    // after the door slam left the chains and knives out, the walk stepped her about and said it
+    // could not get there, while a turn of the right stick would have ended the shot
+    // (research/sessions/s58-whole.log, 11:43:17; LV_Cameras_oldhotel's BP_InitialFramingCamera_Mover).
     bool CanBeLed(const Parts& p);
 
     // The turn the look beacon follows: the camera's while its part is not in place, else the
     // character's; on a fixed shot only the character's.
     Lead Leads(const Parts& p);
+
+    // Whether the game shows no glint for a thing at hand though the camera looks at it: on the
+    // exploration camera, its billboard inside the part of the screen the camera's look asks for
+    // (`insideEllipse`, the glint's own GetCameraLookIntensity), and its widget not on the screen
+    // (GetIsOnScreen: the canvas entry's place within the screen). A widget the game tracks lies on
+    // the screen wherever its billboard does, so only a glint whose widget the game has not put up
+    // (or has hidden) is off it there: no turn of the camera brings it in. Said after
+    // kGlintMissingAfter of it, she standing still: a glint coming up takes a moment (the library's
+    // guidance totem in s46 was off the screen inside the ellipse for 2.5 s before it showed), the
+    // dollhouse's stayed so for 5 to 14 s at a time over 93 s.
+    bool GlintMissing(const Parts& p, bool insideEllipse);
+    constexpr double kGlintMissingAfter = 5.0;
 
     // The turn the press still waits for, or None when the look is in place (or the game's
     // verdict is only a tick behind it), when nothing is at hand, or when no turn of the

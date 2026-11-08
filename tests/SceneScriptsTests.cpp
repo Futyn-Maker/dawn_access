@@ -2000,3 +2000,67 @@ TEST_CASE("scripts: Jessica led on to the mine moves the scene on while the stor
     waits.Asked(20.0, L"T_MineEntrance", true);
     CHECK(waits.Judge(20.5, L"T_MineEntrance", L"Mike").kind == scripts::Waits::Kind::NoStory);
 }
+
+TEST_CASE("scripts: a wait the game answers yes is met, though no look saw her in the volume: the cellar's ghost scare, 2026-11-08")
+{
+    // research/sessions/s58-whole.log: Scene01_doorghostscare's state 7 asked whether the player
+    // stood in T_door_ghost_scare while the game held Ashley to the path toward the creaky door
+    // (11:26:55); she walked in, the scare took her at 11:27:41 between two of the mod's looks, and
+    // after it the volume was held as a way on for ten minutes ("the scene having waited on it and
+    // left off asking for now"), in and out of the list as she walked the cellar.
+    using Kind = Waits::Kind;
+    Poll scare;
+    scare.source = L"scene01_doorghostscare";
+    scare.machine = L"Scene01_doorghostscare";
+    scare.state = 7;
+    scare.trigger = L"T_door_ghost_scare";
+    scare.who = L"Player";
+    scare.story = true;
+    scare.calls = {L"SF_StartActivity", L"SF_RunStatemachine"};
+    Waits waits;
+    waits.SetPolls({scare});
+    scripts::HeldWaits held;
+    // 11:26:55 to 11:27:41: asked at every update, answered no; she is not in it at any look.
+    for (double t = 1000.0; t < 1046.0; t += 0.5)
+    {
+        waits.Asked(t, L"T_door_ghost_scare", true);
+        waits.Answered(t, L"T_door_ghost_scare", false);
+    }
+    CHECK(waits.Judge(1045.8, L"T_door_ghost_scare", L"Ashley").kind == Kind::Waiting);
+    CHECK(held.Waiting(L"T_door_ghost_scare", Kind::Waiting, false));
+    // 11:27:41: she walks in; the game answers yes, and the machine moves on and asks no more.
+    waits.Asked(1046.2, L"T_door_ghost_scare", true);
+    waits.Answered(1046.2, L"T_door_ghost_scare", true);
+    // At the next look, within a second of the ask, the scene may ask on (a state that asks while she
+    // stands in it): still waiting, the way held.
+    CHECK(waits.Judge(1046.4, L"T_door_ghost_scare", L"Ashley").kind == Kind::Waiting);
+    CHECK(held.Waiting(L"T_door_ghost_scare", Kind::Waiting, false));
+    // A second on with no question since the yes: the wait is met, no longer held.
+    const auto met = waits.Judge(1047.3, L"T_door_ghost_scare", L"Ashley");
+    CHECK(met.kind == Kind::Met);
+    CHECK_FALSE(held.Waiting(L"T_door_ghost_scare", met.kind, false));
+    // 11:28:01, after the scare, the machine silent: no way on.
+    CHECK(waits.Judge(1066.0, L"T_door_ghost_scare", L"Ashley").kind == Kind::Met);
+    CHECK_FALSE(held.Waiting(L"T_door_ghost_scare", Kind::Met, false));
+    CHECK_FALSE(held.Held(L"T_door_ghost_scare"));
+    // Asked again and answered no (a new wait of the scene's): waiting again.
+    waits.Asked(1200.0, L"T_door_ghost_scare", true);
+    waits.Answered(1200.0, L"T_door_ghost_scare", false);
+    CHECK(waits.Judge(1200.3, L"T_door_ghost_scare", L"Ashley").kind == Kind::Waiting);
+    // A state that asks on while she stands in it, answered yes each time (a compound condition not
+    // yet met), waits on.
+    Waits asksOn;
+    asksOn.SetPolls({scare});
+    for (double t = 2000.0; t < 2005.0; t += 0.5)
+    {
+        asksOn.Asked(t, L"T_door_ghost_scare", true);
+        asksOn.Answered(t, L"T_door_ghost_scare", true);
+    }
+    CHECK(asksOn.Judge(2004.7, L"T_door_ghost_scare", L"Ashley").kind == Kind::Waiting);
+    // A question never answered yes is no met wait.
+    Waits fresh;
+    fresh.SetPolls({scare});
+    CHECK(fresh.Judge(10.0, L"T_door_ghost_scare", L"Ashley").kind == Kind::NotNow);
+    fresh.Asked(10.0, L"T_door_ghost_scare", true);
+    CHECK(fresh.Judge(10.2, L"T_door_ghost_scare", L"Ashley").kind == Kind::Waiting);
+}

@@ -19,14 +19,19 @@ namespace da::look
 
     bool CanBeLed(const Parts& p)
     {
-        return !(p.byGlint && !p.explorationView && !p.onScreen);
+        return !(p.byGlint && !p.explorationView && !p.framingEndsOnLook && !p.onScreen);
     }
 
     Lead Leads(const Parts& p)
     {
         if (!CanBeLed(p)) return Lead::None;
-        if (p.byGlint && !p.explorationView) return Lead::Character;
+        if (p.byGlint && !p.explorationView && !p.framingEndsOnLook) return Lead::Character;
         return !p.cameraOk || (p.needCamera && p.characterOk) ? Lead::Camera : Lead::Character;
+    }
+
+    bool GlintMissing(const Parts& p, bool insideEllipse)
+    {
+        return p.byGlint && p.explorationView && p.measured && p.atHand && !p.verdict && insideEllipse && !p.onScreen;
     }
 
     Lead Missing(const Parts& p)
@@ -34,7 +39,7 @@ namespace da::look
         if (!p.measured || !p.atHand || p.verdict || p.lookOk || (p.cameraOk && p.characterOk) || !CanBeLed(p)) return Lead::None;
         // The camera looks at it and the character does not: the character must turn. A fixed
         // shot is not the player's to turn: there she is.
-        return p.cameraOk || (p.byGlint && !p.explorationView) ? Lead::Character : Lead::Camera;
+        return p.cameraOk || (p.byGlint && !p.explorationView && !p.framingEndsOnLook) ? Lead::Character : Lead::Camera;
     }
 
     bool Arrived(const Parts& p, bool autoStart, bool still, bool before)

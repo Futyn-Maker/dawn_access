@@ -320,6 +320,47 @@ namespace da::ways
         return walkFor != nullptr && chosen == walkFor;
     }
 
+    bool MovedFromMap(double fromOrigin)
+    {
+        return fromOrigin > kMovedFromMap;
+    }
+
+    const void* WalkGoesTo(const void* walkFor, const void* chosen, const void* twin)
+    {
+        if (WalkGoesOn(walkFor, chosen)) return walkFor;
+        return walkFor != nullptr ? twin : nullptr;
+    }
+
+    bool TakesWayPlace(const LeftOut& thing)
+    {
+        if (!thing.hidden) return true;
+        return !thing.behind && !thing.offPath && !thing.unreachable && !thing.superseded && !thing.onRoad && !thing.apart;
+    }
+
+    bool KeepClear::Clear(const Vec& at) const
+    {
+        return std::none_of(standing.begin(), standing.end(), [&](const Vec& o) { return std::hypot(at.x - o.x, at.y - o.y) < clearance; });
+    }
+
+    bool KeepClear::StepClear(const Vec& from, const Vec& to) const
+    {
+        if (Clear(to)) return true;
+        return std::all_of(standing.begin(), standing.end(),
+                           [&](const Vec& o) { return std::hypot(to.x - o.x, to.y - o.y) >= std::hypot(from.x - o.x, from.y - o.y); });
+    }
+
+    bool KeepClear::RunClear(const Vec& a, const Vec& b) const
+    {
+        for (const Vec& o : standing)
+        {
+            const double dx = b.x - a.x, dy = b.y - a.y;
+            const double length = dx * dx + dy * dy;
+            const double f = length > 0.0 ? std::clamp(((o.x - a.x) * dx + (o.y - a.y) * dy) / length, 0.0, 1.0) : 0.0;
+            if (std::hypot(a.x + dx * f - o.x, a.y + dy * f - o.y) < clearance) return false;
+        }
+        return true;
+    }
+
     int InTheWay(const Vec& here, const Vec& toward, const std::vector<Vec>& others)
     {
         const double wx = toward.x - here.x, wy = toward.y - here.y;

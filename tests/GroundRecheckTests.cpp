@@ -2,10 +2,14 @@
 
 #include "features/GridPath.hpp"
 #include "features/GroundFile.hpp"
+#include "features/WayList.hpp"
 
 #include <doctest/doctest.h>
 
+#include <algorithm>
+#include <cmath>
 #include <filesystem>
+#include <functional>
 #include <fstream>
 #include <iterator>
 #include <map>
@@ -112,6 +116,138 @@ TEST_CASE("recheck: a walk stopped by a door the game shut asks the ground ahead
     CHECK(after->LevelsAt(-95, -46));
 }
 
+namespace
+{
+    // The steps as the mod's ground keeps them: each step's last answer, its landing or refused.
+    std::map<recheck::StepKey, int> StepStore(const ground::Record& record)
+    {
+        std::map<recheck::StepKey, int> store;
+        for (const auto& s : record.steps)
+            store[recheck::StepKey{s.from.x, s.from.y, s.from.level, s.bx, s.by}] = s.free ? s.land : recheck::kRefused;
+        return store;
+    }
+
+    // The step back known free, by its landing, as Exploration's KnownFreeStep answers it.
+    std::optional<int> MirrorIn(const std::map<recheck::StepKey, int>& store, const recheck::StepKey& key)
+    {
+        const auto& [ax, ay, alevel, bx, by] = key;
+        return grid::MirroredLanding(
+            [&](grid::Cell from, int x, int y) -> std::optional<int>
+            {
+                const auto it = store.find(recheck::StepKey{from.x, from.y, from.level, x, y});
+                if (it == store.end() || it->second == recheck::kRefused) return std::nullopt;
+                return it->second;
+            },
+            grid::Cell{ax, ay, alevel}, bx, by);
+    }
+
+    // A stretch asked again as Exploration asks it (StepReask): each step forgotten, then asked in
+    // turn as GridStepFree answers, a step known free, the step back known free, else the sweep
+    // (`sweep`); then each refusal answered again.
+    recheck::Reask AskAgain(std::map<recheck::StepKey, int> store, const std::vector<std::pair<recheck::StepKey, int>>& kept,
+                            const std::function<int(const recheck::StepKey&)>& sweep)
+    {
+        for (const auto& [key, answer] : kept)
+            store.erase(key);
+        const auto ask = [&](const recheck::StepKey& key) -> int
+        {
+            if (const auto it = store.find(key); it != store.end() && it->second != recheck::kRefused) return it->second;
+            if (const auto back = MirrorIn(store, key)) return store[key] = *back;
+            if (const auto it = store.find(key); it != store.end()) return recheck::kRefused;
+            return store[key] = sweep(key);
+        };
+        recheck::Reask reask;
+        reask.Begin(kept);
+        while (const auto key = reask.Next())
+            reask.Answer(ask(*key));
+        reask.AnswerRefusalsAgain(
+            [&](const recheck::StepKey& key) -> std::optional<int>
+            {
+                const int answer = ask(key);
+                if (answer == recheck::kRefused) return std::nullopt;
+                return answer;
+            });
+        return reask;
+    }
+}
+
+TEST_CASE("recheck: a prop moved by a passage swept free one way only leaves the ground as it was: the cellar's cupboard door, 2026-11-08")
+{
+    // tests/fixtures/ground-cupboard-door-steps.tsv: every step the ground of the lodge's cellar
+    // answered last about the cupboard door the ghost scare swung open (research/sessions/
+    // s58-whole.log, 11:27:43: from (1372, -5200)-(1434, -5082) to (1315, -5089)-(1433, -5026)), the
+    // stretch a move of it asks again (its boxes grown by her radius and a cell; cut by
+    // research/tools/cut_steps.py from research/dumps/ground-20261108-110204.tsv, anchor 0).
+    const auto record = ReadFixture("ground-cupboard-door-steps.tsv");
+    const auto store = StepStore(record);
+    REQUIRE(store.size() == 341);
+    const recheck::Grid grid{recheck::Vec{463.79, -9065.50, 2647.11}, 20.0};
+    const auto columns = recheck::ColumnsInBox(grid, recheck::Vec{1315, -5200, 2200}, recheck::Vec{1434, -5026, 2432}, 42.0 + 20.0);
+    // From (41, 200) into (41, 201) the sweep met the activity level's collision at 6.6 cm; the step
+    // back was swept free, onto the same level: the ground takes the step as free.
+    const recheck::StepKey oneSided{41, 200, 43, 41, 201};
+    REQUIRE(store.at(oneSided) == recheck::kRefused);
+    REQUIRE(store.at(recheck::StepKey{41, 201, 43, 41, 200}) == 43);
+    const auto back = [&](const recheck::StepKey& key) { return MirrorIn(store, key); };
+    const auto kept = recheck::KeptAnswers(store, columns, false, back);
+    REQUIRE(kept.size() == 341);
+    const auto keptOf = [&](const std::vector<std::pair<recheck::StepKey, int>>& answers, const recheck::StepKey& key)
+    {
+        const auto it = std::find_if(answers.begin(), answers.end(), [&](const auto& a) { return a.first == key; });
+        REQUIRE(it != answers.end());
+        return it->second;
+    };
+    CHECK(keptOf(kept, oneSided) == 43);
+    // A wall refused both ways stays refused.
+    size_t refusedKept = 0;
+    for (const auto& [key, answer] : kept)
+        refusedKept += answer == recheck::kRefused;
+    CHECK(refusedKept == 59);
+    // The ground as it was: each sweep answers as it did.
+    const auto same = [&](const recheck::StepKey& key) { return store.at(key); };
+    const auto reask = AskAgain(store, kept, same);
+    CHECK(reask.Changed().empty());
+    // Two steps into (51, 194), whose floor the ground keyed on levels 43 and 44, were swept onto 44
+    // and are answered 43 by the step back asked before them: free either way, no change.
+    const auto relanded = std::count_if(reask.Steps().begin(), reask.Steps().end(),
+                                        [](const recheck::Reask::Step& s) { return s.kept != recheck::kRefused && s.now != recheck::kRefused && s.kept != s.now; });
+    CHECK(relanded == 2);
+    CHECK(reask.Opened() == 0);
+    CHECK(reask.Shut() == 0);
+    // Weighed against the refusal the ground stored, the step back answering for it again would be
+    // a door opened, the map dropped and the list given anew at every move by the doorway.
+    const auto stored = recheck::KeptAnswers(store, columns, false, [](const recheck::StepKey&) { return std::optional<int>{}; });
+    CHECK(keptOf(stored, oneSided) == recheck::kRefused);
+    const auto misread = AskAgain(store, stored, same);
+    CHECK(misread.Opened() == 1);
+    // A leaf come across the passage, both ways refused: shut, and said.
+    const auto across = [&](const recheck::StepKey& key)
+    {
+        const auto& [ax, ay, alevel, bx, by] = key;
+        if (ax == 41 && bx == 41 && ((ay == 200 && by == 201) || (ay == 201 && by == 200))) return recheck::kRefused;
+        return store.at(key);
+    };
+    const auto shut = AskAgain(store, kept, across);
+    CHECK(shut.Shut() == 2);
+    CHECK_FALSE(shut.Changed().empty());
+    // A walk's stretch asks only what was free: the step taken free is asked again with them.
+    const auto freeOnly = recheck::KeptAnswers(store, columns, true, back);
+    CHECK(freeOnly.size() == 341 - 59);
+    CHECK(keptOf(freeOnly, oneSided) == 43);
+}
+
+TEST_CASE("recheck: a door's leaf moved by the game is weighed whatever its collision; a prop that stops no one is not")
+{
+    // A door's leaf rests asleep with its collision off (UBatesSleepComponent::ApplySleepSettings):
+    // the ground takes it for a wall all the same, and a sequence that swings it open opens a way.
+    CHECK(recheck::Weighed(true, false));
+    CHECK(recheck::Weighed(true, true));
+    // The cellar's cupboard door, its PhysicsActor blocking every channel.
+    CHECK(recheck::Weighed(false, recheck::StopsPawn(3, 2)));
+    // Chris's torch in his hand (HeldItemActor overlaps a pawn): its 338 moves change nothing.
+    CHECK_FALSE(recheck::Weighed(false, recheck::StopsPawn(1, 1)));
+}
+
 TEST_CASE("recheck: a prop the game moves is said once it comes to rest, with where it stood and stands")
 {
     recheck::PropWatch door;
@@ -183,4 +319,114 @@ TEST_CASE("recheck: the columns under a box and its margin")
     CHECK(u.low.x == -1.0);
     CHECK(u.high.y == 3.0);
     CHECK(u.high.z == 4.0);
+}
+
+TEST_CASE("recheck: a prop moved is weighed by the answers of the steps about it, asked again: Chris's torch and the cinema's door")
+{
+    // research/sessions/s58-whole.log, 11:10:34: Chris's torch, carried about the cellar, "moved" from
+    // (1034, -6363)-(1060, -6323) to (1001, -6345)-(1042, -6307), one of 338 such moves of the
+    // companions' torches in the session, each of which had forgotten the ground about it and given
+    // the list's verdicts anew. The torch is a held item: its preset overlaps a pawn and stops no one.
+    CHECK_FALSE(recheck::StopsPawn(3, 1)); // HeldItemActor: QueryAndPhysics, overlaps the pawn
+    CHECK_FALSE(recheck::StopsPawn(3, 0)); // HeldItemPhysicsActor: ignores the pawn
+    CHECK_FALSE(recheck::StopsPawn(0, 2)); // no collision
+    CHECK_FALSE(recheck::StopsPawn(2, 2)); // physics only: no query meets it
+    CHECK(recheck::StopsPawn(3, 2));       // a door's PhysicsActor blocks
+    CHECK(recheck::StopsPawn(1, 2));
+    // Asked again all the same, the ground about it answers as it did: nothing has changed.
+    auto cellar = ReadFixture("ground-cellar-chris.tsv");
+    const recheck::Grid cellarGrid{recheck::Vec{463.79, -9065.50, 2647.11}, 20.0};
+    const auto torch = recheck::Union(recheck::Box{{1034, -6363, 2282}, {1060, -6323, 2308}}, recheck::Box{{1001, -6345, 2281}, {1042, -6307, 2305}});
+    const auto about = recheck::ColumnsInBox(cellarGrid, torch.low, torch.high, 42.0 + 20.0);
+    std::vector<std::pair<recheck::StepKey, int>> kept;
+    for (const auto& key : recheck::StepsIn(cellar.stepLevels, about))
+        kept.emplace_back(key, cellar.stepLevels.at(key));
+    REQUIRE(kept.size() > 100);
+    recheck::Reask torchAsked;
+    torchAsked.Begin(kept);
+    while (const auto key = torchAsked.Next())
+        torchAsked.Answer(cellar.stepLevels.at(*key));
+    CHECK_FALSE(torchAsked.Active());
+    CHECK(torchAsked.Changed().empty());
+    CHECK(torchAsked.Shut() == 0);
+    // The cinema's exit door slammed across its doorway (s57): the steps across it answer shut now.
+    auto airlock = ReadFixture("ground-cinema-airlock-slam.tsv");
+    const recheck::Grid grid{recheck::Vec{2075.21, -8106.85, 3060.15}, 20.0};
+    const auto door = recheck::ColumnsInBox(grid, recheck::Vec{900, -9180, 2550}, recheck::Vec{1010, -9140, 2790}, 42.0 + 20.0);
+    kept.clear();
+    for (const auto& key : recheck::StepsIn(airlock.stepLevels, door))
+        kept.emplace_back(key, airlock.stepLevels.at(key));
+    recheck::Reask doorAsked;
+    doorAsked.Begin(kept);
+    while (const auto key = doorAsked.Next())
+        doorAsked.Answer(ShutByDoor(*key) ? recheck::kRefused : airlock.stepLevels.at(*key));
+    CHECK(doorAsked.Shut() > 0);
+    CHECK(doorAsked.Opened() == 0);
+    CHECK_FALSE(doorAsked.Changed().empty());
+    // A door swung open: what was refused answers free now.
+    recheck::Reask opened;
+    opened.Begin({{recheck::StepKey{-58, -52, 51, -57, -52}, recheck::kRefused}, {recheck::StepKey{-57, -52, 51, -58, -52}, 51}});
+    opened.Answer(51);
+    opened.Answer(51);
+    CHECK(opened.Opened() == 1);
+    CHECK(opened.Changed() == std::vector<recheck::Column>{{-58, -52}});
+    // Asking nothing is no asking.
+    recheck::Reask none;
+    none.Begin({});
+    CHECK_FALSE(none.Active());
+    CHECK_FALSE(none.Next().has_value());
+}
+
+TEST_CASE("ways: a way round a companion standing at a corridor's mouth: Chris in the cellar, 2026-11-08")
+{
+    // research/sessions/s58-whole.log, 11:13:49, 11:15:40 and 11:18:20: every walk from the wine
+    // cellar's door to the creaky door stopped at (986, -6292) against Chris, standing at
+    // (1067, -6316) for five minutes, 84 cm from her (both capsules 42 cm): the map's road, laid
+    // with the characters left out, ran through where he stood. tests/fixtures/ground-cellar-chris.tsv
+    // is the cellar as the mod's ground knew it (cut from research/dumps/ground-20261108-110204.tsv).
+    auto record = ReadFixture("ground-cellar-chris.tsv");
+    const recheck::Vec origin{463.79, -9065.50, 0.0};
+    const auto middle = [&](const grid::Cell& c) { return recheck::Vec{origin.x + (c.x + 0.5) * 20.0, origin.y + (c.y + 0.5) * 20.0, 0.0}; };
+    const auto cellOf = [&](double x, double y) { return grid::Cell{static_cast<int>(std::floor((x - origin.x) / 20.0)), static_cast<int>(std::floor((y - origin.y) / 20.0)), 43}; };
+    const grid::Cell her = cellOf(986, -6292);
+    const recheck::Vec chris{1067, -6316, 0};
+    // The corridor to the creaky door, a few metres on.
+    const grid::Cell corridor = cellOf(1534, -5456);
+    const auto passable = record.Passable();
+    auto plain = std::make_unique<grid::Flood>(her, 200, 100000);
+    while (plain->Step(64, passable) == grid::Flood::State::Running)
+    {
+    }
+    REQUIRE(plain->LevelsAt(corridor.x, corridor.y));
+    // The road the map gives runs within his reach: the walk stops against him.
+    const auto road = plain->PathTo(corridor);
+    REQUIRE_FALSE(road.empty());
+    ways::KeepClear keep{{chris}, 42.0 + 42.0 + ways::kKeepClearMargin};
+    CHECK(std::any_of(road.begin(), road.end(), [&](const grid::Cell& c) { return !keep.Clear(middle(c)); }));
+    // Kept clear of him, the ground still carries her round his far side to the corridor.
+    const auto around = [&](grid::Cell a, grid::Cell& b) { return keep.StepClear(middle(a), middle(b)) && passable(a, b); };
+    auto detour = std::make_unique<grid::Flood>(her, 200, 100000);
+    while (detour->Step(64, around) == grid::Flood::State::Running)
+    {
+    }
+    REQUIRE(detour->LevelsAt(corridor.x, corridor.y));
+    const auto way = detour->PathTo(corridor);
+    REQUIRE_FALSE(way.empty());
+    // Out of his reach once she has stepped away from him, the way never comes near him again.
+    bool out = false;
+    for (const auto& c : way)
+    {
+        if (keep.Clear(middle(c))) out = true;
+        if (out) CHECK(keep.Clear(middle(c)));
+    }
+    CHECK(out);
+    // A straight run past him is no run of the way round.
+    CHECK_FALSE(keep.RunClear(recheck::Vec{986, -6292, 0}, recheck::Vec{1154, -6396, 0}));
+    CHECK(keep.RunClear(recheck::Vec{880, -6292, 0}, recheck::Vec{880, -6500, 0}));
+    // A step toward him from within his reach is refused; one away from him is not, though it ends
+    // within his reach still: pressed against him, she walks out of it a step at a time.
+    CHECK_FALSE(keep.StepClear(recheck::Vec{986, -6292, 0}, recheck::Vec{1006, -6292, 0}));
+    CHECK(keep.StepClear(recheck::Vec{986, -6292, 0}, recheck::Vec{966, -6292, 0}));
+    CHECK(keep.StepClear(recheck::Vec{1007, -6316, 0}, recheck::Vec{987, -6316, 0}));
+    CHECK_FALSE(keep.StepClear(recheck::Vec{987, -6316, 0}, recheck::Vec{1007, -6316, 0}));
 }

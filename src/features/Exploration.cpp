@@ -134,6 +134,9 @@ namespace da::features
             // The way felt out over the ground with the character's own collision, where the
             // level has no navigation mesh: its corners, and when and whence they were found.
             std::vector<Vec> gridCorners;
+            // A way round another character standing in the walk's way (ways::KeepClear), followed
+            // in place of the road while the walk lasts.
+            std::vector<Vec> detour;
             double gridAt = -1000.0;
             Vec gridFrom;
             Vec gridGoal;
@@ -354,6 +357,24 @@ namespace da::features
         std::vector<Target> g_ways;
         std::map<UObject*, std::wstring> g_wayVerdict;
         std::map<UObject*, std::wstring> g_wayNote; // why a way on is left out besides its verdict (a twin, beside a thing), as last logged
+        // The thing beside a way on that stands for it now (ways::LeftForThing), the way left out for it.
+        std::map<UObject*, UObject*> g_twinOf;
+        // Whether that thing takes the way's place now: listed, or left out only while its first
+        // verdict waits (the game has just turned it on: unjudged, or the room rule waiting for the
+        // map, rooms::Verdict::Waits), the way's own ground judged; never one the list leaves out for
+        // a reason of its own (behind, off the path, out of reach, beyond a door, on another's road).
+        bool TwinTakesWay(const Target& t)
+        {
+            ways::LeftOut why;
+            why.hidden = t.hidden;
+            why.behind = t.behind;
+            why.offPath = t.offPath;
+            why.unreachable = t.unreachable;
+            why.superseded = t.superseded;
+            why.onRoad = t.onRoadOf != nullptr;
+            why.apart = t.room == rooms::Verdict::Apart;
+            return ways::TakesWayPlace(why);
+        }
         std::vector<UObject*> g_waysAnnounced;
         scripts::SetOff g_setOff;          // the trigger scripts she has set off, while the level's scripts run
         obj::ObjectKey g_levelScriptGroup; // the level's script group they run in
@@ -1709,6 +1730,28 @@ namespace da::features
             }
         }
 
+        // The game's answer to that question about the player's character, as the function returns: a
+        // yes meets the scene's wait (scripts::Waits::Answered), seen though no look of the mod's saw
+        // her in the volume.
+        std::set<std::wstring> g_answeredLogged;
+        void OnIsInTriggerAnswered(UObject*, FFrame& stack, void* result)
+        {
+            UObject* asked = nullptr;
+            std::wstring trigger;
+            params::Object(stack, L"inGameObject", asked);
+            params::String(stack, L"inTriggerName", trigger);
+            if (trigger.empty() || !asked || asked != g_controlPawn) return;
+            bool yes = false;
+            if (result)
+                yes = *static_cast<const bool*>(result);
+            else if (!params::Bool(stack, L"ReturnValue", yes))
+                return;
+            g_waits.Answered(g_playClock, trigger, yes);
+            if (yes && g_answeredLogged.insert(trigger).second)
+                log::Info(L"explore: the game answers its scripts that {} stands in {}: the wait on it is met", obj::ObjectName(asked), trigger);
+            if (!yes) g_answeredLogged.erase(trigger);
+        }
+
         // Runs the play clock: on while the game is in play.
         void TickPlayClock(double now)
         {
@@ -2398,7 +2441,7 @@ namespace da::features
                 // on once she does (scripts::Waits).
                 using Kind = scripts::Waits::Kind;
                 const auto waited = name.empty() ? scripts::Waits::Verdict{} : g_waits.Judge(g_playClock, name, character);
-                const bool pollStory = waited.kind == Kind::Waiting || waited.kind == Kind::NotNow;
+                const bool pollStory = waited.kind == Kind::Waiting || waited.kind == Kind::NotNow || waited.kind == Kind::Met;
                 // Waited on a while ago and not walked into since: still a way on (scripts::HeldWaits).
                 const bool held = !name.empty() && waited.kind == Kind::NotNow && g_heldWaits.Held(name);
                 const bool standing = (waited.kind == Kind::Waiting || held) && Overlapping(pawn, volume);
@@ -2414,7 +2457,8 @@ namespace da::features
                     why = actions.empty() && lua == g_luaEvents.end() && waited.kind == Kind::None ? L"nothing happens there"
                                                                                                    : L"nothing of the story happens there";
                 else if (!nativeNow && !luaLive && !pollLive)
-                    why = nativeStory && !nativeLeft ? L"already set off"
+                    why = waited.kind == Kind::Met    ? L"already walked into"
+                          : nativeStory && !nativeLeft ? L"already set off"
                           : nativeStory              ? L"its condition is not met now"
                           : luaStory && !spent       ? L"its script's condition is not met now"
                           : luaStory                 ? L"already walked into"
@@ -2731,6 +2775,7 @@ namespace da::features
                 it->routeFrom = old.routeFrom;
                 it->routeGoal = old.routeGoal;
                 it->gridCorners = old.gridCorners;
+                it->detour = old.detour;
                 it->gridAt = old.gridAt;
                 it->gridFrom = old.gridFrom;
                 it->gridGoal = old.gridGoal;
@@ -2939,26 +2984,28 @@ namespace da::features
                 if (it == roads.end()) it = roads.emplace(t.actor, KnownRoad(pawn, here, t, halfHeight)).first;
                 return it->second;
             };
-            if (due)
+            // The path the game holds her to is known at once, whatever the map: what lies beside it is
+            // left out from the hold's first look (at the cellar's creaky door on 2026-11-08 the things
+            // beside the 3 m path stood listed for its first 4 s, the map not yet due, and the path's own
+            // way on was dropped as the twin of one of them, research/sessions/s58-whole.log 11:26:55).
+            static double pathRuledAt = -1000.0;
+            static UObject* pathRuledFor = nullptr;
+            static size_t pathRuledTargets = 0;
+            if (g_path.set && (due || g_path.spline != pathRuledFor || g_targets.size() != pathRuledTargets || now - pathRuledAt >= 0.3))
             {
-                // A way the ground search found closed off (it reached every cell the character
-                // can walk to, and none near the way) is not offered: no walk gets there for now,
-                // as a way behind the path's walls, or past a wall a scene has yet to carry her
-                // over. On a path the game holds her to, a way the path itself runs into is
-                // reached by the path. A way not felt out yet is offered meanwhile.
+                pathRuledAt = now;
+                pathRuledFor = g_path.spline;
+                pathRuledTargets = g_targets.size();
                 // The path ahead to its end, once, for every way it may run into.
-                std::vector<Vec> pathAhead;
-                if (g_path.set) pathAhead = PathRoadToEnd(here);
+                const std::vector<Vec> pathAhead = PathRoadToEnd(here);
                 // A thing beside the path is reached on it only within her width and the stray the
                 // stick's cone allows over what is left of the path (ways::PathStray).
                 double pathLeft = 0.0;
                 for (size_t i = 1; i < pathAhead.size(); ++i)
                     pathLeft += FlatDistance(pathAhead[i - 1], pathAhead[i]);
                 const double stray = ways::PathStray(pathLeft, std::max(std::fabs(g_path.angleLeft), std::fabs(g_path.angleRight)));
-                std::map<UObject*, bool> wasUnreachable;
                 for (auto& t : g_targets)
                 {
-                    wasUnreachable[t.actor] = t.unreachable;
                     t.pathReach =
                         t.way && t.hasBox && !t.behind && pathAhead.size() >= 2 && RoadEnters(t.actor, t.boxLow, t.boxHigh, pathAhead, radius, halfHeight);
                     const bool wasOffPath = t.offPath;
@@ -2968,6 +3015,25 @@ namespace da::features
                         log::Info(L"explore: \"{}\" {} {:.0f} cm off is {}", t.label, obj::ObjectName(t.actor), t.distance,
                                   t.offPath ? std::format(L"left out: the path the game holds her to passes it by over the {:.0f} cm of it left to walk", pathLeft)
                                             : std::wstring(L"listed again: the path runs into it, or holds her no longer"));
+                }
+            }
+            else if (!g_path.set)
+            {
+                pathRuledFor = nullptr;
+                for (auto& t : g_targets)
+                    t.pathReach = false;
+            }
+            if (due)
+            {
+                // A way the ground search found closed off (it reached every cell the character
+                // can walk to, and none near the way) is not offered: no walk gets there for now,
+                // as a way behind the path's walls, or past a wall a scene has yet to carry her
+                // over. On a path the game holds her to, a way the path itself runs into is
+                // reached by the path. A way not felt out yet is offered meanwhile.
+                std::map<UObject*, bool> wasUnreachable;
+                for (auto& t : g_targets)
+                {
+                    wasUnreachable[t.actor] = t.unreachable;
                     // What an earlier map found stands until this one gets to the way (rooms::WayReach).
                     const bool reachable =
                         !t.way || rooms::WayOffered(t.gridEnclosed, rooms::WayReach(JudgedByMap(t), ReachRunning(), MapStuck(), t.reach), t.pathReach);
@@ -4508,35 +4574,97 @@ namespace da::features
             return forgotten;
         }
 
-        // The ground felt out was found changed: what lies about it is asked again, and a map begun
-        // since judges the list afresh.
+        // The ground felt out was found changed: what lies about it (`columns`, none where the stretch
+        // was just asked again whole) is asked again, and a map begun since judges the list afresh.
         void GroundChanged(const std::set<recheck::Column>& columns, const std::wstring& why, double now)
         {
             const size_t forgotten = ForgetColumns(columns);
             g_grid.groundChangedAt = now;
             DropMap();
-            log::Info(L"explore: the ground felt out has changed: {}; {} step(s) about it are asked again, and a new map judges the list afresh", why,
-                      forgotten);
+            log::Info(L"explore: the ground felt out has changed: {}; {}, and a new map judges the list afresh", why,
+                      columns.empty() ? std::wstring(L"the stretch asked again stands for it")
+                                      : std::format(L"{} step(s) about it are asked again", forgotten));
         }
 
-        // A walk that gets nowhere asks again the steps found free about her and under the way ahead,
-        // a few a frame; one now shut tells the ground has changed there (the cinema's exit door,
-        // slammed by its scene, 2026-11-08).
-        struct Recheck
+        // A stretch of the ground asked again (recheck::Reask): about a walk that gets nowhere (the steps
+        // found free about her and under the way ahead), or about a prop the game has moved (every step
+        // about it, before and after). The steps are forgotten before any is asked: the step back known
+        // free would answer for one (grid::MirroredLanding).
+        struct Reasking
         {
-            std::vector<std::pair<std::tuple<int, int, int, int, int>, int>> steps; // and the level each landed on
-            size_t next = 0;
-            std::vector<recheck::Column> shut;
-            bool active = false;
+            recheck::Reask reask;
             Vec at{1e30, 1e30, 1e30};
             double startedAt = -1000.0;
+            std::wstring what; // the prop moved, for the log; empty for a walk
+            bool secondPass = false;
+            Vec origin;        // the grid's corner the steps are keyed by: a grid laid anew drops the asking
         };
-        Recheck g_recheck;
+        Reasking g_walkReask;
+        Reasking g_propReask;
+
+        void BeginReask(Reasking& r, const std::set<recheck::Column>& columns, bool freeOnly)
+        {
+            // Each step's answer as the ground gives it, a refusal whose step back is known free
+            // being free (grid::MirroredLanding).
+            auto kept = recheck::KeptAnswers(g_grid.steps, columns, freeOnly,
+                                             [](const recheck::StepKey& key)
+                                             {
+                                                 const auto& [ax, ay, alevel, bx, by] = key;
+                                                 return grid::MirroredLanding(&KnownFreeStep, grid::Cell{ax, ay, alevel}, bx, by);
+                                             });
+            for (const auto& [key, answer] : kept)
+            {
+                g_grid.steps.erase(key);
+                g_grid.why.erase(key);
+                g_grid.refusedAt.erase(key);
+                g_grid.stepOn.erase(key);
+            }
+            r.reask.Begin(std::move(kept));
+            r.secondPass = false;
+            r.origin = g_grid.origin;
+        }
+
+        // A few steps a frame; true once the stretch is all asked. A refusal asked before its step back
+        // was found free is answered again once all are asked, as the ground answers it.
+        bool StepReask(UObject* pawn, Reasking& r, int budget)
+        {
+            // The grid laid anew (another body, far from its corner): the steps are another grid's.
+            if (!g_grid.anchored || FlatDistance(g_grid.origin, r.origin) > 0.5)
+            {
+                r.reask.Begin({});
+                return false;
+            }
+            for (int n = 0; n < budget; ++n)
+            {
+                const auto key = r.reask.Next();
+                if (!key) break;
+                const auto& [ax, ay, alevel, bx, by] = *key;
+                grid::Cell b{bx, by, 0};
+                // The map may have asked it meanwhile: its answer stands.
+                if (!g_grid.steps.count(*key)) GridStepFree(pawn, grid::Cell{ax, ay, alevel}, b);
+                const auto answered = g_grid.steps.find(*key);
+                r.reask.Answer(answered == g_grid.steps.end() ? kNoFloor : answered->second);
+            }
+            if (r.reask.Active()) return false;
+            if (!r.secondPass)
+            {
+                r.secondPass = true;
+                r.reask.AnswerRefusalsAgain(
+                    [&](const recheck::StepKey& key) -> std::optional<int>
+                    {
+                        const auto& [ax, ay, alevel, bx, by] = key;
+                        grid::Cell b{bx, by, 0};
+                        if (GridStepFree(pawn, grid::Cell{ax, ay, alevel}, b)) return b.level;
+                        return std::nullopt;
+                    });
+            }
+            return true;
+        }
 
         void StartRecheck(const Vec& here, const Target& target, double now)
         {
-            if (g_recheck.active) return;
-            if (FlatDistance(here, g_recheck.at) < 60.0 && now - g_recheck.startedAt < kRecheckAgain) return;
+            if (g_walkReask.reask.Active()) return;
+            if (FlatDistance(here, g_walkReask.at) < 60.0 && now - g_walkReask.startedAt < kRecheckAgain) return;
             std::vector<recheck::Vec> ahead;
             if (target.hasRoute)
             {
@@ -4552,53 +4680,50 @@ namespace da::features
             {
                 ahead.push_back(Aim(target));
             }
-            const auto columns = recheck::ColumnsAhead(RecheckGrid(), here, ahead, kRecheckReach, kRecheckBreadth);
-            g_recheck = Recheck{};
-            g_recheck.at = here;
-            g_recheck.startedAt = now;
-            for (const auto& key : recheck::StepsIn(g_grid.steps, columns))
-            {
-                const int land = g_grid.steps[key];
-                if (land != kNoFloor) g_recheck.steps.emplace_back(key, land);
-            }
-            // Every one is forgotten before any is asked: the step back known free would answer for one
-            // (grid::MirroredLanding).
-            for (const auto& [key, land] : g_recheck.steps)
-            {
-                g_grid.steps.erase(key);
-                g_grid.why.erase(key);
-                g_grid.refusedAt.erase(key);
-                g_grid.stepOn.erase(key);
-            }
-            g_recheck.active = !g_recheck.steps.empty();
-            log::Info(L"explore: the walk gets nowhere: {} step(s) found free about her and under the way ahead are asked again", g_recheck.steps.size());
+            g_walkReask.at = here;
+            g_walkReask.startedAt = now;
+            g_walkReask.what.clear();
+            BeginReask(g_walkReask, recheck::ColumnsAhead(RecheckGrid(), here, ahead, kRecheckReach, kRecheckBreadth), true);
+            log::Info(L"explore: the walk gets nowhere: {} step(s) found free about her and under the way ahead are asked again",
+                      g_walkReask.reask.Steps().size());
         }
 
         void PollRecheck(UObject* pawn, double now)
         {
-            if (!g_recheck.active || !pawn) return;
-            for (int n = 0; n < kRecheckPerFrame && g_recheck.next < g_recheck.steps.size(); ++n, ++g_recheck.next)
+            if (!pawn) return;
+            if (g_walkReask.reask.Active() && StepReask(pawn, g_walkReask, kRecheckPerFrame))
             {
-                const auto& [key, land] = g_recheck.steps[g_recheck.next];
-                const auto& [ax, ay, alevel, bx, by] = key;
-                grid::Cell b{bx, by, land};
-                if (!GridStepFree(pawn, grid::Cell{ax, ay, alevel}, b)) g_recheck.shut.emplace_back(ax, ay);
+                const auto changed = g_walkReask.reask.Changed();
+                if (changed.empty())
+                    log::Info(L"explore: the ground about the walk's stop is as it was felt out: what stops her is nothing the sweeps meet");
+                else
+                    GroundChanged(recheck::ColumnsAround(changed, kRecheckAround),
+                                  std::format(L"{} step(s) found free about the walk's stop at ({:.0f}, {:.0f}) are shut now", g_walkReask.reask.Shut(),
+                                              g_walkReask.at.x, g_walkReask.at.y),
+                                  now);
             }
-            if (g_recheck.next < g_recheck.steps.size()) return;
-            g_recheck.active = false;
-            if (g_recheck.shut.empty())
+        }
+
+        // The stretch about a moved prop, asked in a scene too, as the props are watched.
+        void PollPropRecheck(UObject* pawn, double now)
+        {
+            if (!pawn) return;
+            if (g_propReask.reask.Active() && StepReask(pawn, g_propReask, kRecheckPerFrame))
             {
-                log::Info(L"explore: the ground about the walk's stop is as it was felt out: what stops her is nothing the sweeps meet");
-                return;
+                const auto& r = g_propReask.reask;
+                if (r.Changed().empty())
+                    log::Info(L"explore: the game moved {}; the {} step(s) about it answer as they did: the ground is as it was", g_propReask.what,
+                              r.Steps().size());
+                else
+                    GroundChanged({},
+                                  std::format(L"the game moved {}; of the {} step(s) about it {} are shut now and {} open", g_propReask.what, r.Steps().size(),
+                                              r.Shut(), r.Opened()),
+                                  now);
             }
-            GroundChanged(recheck::ColumnsAround(g_recheck.shut, kRecheckAround),
-                          std::format(L"{} step(s) found free about the walk's stop at ({:.0f}, {:.0f}) are shut now", g_recheck.shut.size(), g_recheck.at.x,
-                                      g_recheck.at.y),
-                          now);
         }
 
         // The props the scenes bind (doors, furniture a sequence moves), watched as the game moves
-        // them: the ground under one that has moved and come to rest is asked again.
+        // them: the ground about one that has moved and come to rest is asked again.
         std::map<UObject*, recheck::PropWatch> g_propWatch;
         double g_propsPolledAt = -1000.0;
 
@@ -4635,6 +4760,70 @@ namespace da::features
                                 Vec{origin.x + extent.x, origin.y + extent.y, origin.z + extent.z}};
         }
 
+        // Whether any of an actor's components can stop her: one whose collision answers the ground's
+        // queries (ECollisionEnabled QueryOnly, QueryAndPhysics, QueryAndProbe) and blocks the pawn's
+        // channel (ECC_Pawn), as the sweeps go by her capsule's Pawn profile. A held item's presets
+        // (HeldItemActor overlaps a pawn, HeldItemPhysicsActor ignores one) stop no one; a door's
+        // PhysicsActor blocks. Unknown (the engine's calls missing) counts as stopping.
+        bool CanStopHer(UObject* actor)
+        {
+            static UObject* primitive = obj::FindObject(L"/Script/Engine.PrimitiveComponent");
+            auto* fn = obj::IsLive(actor) && primitive ? obj::FindFunction(actor, L"K2_GetComponentsByClass") : nullptr;
+            if (!fn) return true;
+            std::vector<UObject*> components;
+            obj::Call(
+                actor, fn,
+                [&](void* params)
+                {
+                    for (auto* prop : fn->ForEachProperty())
+                    {
+                        if (prop && prop->GetName() == L"ComponentClass") *static_cast<UObject**>(obj::ValuePtrAt(params, prop)) = primitive;
+                    }
+                },
+                [&](void* params)
+                {
+                    for (auto* prop : fn->ForEachProperty())
+                    {
+                        if (!prop || prop->GetName() != L"ReturnValue") continue;
+                        obj::ForEachArrayElement(params, prop,
+                                                 [&](void* element, FProperty* inner)
+                                                 {
+                                                     UObject* c = nullptr;
+                                                     if (obj::ReadObjectAt(element, inner, c) && obj::IsLive(c)) components.push_back(c);
+                                                 });
+                        // The array the engine made for its answer is given back to it.
+                        prop->DestroyValue(obj::ValuePtrAt(params, prop));
+                    }
+                });
+            for (UObject* c : components)
+            {
+                int64_t enabled = 0;
+                if (!obj::CallReturn(c, L"GetCollisionEnabled", [&](void* params, FProperty* rv) { obj::ReadIntAt(params, rv, enabled); })) return true;
+                if (!recheck::StopsPawn(enabled, 2)) continue;
+                auto* respond = obj::FindFunction(c, L"GetCollisionResponseToChannel");
+                if (!respond) return true;
+                int64_t response = 2;
+                obj::Call(
+                    c, respond,
+                    [&](void* params)
+                    {
+                        for (auto* prop : respond->ForEachProperty())
+                        {
+                            if (prop && prop->GetName() == L"Channel") *static_cast<uint8_t*>(obj::ValuePtrAt(params, prop)) = 2; // ECC_Pawn
+                        }
+                    },
+                    [&](void* params)
+                    {
+                        for (auto* prop : respond->ForEachProperty())
+                        {
+                            if (prop && prop->GetName() == L"ReturnValue") obj::ReadIntAt(params, prop, response);
+                        }
+                    });
+                if (recheck::StopsPawn(enabled, response)) return true;
+            }
+            return false;
+        }
+
         // Carried by a character (a torch in her hand): it moves as she does.
         bool CarriedByCharacter(UObject* actor)
         {
@@ -4658,20 +4847,49 @@ namespace da::features
                 if (CarriedByCharacter(prop)) continue;
                 recheck::Box before, after;
                 if (!g_propWatch[prop].Update(now, CollidingBox(prop), before, after)) continue;
+                std::wstring name;
+                UObject* core = nullptr;
+                if (obj::ReadObject(prop, L"CoreProperties", core) && obj::IsLive(core)) obj::ReadString(core, L"CoreName", name);
+                const std::wstring what =
+                    std::format(L"{} ({}) from ({:.0f}, {:.0f}, {:.0f})-({:.0f}, {:.0f}, {:.0f}) to ({:.0f}, {:.0f}, {:.0f})-({:.0f}, {:.0f}, {:.0f})",
+                                name.empty() ? obj::ObjectName(prop) : name, obj::ObjectName(prop), before.low.x, before.low.y, before.low.z, before.high.x,
+                                before.high.y, before.high.z, after.low.x, after.low.y, after.low.z, after.high.x, after.high.y, after.high.z);
+                // Nothing of it stops her (a torch carried about): its moves change no ground. A door's
+                // leaf is a wall to the ground whatever its collision (a sleeping door has none).
+                const bool leaf = std::any_of(g_doorLeaves.begin(), g_doorLeaves.end(), [&](const DoorLeaf& l) { return l.prop == prop; });
+                const bool stops = !leaf && CanStopHer(prop); // asked only of what is no door's leaf
+                if (!recheck::Weighed(leaf, stops))
+                {
+                    log::Verbose(L"explore: the game moved {}, which stops no pawn", what);
+                    continue;
+                }
                 const auto box = recheck::Union(before, after);
                 const auto under = recheck::ColumnsInBox(RecheckGrid(), box.low, box.high, g_grid.radius + kCellSize);
                 if (recheck::StepsIn(g_grid.steps, under).empty()) continue; // no ground felt out there
                 columns.insert(under.begin(), under.end());
-                std::wstring name;
-                UObject* core = nullptr;
-                if (obj::ReadObject(prop, L"CoreProperties", core) && obj::IsLive(core)) obj::ReadString(core, L"CoreName", name);
-                moved.push_back(std::format(L"{} ({}) from ({:.0f}, {:.0f}, {:.0f})-({:.0f}, {:.0f}, {:.0f}) to ({:.0f}, {:.0f}, {:.0f})-({:.0f}, {:.0f}, {:.0f})",
-                                            name.empty() ? obj::ObjectName(prop) : name, obj::ObjectName(prop), before.low.x, before.low.y, before.low.z,
-                                            before.high.x, before.high.y, before.high.z, after.low.x, after.low.y, after.low.z, after.high.x, after.high.y,
-                                            after.high.z));
+                moved.push_back(what);
             }
             if (columns.empty()) return;
-            GroundChanged(columns, L"the game moved " + str::Join(moved, L"; "), now);
+            // A stretch still being asked takes the new one in: begun again over both, each step weighed
+            // against the answer kept before either was asked (a fresh answer kept would hide a door
+            // found shut a moment ago).
+            if (g_propReask.reask.Active() && g_grid.anchored && FlatDistance(g_grid.origin, g_propReask.origin) <= 0.5)
+            {
+                for (const auto& step : g_propReask.reask.Steps())
+                {
+                    columns.insert({std::get<0>(step.key), std::get<1>(step.key)});
+                    g_grid.steps[step.key] = step.kept;
+                }
+                moved.insert(moved.begin(), g_propReask.what);
+            }
+            g_propReask.what = str::Join(moved, L"; ");
+            g_propReask.at = here;
+            g_propReask.startedAt = now;
+            // The doors' leaves where they stand now: the steps through a door's old place are asked
+            // against where its leaf is, not where it was (a door swung open by a sequence).
+            ReadDoorLeaves();
+            BeginReask(g_propReask, columns, false);
+            log::Info(L"explore: the game moved {}; the {} step(s) about it are asked again", g_propReask.what, g_propReask.reask.Steps().size());
         }
 
         // The steps once swept into something are asked again: those older than a while, or
@@ -5529,6 +5747,26 @@ namespace da::features
         // on is the one to walk to; strayed from it, or without one, it is felt out anew.
         void FollowGrid(UObject* pawn, const Vec& here, Target& t, double now, bool request)
         {
+            // A way round another character in the walk's way is followed while she keeps to it.
+            if (!t.detour.empty())
+            {
+                const int on = ways::StretchOn(t.detour, t.detour.size(), here, 150.0, ways::kStretchRise);
+                if (on >= 0)
+                {
+                    size_t next = static_cast<size_t>(on);
+                    while (next + 1 < t.detour.size() && FlatDistance(here, t.detour[next]) < 60.0)
+                        ++next;
+                    t.hasRoute = true;
+                    t.routeNext = t.detour[next];
+                    double length = FlatDistance(here, t.detour[next]);
+                    for (size_t i = next + 1; i < t.detour.size(); ++i)
+                        length += FlatDistance(t.detour[i - 1], t.detour[i]);
+                    t.routeLength = length;
+                    return;
+                }
+                log::Info(L"explore: the walk to \"{}\" has left its way round, and takes the road again", t.label);
+                t.detour.clear();
+            }
             const bool fresh = !t.gridCorners.empty() && FlatDistance(Aim(t), t.gridGoal) < 50.0;
             bool following = false;
             if (fresh)
@@ -5863,6 +6101,7 @@ namespace da::features
             bool byGlint = false;         // the use location takes its glint's verdict
             bool glintVerdict = false;    // bGlintAuthorizesInteraction
             bool explorationView = false; // the view is the exploration camera's
+            bool framingEndsOnLook = false; // the view is a framing camera the camera's movement ends
             bool overlap = false;         // the use location overlaps the character
             bool onScreen = false;        // the glint's widget is on the screen
             bool insideEllipse = false;   // the billboard lies in the part of the screen the camera's look asks for
@@ -5893,6 +6132,7 @@ namespace da::features
             parts.cameraOk = p.cameraOk;
             parts.characterOk = p.characterOk;
             parts.needCamera = p.needCamera;
+            parts.framingEndsOnLook = p.framingEndsOnLook;
             return parts;
         }
 
@@ -6057,6 +6297,9 @@ namespace da::features
             p.glintVerdict = verdict;
             UObject* view = ViewTarget();
             p.explorationView = view && view == ExplorationCameraActor();
+            bool endsOnMovement = false;
+            p.framingEndsOnLook = !p.explorationView && obj::IsLive(view) && obj::IsA(view, L"BatesInitialFramingCamera") &&
+                                  obj::ReadBool(view, L"bCameraMovementEndsFramingCamera", endsOnMovement) && endsOnMovement;
             CallNamed(useLocation, L"IsOverlappingActor", {{L"Other", pawn}}, {}, {{L"ReturnValue", &p.overlap}});
             UObject* widget = nullptr;
             p.onScreen = obj::ReadObject(glint, L"GlintWidget", widget) && obj::IsLive(widget) && obj::CallForBool(widget, L"GetIsOnScreen");
@@ -6258,6 +6501,23 @@ namespace da::features
         UObject* g_lastWalkFor = nullptr;
         double g_lastWalkEndedAt = -10.0;
 
+        // A way round the character standing in the walk's way, felt out over the ground kept clear
+        // of him (ways::KeepClear) once per walk; the walk follows it, or, there being none, ends
+        // naming him.
+        struct Detour
+        {
+            UObject* forActor = nullptr;
+            ways::KeepClear keep;
+            std::wstring around;
+            std::unique_ptr<grid::Search> search;
+            std::unique_ptr<grid::Straightener> straightener;
+            bool tried = false;
+            bool failed = false; // no way round him: the walk ends naming him
+            double startedAt = -1000.0;
+            Vec origin; // the grid's corner the search's cells are on
+        };
+        Detour g_detour;
+
         void StopWalk(const wchar_t* what, bool askedFor)
         {
             if (!g_walking) return;
@@ -6265,6 +6525,9 @@ namespace da::features
             g_lastWalkFor = g_walkFor;
             g_lastWalkEndedAt = gamethread::NowSeconds();
             g_walkFor = nullptr;
+            g_detour = Detour{};
+            for (auto& t : g_targets)
+                t.detour.clear();
             log::Info(L"explore: walking ended{}{}", what ? L": " : L"", what ? what : L"");
             input::ReleaseWalkKeys();
             if (!what) return;
@@ -6283,8 +6546,12 @@ namespace da::features
         }
 
         // The other character found standing in the walk's way as it stopped getting anywhere
-        // (ways::InTheWay), by the game's name: none, the walk's own failure.
+        // (ways::InTheWay), by the game's name: none, the walk's own failure. Where he stands, and
+        // he, for a way round him.
         std::wstring g_walkBlocker;
+        Vec g_walkBlockerAt;
+        UObject* g_walkBlockerActor = nullptr;
+
 
         // A character's name as the game's subtitles give it (the speaker names' string table).
         std::wstring CharacterDisplayName(const std::wstring& name)
@@ -6408,6 +6675,7 @@ namespace da::features
         // for her, which turn her that way and then step her there. A look the camera must give is
         // the player's, which the aim sound leads once the walk is over.
         double g_arriveSince = -1.0; // since when the walk is on its last stretch
+        bool g_lookAgain = false;    // a walk ended for want of the player's look: the word is said again
         double g_stretchMapAt = -1.0; // when a map was begun from where the last stretch found her (look::FreshSpotMap)
         constexpr double kStretchMapWait = 1.5; // how long the stretch waits for that map to reach the place
         constexpr double kUseSpotNear = 40.0; // cm from the spot the game puts her on to use a thing: there
@@ -6532,8 +6800,9 @@ namespace da::features
             {
                 log::Info(L"explore: the walk to \"{}\" ends without the press taken: {}", t.label, PressTestText(p));
                 // Inside, a look of the player's is what is missing, and the guidance says so once she
-                // stands still; outside, or where no look of the player's brings it, she could not get
-                // to where it is used.
+                // stands still, again for each walk; outside, or where no look of the player's brings
+                // it, she could not get to where it is used.
+                if (p.inside && !offShot) g_lookAgain = true;
                 StopWalk(p.inside && !offShot ? nullptr : L"explore.walk.blocked", false);
                 return true;
             }
@@ -6568,6 +6837,10 @@ namespace da::features
                 input::ReleaseWalkKeys();
                 if (!g_lookRest.Update(now, still)) return true;
                 log::Info(L"explore: the walk to \"{}\" ends there, she at rest, the camera to look at it", t.label);
+                // Each walk that ends so says why, the look missing, though it was said before: the
+                // dollhouse's walks of 2026-11-08 ended in silence after the first
+                // (research/sessions/s58-whole.log, 11:16:59 to 11:17:09).
+                g_lookAgain = true;
                 StopWalk(nullptr, false);
                 return true;
             }
@@ -6700,6 +6973,107 @@ namespace da::features
             sounds::Play(sounds::Cue::Confirm);
         }
 
+        // A way round the character standing in the walk's way: the walk's goal, felt out over the
+        // ground with the stretch about him kept clear.
+        void BeginDetour(UObject* pawn, const Target& t, double now)
+        {
+            g_detour = Detour{};
+            g_detour.forActor = t.actor;
+            g_detour.tried = true;
+            g_detour.around = g_walkBlocker;
+            g_detour.startedAt = now;
+            Vec middle;
+            double halfHeight = 88.0;
+            if (!CapsuleSpan(pawn, middle, halfHeight)) return;
+            const double his = obj::IsLive(g_walkBlockerActor) ? WalkingRadius(g_walkBlockerActor) : g_grid.radius;
+            g_detour.keep = ways::KeepClear{{g_walkBlockerAt}, g_grid.radius + his + ways::kKeepClearMargin};
+            const grid::Cell start = CellOf(middle, middle.z - halfHeight);
+            grid::Cell goal;
+            double goalRadius = 1.5;
+            int goalLevels = kGoalLevels;
+            GoalOf(t, goal, goalRadius, goalLevels);
+            const int radiusCells = static_cast<int>(cfg::Get().exploreRange * 100.0 / kCellSize) + 50;
+            std::function<bool(grid::Cell)> fits;
+            if (t.hasCollision)
+                fits = [collision = t](grid::Cell c)
+                {
+                    if (!collision.way && collision.deepKnown) return DeepIn(collision, c) && !OffAt(collision, c);
+                    return Touches(collision, c) && (collision.offOnlyInside || !OffAt(collision, c));
+                };
+            g_detour.search = std::make_unique<grid::Search>(start, goal, goalRadius, goalLevels, radiusCells, kGridExpansions, kLevelSize / kCellSize, fits);
+            g_detour.search->SetLinks(&PassageLinksOf);
+            g_detour.origin = g_grid.origin;
+            log::Info(L"explore: the walk to \"{}\" looks for a way round {}, who stands in it at ({:.0f}, {:.0f}), kept {:.0f} cm clear of", t.label,
+                      g_walkBlocker, g_walkBlockerAt.x, g_walkBlockerAt.y, g_detour.keep.clearance);
+        }
+
+        // Steps the way round on; true while it is being felt out (the walk stands meanwhile).
+        bool PollDetour(UObject* pawn, Target& t, double now)
+        {
+            if (g_detour.forActor != t.actor || (!g_detour.search && !g_detour.straightener)) return false;
+            if (FlatDistance(g_grid.origin, g_detour.origin) > 0.5)
+            {
+                g_detour.search.reset();
+                g_detour.straightener.reset();
+                return false;
+            }
+            const auto started = std::chrono::steady_clock::now();
+            const auto overBudget = [&] { return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count() > kGridWalkBudgetMs; };
+            if (g_detour.search)
+            {
+                const auto passable = [&](grid::Cell a, grid::Cell& b) { return g_detour.keep.StepClear(WorldOf(a), WorldOf(b)) && GridStepFree(pawn, a, b); };
+                auto state = g_detour.search->Current();
+                while (state == grid::Search::State::Running)
+                {
+                    state = g_detour.search->Step(10, passable);
+                    if (overBudget()) break;
+                }
+                if (state == grid::Search::State::Running) return true;
+                if (state == grid::Search::State::Failed)
+                {
+                    log::Info(L"explore: no way round {} to \"{}\": {} cells opened with the ground about him kept clear", g_detour.around, t.label,
+                              g_detour.search->Expanded());
+                    g_detour.search.reset();
+                    // The walk got nowhere and no way passes him: it ends now, naming him.
+                    g_detour.failed = true;
+                    return false;
+                }
+                g_detour.straightener = std::make_unique<grid::Straightener>(g_detour.search->Path(), kCornerRun);
+                g_detour.search.reset();
+            }
+            const auto clear = [&](grid::Cell a, grid::Cell b)
+            {
+                if (!g_detour.keep.RunClear(WorldOf(a), WorldOf(b)) || !GroundRuns(pawn, a, b)) return false;
+                const Vec from = SweepMiddleOf(a);
+                const Vec to = SweepMiddleOf(b);
+                const double c = SweepClear(pawn, from, to, g_grid.radius, SweepHalfHeight());
+                ++g_grid.sweeps;
+                return c >= 0.0 && c >= Distance(from, to) - 1.0;
+            };
+            while (!g_detour.straightener->Step(2, clear))
+            {
+                if (overBudget()) return true;
+            }
+            t.detour.clear();
+            for (const auto& c : g_detour.straightener->Corners())
+                t.detour.push_back(WorldOf(c));
+            g_detour.straightener.reset();
+            double length = 0.0;
+            for (size_t i = 1; i < t.detour.size(); ++i)
+                length += FlatDistance(t.detour[i - 1], t.detour[i]);
+            log::Info(L"explore: the walk to \"{}\" goes round {}: {:.0f} cm in {} corners, {:.1f} s to feel out", t.label, g_detour.around, length,
+                      t.detour.size(), now - g_detour.startedAt);
+            // The way round is a new way: the walk's measure of getting nearer starts over.
+            t.gridAt = now;
+            g_walkMovingAt = now;
+            g_walkBestWay = 1e9;
+            g_walkBestWayAt = now;
+            g_walkLean = 0.0;
+            g_walkBlockLogged = false;
+            g_walkBlocker.clear();
+            return false;
+        }
+
         void PollWalk(double now)
         {
             if (!g_walking) return;
@@ -6719,6 +7093,27 @@ namespace da::features
             // put off as Chris walked on it on 2026-11-07), or another took its place: the walk ends
             // saying so, never going on to whatever is chosen next (it went on to a door behind him).
             // A way on she stands in was walked into, and speaks for itself.
+            // The way walked to has left the list for a thing beside it that stands for it now: the walk
+            // goes on to that thing (ways::WalkGoesTo).
+            if (!ways::WalkGoesOn(g_walkFor, target ? target->actor : nullptr))
+            {
+                const auto twin = g_twinOf.find(g_walkFor);
+                UObject* goesTo = twin == g_twinOf.end() ? nullptr : twin->second;
+                Target* thing = nullptr;
+                for (auto& t : g_targets)
+                {
+                    if (t.actor == goesTo && TwinTakesWay(t)) thing = &t;
+                }
+                if (thing && ways::WalkGoesTo(g_walkFor, target ? target->actor : nullptr, thing->actor) == thing->actor)
+                {
+                    log::Info(L"explore: the walk to \"{}\" goes on to \"{}\", which stands for it now", g_walkForLabel, thing->label);
+                    g_selected = thing->actor;
+                    g_autoChosen = false;
+                    g_walkFor = thing->actor;
+                    g_walkForLabel = thing->label;
+                    target = thing;
+                }
+            }
             if (!ways::WalkGoesOn(g_walkFor, target ? target->actor : nullptr))
             {
                 const bool wayVolume =
@@ -6778,6 +7173,20 @@ namespace da::features
             double yaw = 0.0;
             if (!ControlYaw(yaw) && !CameraYaw(yaw)) return;
             if (PollArrival(pawn, *target, here, yaw, now)) return;
+            // A way round another character in the way being felt out: she stands meanwhile.
+            if (PollDetour(pawn, *target, now))
+            {
+                input::ReleaseWalkKeys();
+                g_walkMovingAt = now;
+                g_walkBestWayAt = now;
+                return;
+            }
+            if (g_detour.failed && g_detour.forActor == target->actor)
+            {
+                if (g_walkBlocker.empty()) g_walkBlocker = g_detour.around;
+                StopWalkBlocked();
+                return;
+            }
             EnsureRoute(pawn, here, *target, now, 0.5, true);
             if (target->hasRoute && FlatDistance(here, target->routeNext) < 80.0) EnsureRoute(pawn, here, *target, now, 0.0, true);
             // Where the level has no mesh the way is felt out first, and the character waits
@@ -6926,6 +7335,9 @@ namespace da::features
                 LogOthersNear(pawn, here, Aim(*target), goal);
                 // Has the ground changed where she stopped? (features/GroundRecheck)
                 StartRecheck(here, *target, now);
+                // Another character stands in the way: a way round him, once a walk, before the
+                // walk gives up naming him (ways::KeepClear).
+                if (!g_walkBlocker.empty() && !g_detour.tried && !g_meshHere && !g_path.set) BeginDetour(pawn, *target, now);
             }
             if (now - g_walkMovingAt > 1.2 && now - g_walkLeanedAt > 0.9)
             {
@@ -6954,6 +7366,7 @@ namespace da::features
             std::vector<std::wstring> near;
             std::vector<Vec> places;
             std::vector<std::wstring> names;
+            std::vector<UObject*> actors;
             for (auto* other : g_others)
             {
                 Vec at;
@@ -6966,9 +7379,12 @@ namespace da::features
                                            apart, at.x, at.y, FlatDistance(at, aim)));
                 places.push_back(at);
                 names.push_back(name.empty() ? obj::ObjectName(other) : name);
+                actors.push_back(other);
             }
             const int blocker = ways::InTheWay(here, toward, places);
             g_walkBlocker = blocker >= 0 ? names[static_cast<size_t>(blocker)] : std::wstring();
+            g_walkBlockerAt = blocker >= 0 ? places[static_cast<size_t>(blocker)] : Vec{};
+            g_walkBlockerActor = blocker >= 0 ? actors[static_cast<size_t>(blocker)] : nullptr;
             log::Info(L"explore: the walk gets nowhere at ({:.0f}, {:.0f}); near her: {}{}", here.x, here.y, near.empty() ? L"no one" : str::Join(near, L"; "),
                       g_walkBlocker.empty() ? std::wstring() : L"; in the way: " + g_walkBlocker);
         }
@@ -7637,6 +8053,29 @@ namespace da::features
         std::wstring g_pressLogged; // its parts as last logged
         look::Words g_lookWords;    // the words for the look said for this subject
         bool g_lookOffShot = false; // the subject's glint lies off the fixed shot, as logged
+        // The game shows no glint for the subject though the camera looks at it (look::GlintMissing):
+        // since when, and whether it was said.
+        double g_noGlintSince = -1.0;
+        bool g_noGlintSaid = false;
+
+        // What the subject's glint is, when the game shows none of it: its widget, the widget's
+        // visibility, and whether she stands in the glint's own volume (the game adds the widget as
+        // she walks into it, ABatesGlint::OnCharacterVolumeStateChanged, and takes it away as she
+        // leaves), for the log.
+        std::wstring GlintState(UObject* pawn, UObject* useLocation)
+        {
+            UObject* glint = GlintOf(useLocation);
+            if (!glint) return L"no glint";
+            UObject* widget = nullptr;
+            obj::ReadObject(glint, L"GlintWidget", widget);
+            int64_t visibility = -1;
+            if (obj::IsLive(widget)) obj::CallReturn(widget, L"GetVisibility", [&](void* params, FProperty* rv) { obj::ReadIntAt(params, rv, visibility); });
+            bool inside = false;
+            CallNamed(glint, L"IsOverlappingActor", {{L"Other", pawn}}, {}, {{L"ReturnValue", &inside}});
+            return std::format(L"its glint {} {}, the widget {}{}, she {} its volume", obj::ObjectName(glint),
+                               obj::IsLive(widget) ? L"has a widget" : L"has no widget", obj::IsLive(widget) ? obj::ObjectName(widget) : L"-",
+                               visibility >= 0 ? std::format(L" (visibility {})", visibility) : std::wstring(), inside ? L"inside" : L"outside");
+        }
 
         // Whether a turn the player can make completes the look (look::CanBeLed): not on a fixed
         // shot whose picture leaves the glint out (the lodge's totem after its vision on
@@ -7677,6 +8116,8 @@ namespace da::features
                 g_faced = false;
                 g_lookWords.Reset();
                 g_lookOffShot = false;
+                g_noGlintSince = -1.0;
+                g_noGlintSaid = false;
                 g_facingBlipAt = 0.0;
                 g_facingLoggedAt = 0.0;
                 g_pressLogged.clear();
@@ -7695,8 +8136,34 @@ namespace da::features
             }
             const bool offShot = !g_press.verdict && g_press.AtHand() && g_press.measured && !LookCanBeLed(g_press);
             if (offShot && !g_lookOffShot)
-                log::Info(L"explore: \"{}\" is at hand, but its glint lies off the fixed shot, which no turn of hers brings in: no look is led", target->label);
+                log::Info(L"explore: \"{}\" is at hand, but its glint lies off the fixed shot, which no turn of the player's brings in: no look is led", target->label);
             g_lookOffShot = offShot;
+            // The camera looks at the thing by the game's own measure, and the game shows no glint for
+            // it: no look completes the press (look::GlintMissing), and that is said once. The
+            // dollhouse in the cellar on 2026-11-08 kept its glint off the screen for 93 s on the
+            // exploration camera whichever way the camera turned, and came back once Ashley had
+            // walked away and back (research/sessions/s58-whole.log, 11:15:56 to 11:18:39).
+            const bool glintMissing = look::GlintMissing(PartsOf(g_press), g_press.insideEllipse);
+            if (!glintMissing)
+            {
+                g_noGlintSince = -1.0;
+            }
+            else if (g_noGlintSince < 0.0)
+            {
+                g_noGlintSince = now;
+            }
+            else if (!g_noGlintSaid && now - g_noGlintSince >= look::kGlintMissingAfter && !g_walking && g_motion.Still(now))
+            {
+                g_noGlintSaid = true;
+                log::Info(L"explore: \"{}\" is at hand and the camera looks at it, but the game shows no glint for it ({:.1f} s): {}", target->label,
+                          now - g_noGlintSince, GlintState(pawn, target->actor));
+                speech::Announce(locale::Mod(L"explore.noglint"));
+            }
+            if (g_lookAgain)
+            {
+                g_lookAgain = false;
+                g_lookWords.Reset();
+            }
             const look::Lead word = g_lookWords.Update(now, look::Missing(PartsOf(g_press)), !g_walking && g_motion.Still(now));
             if (word == look::Lead::None) return;
             const bool character = word == look::Lead::Character;
@@ -7819,6 +8286,7 @@ namespace da::features
                 g_waysAnnounced.clear();
                 g_wayVerdict.clear();
                 g_wayNote.clear();
+                g_twinOf.clear();
                 g_gone.clear();
                 g_scannedAt = -10.0;
                 g_waysScannedAt = -10.0;
@@ -7837,6 +8305,18 @@ namespace da::features
                 if (ways::ResumesList(g_leftForPause, onGround))
                 {
                     g_exploring = true;
+                    // Moved by the scene from where the map began, she has the map's roads no more: a
+                    // new map from where she stands judges what the scene turned on, which waits for
+                    // it (ways::Lister: a way not listed yet waits for the map while anything is), the
+                    // list kept meanwhile. After the lodge's bedroom door the airlock door's trigger
+                    // was listed by the roads from 280 cm back and left out 0.3 s later as the map from
+                    // where she stood ran through it (research/sessions/s58-whole.log, 11:03:30).
+                    if (pawn && g_reach.flood && !ReachRunning() && ways::MovedFromMap(FlatDistance(middle, g_reach.origin)))
+                    {
+                        log::Info(L"explore: the scene moved her {:.0f} cm from where the map began: a new map judges what it turned on",
+                                  FlatDistance(middle, g_reach.origin));
+                        StartReachMap(pawn, now);
+                    }
                 }
                 else
                 {
@@ -7876,7 +8356,13 @@ namespace da::features
             // goes to it sets the volume off; not beside a thing she cannot go to, as the list last
             // judged it (ways::LeftForThing). One on the road to a listed target is told apart once
             // the roads are known (ChooseListed).
-            std::vector<std::pair<Vec, bool>> things;
+            struct Thing
+            {
+                Vec at;
+                bool goneTo = false;
+                UObject* actor = nullptr;
+            };
+            std::vector<Thing> things;
             for (const auto& u : fresh)
             {
                 if (u.way) continue;
@@ -7885,19 +8371,22 @@ namespace da::features
                 const bool goneTo = (judged == g_targets.end() ||
                                      !(judged->offPath || judged->behind || judged->unreachable || judged->room == rooms::Verdict::Apart)) &&
                                     (!Used(u.coreName) || u.actor == g_selected);
-                things.emplace_back(Aim(u), goneTo);
+                things.push_back(Thing{Aim(u), goneTo, u.actor});
             }
             std::erase_if(fresh,
                           [&](const Target& w)
                           {
                               if (!w.way) return false;
                               const wchar_t* why = nullptr;
-                              for (const auto& [thing, goneTo] : things)
+                              for (const auto& thing : things)
                               {
-                                  if (ways::LeftForThing(thing, w.position, goneTo)) why = L"beside a thing listed";
+                                  if (!ways::LeftForThing(thing.at, w.position, thing.goneTo)) continue;
+                                  why = L"beside a thing listed";
+                                  g_twinOf[w.actor] = thing.actor;
                               }
                               if (!why)
                               {
+                                  g_twinOf.erase(w.actor);
                                   if (g_wayNote.erase(w.actor))
                                       log::Info(L"explore: trigger {} is kept: no thing beside it is one she can go to",
                                                 w.coreName.empty() ? obj::ObjectName(w.actor) : w.coreName);
@@ -7980,6 +8469,22 @@ namespace da::features
                                                     UseState state;
                                                     return ReadUseState(item.first, state) && state.inProgress;
                                                 });
+            // The chosen way left the list for a thing beside it that stands for it now: the thing is
+            // chosen in its place, as the walk to it goes on to it (ways::WalkGoesTo).
+            if (g_exploring && !Selected() && g_selected && !g_walking)
+            {
+                const auto twin = g_twinOf.find(g_selected);
+                auto it = twin == g_twinOf.end()
+                              ? g_targets.end()
+                              : std::find_if(g_targets.begin(), g_targets.end(), [&](const Target& t) { return t.actor == twin->second && TwinTakesWay(t); });
+                if (it != g_targets.end())
+                {
+                    log::Info(L"explore: \"{}\" is chosen in place of the way beside it", it->label);
+                    const bool byPlayer = !g_autoChosen;
+                    Select(&*it, pawn, here, yaw, false);
+                    g_autoChosen = !byPlayer;
+                }
+            }
             // Not while a walk runs: its target gone, the walk ends first and says so (PollWalk).
             if (g_exploring && cfg::Get().autoTarget && !Selected() && !chosenAway && !g_walking)
             {
@@ -8504,6 +9009,7 @@ namespace da::features
             if (g_controlPawn && !g_meshHere && !g_worldUnsettled && gamestate::InPlay())
             {
                 if (Vec at; ActorLocation(g_controlPawn, at)) PollProps(at, now);
+                PollPropRecheck(g_controlPawn, now);
             }
             SoundControl();
         }
@@ -8800,7 +9306,7 @@ namespace da::features
                              });
         // The scenes' scripts call it through the game's reflection (their glue looks the function
         // up by name and calls ProcessEvent), so the function itself is hooked.
-        hooks::OnNative(L"/Script/Bates.BatesGameScriptInterface:IsInTrigger", &OnIsInTrigger, nullptr);
+        hooks::OnNativeResult(L"/Script/Bates.BatesGameScriptInterface:IsInTrigger", &OnIsInTrigger, &OnIsInTriggerAnswered);
         diag::RegisterCommand(L"explore", [](const std::wstring&) { DumpExploration(); });
         gamethread::AddPoller(L"explore", &Poll);
     }
