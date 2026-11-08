@@ -59,4 +59,12 @@ namespace da::speech::rules
 
     // The seconds the reader takes over a line at kReaderPace.
     double Speaking(const std::wstring& text);
+
+    // Whether the reader may still be on a page given to it: the page as last said, with nothing
+    // cutting in after it, and less time gone since than it takes to say. A document's page the game
+    // shows again unchanged is then not said again: in act7_1 Ashley's comment on Jack's journal hid
+    // its transcript for 3 s, 7 s into a page of 700 characters, and showed it again; cut in and said
+    // again, the page was heard to its middle and then from its start, with the prompts behind it
+    // twice (research/sessions/s61-play.log, 18:59:39 to 18:59:50).
+    bool StillOn(const std::vector<Said>& said, const std::wstring& page, double now);
 }

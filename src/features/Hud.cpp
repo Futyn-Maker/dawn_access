@@ -128,59 +128,149 @@ namespace da::features
         double g_saidAt = -1000.0;     // when an element's words were last said
         double g_documentDrawnAt = -1000.0; // when a document's transcript was last drawn
 
+        // A clue's card and the page it comes with, said together, the card first (lines::CardFirst);
+        // a page shown again as it is being read (speech::StillOn) is not said again, and the prompts
+        // the bar shows with it again are not either (PageResumedAt).
+        lines::CardFirst g_cardFirst;
+        bool g_cardHolding = false;        // a page or a card waits for the other this poll
+        std::wstring g_pageText;           // the page's own words, as last said
+        double g_pageResumedAt = -1000.0; // when a page was shown again while it was being read
+
+        bool IsCard(UObject* widget)
+        {
+            return obj::IsA(widget, L"BatesHUDUpdateQueueWidget");
+        }
+
+        bool IsPage(UObject* widget)
+        {
+            return obj::IsA(widget, L"BatesReadingWidget");
+        }
+
+        // A document's page to say: the cards that came with it first. A page shown again unchanged
+        // while the reader may still be on it is left as it is said.
+        void SayPage(const std::vector<std::wstring>& cards, const std::wstring& page, double now)
+        {
+            if (cards.empty() && page == g_pageText && speech::StillOn(g_pageSaid))
+            {
+                g_pageResumedAt = now;
+                log::Info(L"hud: the page is shown again as it is being read: not said again");
+                return;
+            }
+            std::vector<std::wstring> parts = cards;
+            parts.push_back(page);
+            const auto text = str::JoinSentences(parts);
+            if (!cards.empty()) log::Info(L"hud: the page is said with the card that came with it, the card first");
+            // A document's page in place of the one before cuts it short (lines::Reading), and only it
+            // (speech::Replace).
+            if (g_reading.Interrupts())
+                speech::Replace(g_pageSaid, text);
+            else
+                speech::Announce(text);
+            g_pageSaid = text;
+            g_pageText = page;
+        }
+
         void PollImpl()
         {
             if (gamethread::FrameCount() % 6 != 0) return;
             const double now = gamethread::NowSeconds();
             if (ExplorationActive()) g_reading.Ended();
             bool settling = false;
-            for (auto it = g_tracked.begin(); it != g_tracked.end();)
+            std::erase_if(g_tracked, [](const Tracked& t) { return !obj::IsLive(t.instance); });
+            struct Fresh
             {
-                if (!obj::IsLive(it->instance))
+                Tracked* tracked = nullptr;
+                std::vector<std::wstring> lines;
+                std::wstring text;
+            };
+            std::vector<Fresh> cards;
+            std::vector<Fresh> pages;
+            bool cardComing = false; // a card shown whose words are still to come or to be said
+            bool pageComing = false; // the reading's page still to come: hidden as it turns, or not said yet
+            for (auto& t : g_tracked)
+            {
+                if (!obj::IsWidgetShown(t.instance))
                 {
-                    it = g_tracked.erase(it);
+                    t.lines.Hidden();
+                    t.card.Hidden();
+                    if (IsPage(t.instance) && g_reading.Open()) pageComing = true;
                     continue;
                 }
-                if (obj::IsWidgetShown(it->instance))
+                // An update card of the game's queue is read once its body is drawn (lines::Card).
+                UObject* body = nullptr;
+                if (IsCard(t.instance) && obj::ReadObject(t.instance, L"Text_Body", body) && obj::IsLive(body) &&
+                    !t.card.Ready(now, !ui::DrawnTexts(body).empty() && obj::IsWidgetShown(body, true)))
                 {
-                    // An update card of the game's queue is read once its body is drawn (lines::Card).
-                    UObject* body = nullptr;
-                    if (obj::IsA(it->instance, L"BatesHUDUpdateQueueWidget") && obj::ReadObject(it->instance, L"Text_Body", body) && obj::IsLive(body) &&
-                        !it->card.Ready(now, !ui::DrawnTexts(body).empty() && obj::IsWidgetShown(body, true)))
-                    {
-                        ++it;
-                        continue;
-                    }
-                    // Faded out to nothing, it shows no lines (a document's transcript hidden).
-                    const bool drawn = obj::IsWidgetShown(it->instance, true);
-                    if (drawn && obj::IsA(it->instance, L"BatesReadingWidget")) g_documentDrawnAt = now;
-                    const auto lines = Lines(it->instance);
-                    const auto fresh = it->lines.Shown(lines, now, drawn);
-                    if (fresh.empty() && drawn && !lines.empty() && it->lines.Unsaid(lines, now)) settling = true;
-                    if (!fresh.empty())
-                    {
-                        const auto text = str::JoinSentences(fresh);
-                        log::Info(L"hud: {} says \"{}\"", obj::ClassName(it->instance), text);
-                        if (g_echo.Says(text, now))
-                        {
-                            // A document's page in place of the one before cuts it short (lines::Reading),
-                            // and only it (speech::Replace).
-                            const bool page = obj::IsA(it->instance, L"BatesReadingWidget");
-                            if (page && g_reading.Interrupts())
-                                speech::Replace(g_pageSaid, text);
-                            else
-                                speech::Announce(text);
-                            if (page) g_pageSaid = text;
-                        }
-                        g_saidAt = now;
-                    }
+                    cardComing = true;
+                    continue;
                 }
+                // Faded out to nothing, it shows no lines (a document's transcript hidden).
+                const bool drawn = obj::IsWidgetShown(t.instance, true);
+                if (drawn && IsPage(t.instance)) g_documentDrawnAt = now;
+                const auto lines = Lines(t.instance);
+                const auto fresh = t.lines.Shown(lines, now, drawn);
+                const bool unsaid = drawn && !lines.empty() && t.lines.Unsaid(lines, now);
+                if (fresh.empty())
+                {
+                    if (unsaid) settling = true;
+                    if (unsaid && IsCard(t.instance)) cardComing = true;
+                    if ((unsaid || !drawn) && IsPage(t.instance) && g_reading.Open()) pageComing = true;
+                    continue;
+                }
+                Fresh f{&t, fresh, str::JoinSentences(fresh)};
+                if (IsPage(t.instance))
+                    pages.push_back(std::move(f));
+                else if (IsCard(t.instance))
+                    cards.push_back(std::move(f));
                 else
                 {
-                    it->lines.Hidden();
-                    it->card.Hidden();
+                    log::Info(L"hud: {} says \"{}\"", obj::ClassName(t.instance), f.text);
+                    g_saidAt = now;
+                    if (g_echo.Says(f.text, now)) speech::Announce(f.text);
                 }
-                ++it;
+            }
+            // A page waits for the card still coming with it, a card for the page still coming: each
+            // given back to its element to be read again at the next poll (lines::CardFirst).
+            g_cardHolding = false;
+            if (!pages.empty() && cards.empty() && g_cardFirst.HoldPage(now, cardComing))
+            {
+                for (auto& f : pages)
+                    f.tracked->lines.Unsay(f.lines);
+                pages.clear();
+                g_cardHolding = true;
+            }
+            if (!cards.empty() && pages.empty() && g_cardFirst.HoldCard(now, pageComing))
+            {
+                for (auto& f : cards)
+                    f.tracked->lines.Unsay(f.lines);
+                cards.clear();
+                g_cardHolding = true;
+            }
+            if (g_cardHolding)
+                settling = true;
+            else
+                g_cardFirst.Settled();
+            // What is said now, each said once though it came through two elements (lines::Echo).
+            std::vector<std::wstring> cardTexts;
+            for (const auto& f : cards)
+            {
+                log::Info(L"hud: {} says \"{}\"", obj::ClassName(f.tracked->instance), f.text);
+                g_saidAt = now;
+                if (g_echo.Says(f.text, now)) cardTexts.push_back(f.text);
+            }
+            bool pageSaid = false;
+            for (const auto& f : pages)
+            {
+                log::Info(L"hud: {} says \"{}\"", obj::ClassName(f.tracked->instance), f.text);
+                g_saidAt = now;
+                if (!g_echo.Says(f.text, now)) continue;
+                SayPage(pageSaid ? std::vector<std::wstring>{} : cardTexts, f.text, now);
+                pageSaid = true;
+            }
+            if (!pageSaid)
+            {
+                for (const auto& text : cardTexts)
+                    speech::Announce(text);
             }
             if (!settling)
                 g_settlingSince = -1.0;
@@ -379,7 +469,14 @@ namespace da::features
 
     bool hud::TextSettling(double now)
     {
-        return g_settlingSince >= 0.0 && now - g_settlingSince < kHintFirst;
+        // A page waiting for its card, or a card for its page, holds the prompts as long as it waits
+        // (lines::CardFirst): the page and its card come before the stick's prompt and the way back.
+        return (g_settlingSince >= 0.0 && now - g_settlingSince < kHintFirst) || g_cardHolding;
+    }
+
+    double hud::PageResumedAt()
+    {
+        return g_pageResumedAt;
     }
 
     double hud::LastSaidAt()

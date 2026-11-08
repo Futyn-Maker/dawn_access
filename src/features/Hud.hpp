@@ -40,6 +40,9 @@ namespace da::features
         std::wstring Objective();
         // When a document's transcript (a BatesReadingWidget) was last seen drawn; long ago when never.
         double DocumentDrawnAt();
+        // When a document's page was last shown again, unchanged, as it was being read, and left to
+        // be read on; long ago when never. The prompts the bar shows again with it are not said again.
+        double PageResumedAt();
         // The card that changes the character (name, place, time) is up now.
         bool CharacterCardShown();
         // An objective is set and waits to be said (for a title card to go, or for play to run).

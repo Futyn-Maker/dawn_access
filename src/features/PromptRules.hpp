@@ -127,6 +127,14 @@ namespace da::prompt
     // (research/sessions/s55-full.log).
     std::wstring LinearForward(std::wstring_view action, bool invert);
 
+    // Whether a staged stage's way back is named beside its way on (LinearForward): where the stage
+    // stands past its first step as its prompt comes up, a step back leads somewhere the player has
+    // not been. Jack's journal in act7_1 opens at its second page (InitialAnimationStage 1): a push
+    // right turns back to its first page, the foreword, with a clue of its own
+    // (FoundJournalIntroduction), and with only the way on said Andrey went on and never saw it
+    // (research/sessions/s61-play.log, 18:59:39; research/interactions/analysis/BP_Readjournal__act7_1.txt).
+    bool NamesWayBack(int64_t step);
+
     // The step a staged climb, shimmy or page turn stands at (the AnimationStage the stage writes into
     // its graphs, UBatesIntSimpleGrabAnimInst's) out of its stage's last
     // (UBatesInteractionLinearStaged.MaxAnimationStage), as a pitch: each step

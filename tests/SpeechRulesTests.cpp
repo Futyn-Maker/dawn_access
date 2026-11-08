@@ -160,3 +160,28 @@ TEST_CASE("a page turned says the new page first, then what was kept behind the 
     REQUIRE(behind.size() == 1);
     CHECK_FALSE(behind[0].interrupt);
 }
+
+TEST_CASE("a page shown again unchanged as it is being read is left to be read on: Jack's journal, 2026-11-08")
+{
+    // research/sessions/s61-play.log, 18:59:39.298 to 18:59:50.511: the journal's second page (700
+    // characters, 35 s) said, the stick's prompt, the bar, the way on and the clue's card queued
+    // behind it; Ashley's comment hid the transcript at 18:59:47 and the game showed it again 11.2 s
+    // into the page. Cut in and said again, it was heard to its middle and then from its start.
+    const std::wstring page(700, L'в');
+    const std::vector<Said> said{
+        {L"announce", page, 39.298},
+        {L"announce", L"левый стик влево и вправо", 39.401},
+        {L"announce", L"Прокрутить: левый стик вверх и вниз, Скрыть расшифровку: квадрат", 39.402},
+        {L"announce", L"Дальше: левый стик влево.", 39.844},
+        {L"announce", L"НАЙДЕНА УЛИКА. Дневник: каннибализм. R1", 39.899},
+    };
+    CHECK(speech::rules::StillOn(said, page, 50.511));
+    // Read through, it is said again as a transcript shown again is.
+    CHECK_FALSE(speech::rules::StillOn(said, page, 39.298 + 35.1));
+    // Cut short meanwhile (the player's key, F7), it is said again too.
+    auto stopped = said;
+    stopped.push_back({L"stop", L"", 45.0});
+    CHECK_FALSE(speech::rules::StillOn(stopped, page, 50.511));
+    // Never said: nothing to read on.
+    CHECK_FALSE(speech::rules::StillOn(said, std::wstring(10, L'x'), 50.511));
+}

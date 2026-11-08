@@ -235,6 +235,14 @@ namespace da::speech
             OutputNow(line.text, line.interrupt, line.policy.c_str());
     }
 
+    bool StillOn(std::wstring_view page)
+    {
+        const std::wstring text = Clean(page);
+        if (text.empty()) return false;
+        fault::Guard lock(g_mutex, L"speech");
+        return rules::StillOn(std::vector<rules::Said>(g_said.begin(), g_said.end()), text, Seconds());
+    }
+
     void Stop()
     {
         fault::Guard lock(g_mutex, L"speech");

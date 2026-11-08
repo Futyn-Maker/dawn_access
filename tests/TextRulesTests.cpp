@@ -371,3 +371,45 @@ TEST_CASE("a document's page put in place of the one before cuts it short, 2026-
     CHECK_FALSE(reading.Interrupts());
     CHECK(reading.Interrupts());
 }
+
+TEST_CASE("a clue's card and the page it comes with are said together, the card first: Jack's journal, 2026-11-08")
+{
+    // research/sessions/s61-play.log: the journal's first page came at 18:59:39.298 and its card's
+    // name at 39.899; the fourth page at 19:03:01.425 and its card at 01.836: the page waits for the
+    // card shown with it.
+    lines::CardFirst order;
+    CHECK(order.HoldPage(39.298, true));
+    CHECK(order.HoldPage(39.600, true));
+    CHECK_FALSE(order.HoldPage(39.899, false)); // the card ready: said together
+    // The second and third pages' cards came first (19:00:48.068, the page at 48.361): the card waits
+    // for the page of the reading still to come, its transcript hidden as the page turned.
+    CHECK(order.HoldCard(48.068, true));
+    CHECK(order.HoldCard(48.268, true));
+    CHECK_FALSE(order.HoldCard(48.361, false));
+    // A card that never comes keeps a page waiting no longer than kCardWithPage, and a page with no
+    // card shown waits for nothing.
+    CHECK(order.HoldPage(60.0, true));
+    CHECK(order.HoldPage(60.0 + lines::kCardWithPage - 0.1, true));
+    CHECK_FALSE(order.HoldPage(60.0 + lines::kCardWithPage, true));
+    CHECK_FALSE(order.HoldPage(70.0, false));
+    CHECK(order.HoldPage(70.1, true)); // a new wait begins afresh
+    // A wait that ran out, the page said: the next page's wait begins afresh too.
+    CHECK_FALSE(order.HoldPage(70.1 + lines::kCardWithPage, true));
+    order.Settled();
+    CHECK(order.HoldPage(90.0, true));
+}
+
+TEST_CASE("lines given back are given again at the next poll")
+{
+    lines::Element page;
+    const std::vector<std::wstring> lines{L"Когда-то в этих горах жило племя"};
+    // Read once its lines have stood for kStablePolls polls.
+    CHECK(page.Shown(lines, 1.0).empty());
+    CHECK(page.Shown(lines, 1.1).empty());
+    const auto fresh = page.Shown(lines, 1.2);
+    REQUIRE(fresh.size() == 1);
+    CHECK(page.Shown(lines, 1.3).empty()); // said: not again
+    page.Unsay(fresh);
+    CHECK(page.Shown(lines, 1.4) == lines); // given back: again
+    CHECK(page.Shown(lines, 1.5).empty());
+}

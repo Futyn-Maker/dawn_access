@@ -66,6 +66,42 @@ namespace da::lines
                            });
     }
 
+    void Element::Unsay(const std::vector<std::wstring>& lines)
+    {
+        for (const auto& line : lines)
+            m_spoken.erase(line);
+    }
+
+    namespace
+    {
+        bool Holds(double& since, double now, bool other)
+        {
+            if (!other)
+            {
+                since = -1.0;
+                return false;
+            }
+            if (since < 0.0) since = now;
+            return now - since < kCardWithPage;
+        }
+    }
+
+    bool CardFirst::HoldPage(double now, bool cardComing)
+    {
+        return Holds(m_pageSince, now, cardComing);
+    }
+
+    bool CardFirst::HoldCard(double now, bool pageComing)
+    {
+        return Holds(m_cardSince, now, pageComing);
+    }
+
+    void CardFirst::Settled()
+    {
+        m_pageSince = -1.0;
+        m_cardSince = -1.0;
+    }
+
     bool Card::Ready(double now, bool bodyDrawn)
     {
         if (m_since < 0.0) m_since = now;

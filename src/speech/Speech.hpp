@@ -42,6 +42,8 @@ namespace da::speech
     void Now(std::wstring_view text);
     void Urgent(std::wstring_view text);
     void Replace(std::wstring_view previous, std::wstring_view text);
+    // Whether the reader may still be on a page given to it (rules::StillOn).
+    bool StillOn(std::wstring_view page);
     void Hold();
     void Release();
     void Exclusive(std::wstring_view text);

@@ -386,6 +386,10 @@ namespace da::features
             if (Shown* s = Find(self); s && params::Float(stack, L"InProgress", fade)) s->fade = fade;
         }
 
+        // How long after a page shown again as it is being read the bar's prompts shown again with it
+        // are taken for those already said behind it.
+        constexpr double kBarWithPage = 1.5;
+
         std::wstring Line(const ui::Prompt& p)
         {
             return ui::PromptLines({p});
@@ -415,6 +419,14 @@ namespace da::features
             const auto fresh = g_bar.Update(now, false, lines);
             if (fresh.empty()) return;
             const auto text = str::Join(fresh, L", ");
+            // The prompts shown again with a document's page shown again as it is being read are still
+            // to be said behind it (hud::PageResumedAt): Jack's journal, hidden for Ashley's comment
+            // and shown again, had its scroll and its key said twice in a row.
+            if (now - hud::PageResumedAt() < kBarWithPage)
+            {
+                log::Info(L"prompts: action bar \"{}\" [{}] shown again with the page being read: still to be said behind it", text, Actions(prompts));
+                return;
+            }
             log::Info(L"prompts: action bar \"{}\" [{}]", text, Actions(prompts));
             speech::Announce(text);
         }

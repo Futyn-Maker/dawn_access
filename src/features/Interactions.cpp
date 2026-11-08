@@ -3,6 +3,7 @@
 #include "features/Exploration.hpp"
 #include "features/NudgeRules.hpp"
 #include "features/PromptRules.hpp"
+#include "features/Hud.hpp"
 #include "features/Prompts.hpp"
 #include "features/WorldRead.hpp"
 
@@ -479,6 +480,7 @@ namespace da::features
         // goes on (prompt::LinearForward); the stage last seen current, since when, and whether its
         // way on has been said.
         std::map<int64_t, std::wstring> g_linearForward;
+        std::map<int64_t, std::wstring> g_linearBack; // and its way back, named where the stage stands past its first step
         int64_t g_linearStage = -1;
         double g_linearSince = -1.0;
         bool g_linearSaid = false;
@@ -500,6 +502,7 @@ namespace da::features
         void FindLinearStages(UObject* interaction)
         {
             g_linearForward.clear();
+            g_linearBack.clear();
             g_linearLast.clear();
             g_linearUnclamped.clear();
             g_linearProgress.Reset();
@@ -531,7 +534,11 @@ namespace da::features
                 log::Info(L"interactions: {} has a staged stage {} ({}) on {}{}{}{}", obj::ObjectName(interaction), index + 1, obj::ObjectName(component),
                           name.empty() ? L"no action" : name, invert ? L", inverted" : L"", forward.empty() ? std::wstring() : L": it goes on with " + forward,
                           clamp && last > 0 ? std::format(L"; its steps run to {}", last) : std::wstring(L"; it keeps no last step, its graph ends it"));
-                if (!forward.empty()) g_linearForward[index] = forward;
+                if (!forward.empty())
+                {
+                    g_linearForward[index] = forward;
+                    g_linearBack[index] = prompt::LinearForward(name, !invert);
+                }
             }
         }
 
@@ -629,10 +636,22 @@ namespace da::features
             if (g_linearForward.empty()) return;
             const auto forward = g_linearForward.find(current);
             if (forward == g_linearForward.end() || g_linearSaid || now - g_linearSince < kLinearAfterPrompt) return;
+            // After the game's own words: the page and its card the HUD is still to say, then the
+            // stage's prompt (at most kLinearAfterPrompt more for a prompt that does not come).
+            if (hud::TextSettling(now)) return;
+            if (LastInteractionPromptAt() < g_linearSince && now - g_linearSince < 2.0 * kLinearAfterPrompt) return;
             g_linearSaid = true;
             const auto key = input::KeyForAction(forward->second);
-            log::Info(L"interactions: the stage goes on with {} ({})", forward->second, key);
-            if (!key.empty()) speech::Announce(locale::Mod(L"interact.linear.forward", key));
+            // Standing past its first step, the stage's way back leads somewhere too (prompt::NamesWayBack).
+            const int64_t step = LinearStep(interaction);
+            const auto back = g_linearBack.find(current);
+            const auto backKey = back != g_linearBack.end() && prompt::NamesWayBack(step) ? input::KeyForAction(back->second) : std::wstring();
+            log::Info(L"interactions: the stage goes on with {} ({}){}", forward->second, key,
+                      backKey.empty() ? std::wstring() : std::format(L"; it stands at step {}, and {} ({}) goes back", step, back->second, backKey));
+            if (key.empty()) return;
+            auto line = locale::Mod(L"interact.linear.forward", key);
+            if (!backKey.empty()) line += L" " + locale::Mod(L"interact.linear.back", backKey);
+            speech::Announce(line);
         }
 
         // What the states say that nothing else does. A fire laid with no matches to light it plays

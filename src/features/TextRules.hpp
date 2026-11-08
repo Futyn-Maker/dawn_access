@@ -54,6 +54,8 @@ namespace da::lines
         void Hidden();
         // Some of `lines` are still to be said: new, or said longer than kLineForgotten ago.
         bool Unsaid(const std::vector<std::wstring>& lines, double now) const;
+        // `lines`, given by Shown, were not said after all: Shown gives them again at the next poll.
+        void Unsay(const std::vector<std::wstring>& lines);
         // Its lines at the last poll.
         const std::vector<std::wstring>& Seen() const
         {
@@ -107,9 +109,39 @@ namespace da::lines
         {
             m_open = false;
         }
+        // A reading is open: its first page has been said, and she is still held by it.
+        bool Open() const
+        {
+            return m_open;
+        }
 
     private:
         bool m_open = false;
+    };
+
+    // A clue's card and the page of a document it comes with are said together, the card first: a
+    // book's page that holds a clue shows the clue's card as the page comes up, and which of the two
+    // was said first went by which the game had drawn first. Turning Jack's journal in act7_1, the
+    // card came before its page twice and after it twice, once behind the prompts read with the page
+    // (research/sessions/s61-play.log, 18:59:39 to 19:03:01), and Andrey asked for one order. So a
+    // page waits while a card shown with it is still to be read (its name not drawn yet), and a card
+    // while the page of the reading open is still to come (its transcript hidden as the page turns,
+    // or not read yet), each for at most kCardWithPage; ready together, they are said as one. A page
+    // with no card shown waits for nothing.
+    constexpr double kCardWithPage = 1.5;
+    class CardFirst
+    {
+    public:
+        // Whether a page ready to be said waits this poll, a card still coming (`cardComing`).
+        bool HoldPage(double now, bool cardComing);
+        // Whether a card ready to be said waits this poll, a page still coming (`pageComing`).
+        bool HoldCard(double now, bool pageComing);
+        // Nothing waits this poll: the next wait begins afresh.
+        void Settled();
+
+    private:
+        double m_pageSince = -1.0;
+        double m_cardSince = -1.0;
     };
 
     // The same words can arrive through two elements at once: said once within kSameWords.

@@ -221,6 +221,11 @@ namespace da::prompt
         return {};
     }
 
+    bool NamesWayBack(int64_t step)
+    {
+        return step > 0;
+    }
+
     std::optional<Dial> DialOf(std::wstring_view interactionClass)
     {
         if (interactionClass == L"BP_Radio_C") return Dial{L"RadioDialPosition", 3, L"IA_RotateAxisGesture", L"IA_RotateRightGesture"};

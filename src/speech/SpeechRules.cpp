@@ -14,6 +14,16 @@ namespace da::speech::rules
         return static_cast<double>(text.size()) / kReaderPace;
     }
 
+    bool StillOn(const std::vector<Said>& said, const std::wstring& page, double now)
+    {
+        for (size_t i = said.size(); i-- > 0;)
+        {
+            if (said[i].text == page) return now < said[i].at + Speaking(said[i].text);
+            if (Interrupting(said[i].policy)) return false;
+        }
+        return false;
+    }
+
     std::vector<TurnLine> TurnOrder(const TurnPlan& plan, const std::wstring& page)
     {
         std::vector<TurnLine> out;

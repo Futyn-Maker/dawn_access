@@ -591,3 +591,16 @@ TEST_CASE("prompts: the snow globe's hidden shake is named by what takes it, cha
     CHECK(std::wstring(prompt::ShakeHelp(true, true, false)) == L"help.shake.ps.off");
 }
 
+
+TEST_CASE("prompts: a staged stage standing past its first step names its way back: Jack's journal, 2026-11-08")
+{
+    // BP_Readjournal opens at its second page (InitialAnimationStage 1): its foreword lies a push right
+    // back, with a clue of its own.
+    CHECK(prompt::NamesWayBack(1));
+    // A climb, a shimmy, a book opened at its first page: only the way on.
+    CHECK_FALSE(prompt::NamesWayBack(0));
+    CHECK_FALSE(prompt::NamesWayBack(-1));
+    // The way back is the way on turned round.
+    CHECK(prompt::LinearForward(L"IA_SwipeLeftRight", true) == L"IA_Swipe_Left");
+    CHECK(prompt::LinearForward(L"IA_SwipeLeftRight", false) == L"IA_Swipe_Right");
+}
