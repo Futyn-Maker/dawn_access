@@ -126,6 +126,7 @@ namespace da::features
         // (lines::Element).
         double g_settlingSince = -1.0; // since when a shown element's words are still to be said
         double g_saidAt = -1000.0;     // when an element's words were last said
+        double g_documentDrawnAt = -1000.0; // when a document's transcript was last drawn
 
         void PollImpl()
         {
@@ -152,6 +153,7 @@ namespace da::features
                     }
                     // Faded out to nothing, it shows no lines (a document's transcript hidden).
                     const bool drawn = obj::IsWidgetShown(it->instance, true);
+                    if (drawn && obj::IsA(it->instance, L"BatesReadingWidget")) g_documentDrawnAt = now;
                     const auto lines = Lines(it->instance);
                     const auto fresh = it->lines.Shown(lines, now, drawn);
                     if (fresh.empty() && drawn && !lines.empty() && it->lines.Unsaid(lines, now)) settling = true;
@@ -388,6 +390,11 @@ namespace da::features
     std::wstring hud::Objective()
     {
         return g_objective.Current();
+    }
+
+    double hud::DocumentDrawnAt()
+    {
+        return g_documentDrawnAt;
     }
 
     bool hud::CharacterCardShown()

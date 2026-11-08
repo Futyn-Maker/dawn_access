@@ -379,8 +379,9 @@ namespace da::features
                 const auto& right = s.targets[s.invertX ? 0 : 1].label;
                 log::Info(L"shooting: {} is the dilemma: the stick's left takes the aim to {}, its right to {}; yaw {:g} to {:g}, the middle {:g}{}", s.name,
                           left, right, s.minYaw, s.maxYaw, s.middle, s.finishOnHighlight ? L"; a side reached commits" : L"");
-                if (!left.empty() && !right.empty())
-                    speech::Announce(locale::Mod(L"dir.left") + L": " + left + L". " + locale::Mod(L"dir.right") + L": " + right + L".");
+                // The aim chooses: the sides named as the aim takes them (Andrey, 2026-11-08: "left:
+                // Chris, right: Ashley" left him asking what makes the choice).
+                if (!left.empty() && !right.empty()) speech::Announce(locale::Mod(L"shoot.dilemma", left, right));
             }
             log::Info(L"shooting: {} begins ({}): type {}, {} target(s) [{}]; {}; aim assist {}; aiming only {}; targets {}, reticle {}", s.name, why, type,
                       s.targets.size(), str::Join(logged, L"; "), s.timed ? std::format(L"{:.1f} s on the clock", s.timeLimit) : std::wstring(L"no clock"),
@@ -849,6 +850,14 @@ namespace da::features
         if (!ShootingActive()) return;
         using hotkeys::Command;
         const bool pad = input::CurrentScheme() == input::Scheme::Gamepad;
+        // The death room's dilemma: how the aim makes the choice, and the shot after it.
+        if (g_stage.dilemma && g_stage.targets.size() == 2)
+        {
+            const auto& left = g_stage.targets[g_stage.invertX ? 1 : 0].label;
+            const auto& right = g_stage.targets[g_stage.invertX ? 0 : 1].label;
+            out.push_back(locale::Mod(pad ? L"help.dilemma.pad" : L"help.dilemma", {left, right, input::KeyForAction(L"IA_SequenceShoot")}));
+            return;
+        }
         out.push_back(locale::Mod(pad ? L"help.shoot.pad" : L"help.shoot",
                                   {input::KeyForAction(L"IA_SequenceShoot"), hotkeys::SpokenKey(Command::NextTarget),
                                    hotkeys::SpokenKey(Command::PreviousTarget), hotkeys::SpokenKey(Command::Where), hotkeys::SpokenKey(Command::Beacon)}));

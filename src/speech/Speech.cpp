@@ -231,19 +231,8 @@ namespace da::speech
         if (text.empty() || !Says(text)) return;
         fault::Guard lock(g_mutex, L"speech");
         const auto plan = rules::Turn(std::vector<rules::Said>(g_said.begin(), g_said.end()), Clean(previous), Seconds());
-        if (!plan.cut)
-        {
-            OutputNow(text, false, L"replace-after");
-            return;
-        }
-        if (plan.kept.empty())
-        {
-            OutputNow(text, true, L"replace");
-            return;
-        }
-        for (size_t i = 0; i < plan.kept.size(); ++i)
-            OutputNow(plan.kept[i], i == 0, L"replace-kept");
-        OutputNow(text, false, L"replace");
+        for (const auto& line : rules::TurnOrder(plan, text))
+            OutputNow(line.text, line.interrupt, line.policy.c_str());
     }
 
     void Stop()

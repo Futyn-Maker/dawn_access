@@ -501,6 +501,11 @@ namespace da::input
         return L"action " + action + L": keys [" + str::Join(KeysOfAction(asset), L", ") + L"], spoken \"" + KeyForAction(action) + L"\"";
     }
 
+    bool PlayStationPrompts()
+    {
+        return GameVendor() == Vendor::PlayStation;
+    }
+
     std::wstring PointerName()
     {
         return locale::Mod(CurrentScheme() == Scheme::Gamepad ? L"input.rightstick" : L"input.mouse");

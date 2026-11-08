@@ -30,8 +30,10 @@ namespace da::speech::rules
     // before short, and only it. While the reader may still be on that page at kReaderPace (`cut`),
     // the new page cuts in, and the lines queued behind the old page since it was given to the
     // reader, with no line cutting in since (what the game said by itself meanwhile: a clue's card, a
-    // line of dialogue), are said again before the new page, in their order (`kept`): none of them
-    // was begun. Once the reader is past the page the new one cuts nothing: it waits behind what the
+    // line of dialogue, the stick's prompt), are said again after the new page, in their order
+    // (`kept`): none of them was begun. The new page first: Andrey turned Hannah's diary on
+    // 2026-11-08 and heard the stick's prompt and the way back before each page's text, and asked for
+    // the text first (research/sessions/s58-whole.log, 11:23:09). Once the reader is past the page the new one cuts nothing: it waits behind what the
     // reader is saying or has yet to say. `said` is what went to the reader, oldest first; `page` the
     // page's text as it was said. The page not among them, or a line cut in after it, the page is gone
     // already, and the new one cuts in with nothing kept. The business card at the lodge on
@@ -44,6 +46,16 @@ namespace da::speech::rules
         std::vector<std::wstring> kept;
     };
     TurnPlan Turn(const std::vector<Said>& said, const std::wstring& page, double now);
+
+    // The lines a page turned gives the reader, in order, and whether each cuts in: the new page,
+    // cutting the old one short where the plan cuts it, then what was kept, queued behind it.
+    struct TurnLine
+    {
+        std::wstring text;
+        bool interrupt = false;
+        std::wstring policy; // as logged: "replace", "replace-after" (behind what is said), "replace-kept"
+    };
+    std::vector<TurnLine> TurnOrder(const TurnPlan& plan, const std::wstring& page);
 
     // The seconds the reader takes over a line at kReaderPace.
     double Speaking(const std::wstring& text);

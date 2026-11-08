@@ -120,3 +120,43 @@ TEST_CASE("a page turned as the clue's card is said leaves the card to finish: t
     };
     CHECK_FALSE(speech::rules::Turn(tribes, letter, 37.944).cut);
 }
+
+TEST_CASE("a page turned says the new page first, then what was kept behind the old one: Hannah's diary, 2026-11-08")
+{
+    // research/sessions/s58-whole.log, 11:23:07.025 to 11:23:09.570: the diary's second page
+    // (57 characters, 2.9 s) said, the stick's prompt and the way back queued behind it, and the page
+    // turned 2.5 s in. The kept prompts were said first and the third page after them; Andrey asked
+    // for the page first.
+    const std::wstring second = L"Обожемой!!! Майк тоже согласен!!! Он сегодня звонил Джошу";
+    const std::wstring third = L"Ура! Завтра ТУСАНЕМ! Это будет ТАК КРУТО!";
+    const std::vector<Said> said{
+        {L"replace", second, 7.025},
+        {L"announce", L"левый стик влево и вправо", 7.025},
+        {L"announce", L"Назад: круг", 7.026},
+    };
+    const auto plan = speech::rules::Turn(said, second, 9.570);
+    REQUIRE(plan.cut);
+    REQUIRE(plan.kept.size() == 2);
+    const auto order = speech::rules::TurnOrder(plan, third);
+    REQUIRE(order.size() == 3);
+    CHECK(tests::U8(order[0].text) == tests::U8(third));
+    CHECK(order[0].interrupt);
+    CHECK(tests::U8(order[1].text) == "левый стик влево и вправо");
+    CHECK_FALSE(order[1].interrupt);
+    CHECK(tests::U8(order[2].text) == "Назад: круг");
+    CHECK_FALSE(order[2].interrupt);
+    // The next page turned while the third is read keeps the prompts again: queued behind the page,
+    // they cut nothing in.
+    std::vector<Said> after;
+    for (const auto& line : order)
+        after.push_back({line.policy, line.text, 9.570});
+    const auto next = speech::rules::Turn(after, third, 10.0);
+    CHECK(next.cut);
+    CHECK(next.kept.size() == 2);
+    // The reader past the page: the new one waits behind what is said, alone.
+    speech::rules::TurnPlan past;
+    past.cut = false;
+    const auto behind = speech::rules::TurnOrder(past, third);
+    REQUIRE(behind.size() == 1);
+    CHECK_FALSE(behind[0].interrupt);
+}

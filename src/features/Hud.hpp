@@ -38,6 +38,8 @@ namespace da::features
         double LastSaidAt();
         // The objective the game keeps for the player now, as last read; empty when none is known.
         std::wstring Objective();
+        // When a document's transcript (a BatesReadingWidget) was last seen drawn; long ago when never.
+        double DocumentDrawnAt();
         // The card that changes the character (name, place, time) is up now.
         bool CharacterCardShown();
         // An objective is set and waits to be said (for a title card to go, or for play to run).

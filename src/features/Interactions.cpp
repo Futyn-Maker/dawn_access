@@ -1081,9 +1081,43 @@ namespace da::features
         if (RevealLed()) out.push_back(TurnText());
     }
 
+    // The examine stage the interaction stands in takes an optional input the game never shows: the
+    // snow globe of act6_2 is shaken by IA_ControllerShake (BP_rush_of_blood_snowglobe's examine,
+    // bUseOptionalInputAction), its prompt naming only the left stick's turn and the way back. The
+    // shake: a PlayStation pad shaken, the game's six-axis on (UBatesInputRouter::DoControllerShakeWork:
+    // five of thirty samples past 2.0); another pad's left stick up or down (its vendor modifier
+    // gives a PlayStation pad's stick nothing); the keyboard's W or S (MC_Gameplay).
+    static bool ShakeStageNow()
+    {
+        if (!g_interaction || !obj::IsSame(g_interactionKey)) return false;
+        int64_t current = -1;
+        if (!obj::ReadInt(g_interaction, L"CurrentStage", current)) return false;
+        std::vector<UObject*> components;
+        obj::ReadObjectArray(g_interaction, L"BlueprintCreatedComponents", components);
+        for (UObject* component : components)
+        {
+            if (!obj::IsLive(component) || !obj::IsA(component, L"BatesInteractionStageExamine")) continue;
+            int64_t index = -1;
+            bool optional = false;
+            UObject* action = nullptr;
+            obj::ReadInt(component, L"Stage", index);
+            obj::ReadBool(component, L"bUseOptionalInputAction", optional);
+            obj::ReadObject(component, L"InputActionAssigned", action);
+            if (index == current && optional && obj::IsLive(action) && obj::ObjectName(action) == L"IA_ControllerShake") return true;
+        }
+        return false;
+    }
+
     void InteractionsFeature::Help(std::vector<std::wstring>& out)
     {
         using hotkeys::Command;
+        if (ShakeStageNow())
+        {
+            const bool pad = input::CurrentScheme() == input::Scheme::Gamepad;
+            out.push_back(locale::Mod(!pad                         ? L"help.shake"
+                                      : input::PlayStationPrompts() ? L"help.shake.ps"
+                                                                    : L"help.shake.pad"));
+        }
         if (FramingLed())
             out.push_back(locale::Mod(input::CurrentScheme() == input::Scheme::Gamepad ? L"help.nudge.pad" : L"help.nudge",
                                       {hotkeys::SpokenKey(Command::Where), hotkeys::SpokenKey(Command::Beacon)}));

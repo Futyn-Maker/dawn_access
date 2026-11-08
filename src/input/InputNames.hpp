@@ -53,6 +53,10 @@ namespace da::input
     // Localized name of the pointing device for the scheme ("mouse" / "right stick").
     std::wstring PointerName();
 
+    // Whether the game draws its prompts for a PlayStation pad (the player's controller setting,
+    // else the pad connected).
+    bool PlayStationPrompts();
+
     void InvalidateCache();
 
     // Watches the keyboard, mouse and gamepad so speech can tell what the player asked for

@@ -6,13 +6,26 @@ namespace da::speech::rules
 {
     bool Interrupting(const std::wstring& policy)
     {
-        return policy == L"focus" || policy == L"now" || policy == L"urgent" || policy == L"replace" || policy == L"replace-kept" ||
-               policy == L"repeat" || policy == L"stop";
+        return policy == L"focus" || policy == L"now" || policy == L"urgent" || policy == L"replace" || policy == L"repeat" || policy == L"stop";
     }
 
     double Speaking(const std::wstring& text)
     {
         return static_cast<double>(text.size()) / kReaderPace;
+    }
+
+    std::vector<TurnLine> TurnOrder(const TurnPlan& plan, const std::wstring& page)
+    {
+        std::vector<TurnLine> out;
+        if (!plan.cut)
+        {
+            out.push_back({page, false, L"replace-after"});
+            return out;
+        }
+        out.push_back({page, true, L"replace"});
+        for (const auto& line : plan.kept)
+            out.push_back({line, false, L"replace-kept"});
+        return out;
     }
 
     TurnPlan Turn(const std::vector<Said>& said, const std::wstring& page, double now)

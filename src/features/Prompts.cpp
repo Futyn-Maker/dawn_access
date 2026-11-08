@@ -212,8 +212,11 @@ namespace da::features
             }
             auto prompts = ui::Prompts(nullptr);
             // The menus' own prompts (IA_UI_*) linger on the bar a moment after a page goes; in
-            // play they ask nothing.
-            std::erase_if(prompts, [](const ui::Prompt& p) { return str::StartsWith(p.action, L"IA_UI_"); });
+            // play they ask nothing, but for a document's transcript drawn now, whose scroll
+            // (IA_UI_Scroll, "Scroll") the bar shows beside its other keys: the audit found it unread
+            // at every long page (s52, s57, Hannah's diary in s58).
+            const bool document = now - hud::DocumentDrawnAt() < 0.5;
+            std::erase_if(prompts, [&](const ui::Prompt& p) { return str::StartsWith(p.action, L"IA_UI_") && !(document && p.action == L"IA_UI_Scroll"); });
             // A hint the HUD shows with it is said first.
             if (!prompts.empty()) g_hintFirst.Asked(now);
             if (HoldForHint(now)) return;
