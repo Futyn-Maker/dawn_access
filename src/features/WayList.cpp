@@ -77,7 +77,7 @@ namespace da::ways
                 {
                     if (j == i) continue;
                     const Entry& other = entries[j];
-                    const bool counts = !other.closedOff && (other.chosen || (!other.behind && !other.unreachable && !other.unjudged && !other.used &&
+                    const bool counts = !other.closedOff && (other.chosen || (!other.behind && !other.unreachable && !other.unjudged &&
                                                                               (!other.way || listedWays.count(j) > 0)));
                     if (!counts || !enters(i, j)) continue;
                     onRoadOf[i] = static_cast<int>(j);

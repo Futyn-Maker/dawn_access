@@ -1087,67 +1087,24 @@ namespace da::features
             return true;
         }
 
-        // ---- the things she has used --------------------------------------------------------
+        // ---- the thing she has just used --------------------------------------------------------
 
-        // The things the player has used (ways::Entry::used), by the names the levels' scripts call
-        // them (I_hannahs_trophy): the same name stands for the same thing where the game puts a
-        // place to use again in a later chapter. Kept in the mod's folder (used.txt, a name a line),
-        // so that a session going on from a save knows what the sessions before used.
-        std::set<std::wstring> g_used;
-        bool g_usedRead = false;
-        double g_usedAskedAt = -10.0;
         // The thing she has just used, led to no more for now (look::JustUsed), and the last one said so.
         look::JustUsed g_justUsed;
         UObject* g_justUsedLogged = nullptr;
+        double g_usedAskedAt = -10.0;
 
-        std::wstring UsedPath()
-        {
-            const auto dir = diag::ModDirectory();
-            return dir.empty() ? std::wstring() : dir + L"\\used.txt";
-        }
-
-        void ReadUsed()
-        {
-            if (g_usedRead) return;
-            const auto path = UsedPath();
-            if (path.empty()) return;
-            g_usedRead = true;
-            std::ifstream in{std::filesystem::path(path)};
-            std::string line;
-            while (std::getline(in, line))
-            {
-                while (!line.empty() && (line.back() == static_cast<char>(13) || line.back() == ' ')) line.pop_back();
-                if (!line.empty()) g_used.insert(str::Utf8ToWide(line));
-            }
-            log::Info(L"explore: {} thing(s) used before, by {}", g_used.size(), path);
-        }
-
-        bool Used(const std::wstring& coreName)
-        {
-            ReadUsed();
-            return !coreName.empty() && g_used.count(coreName) > 0;
-        }
-
-        // While she is bound to an interaction: the use location it was begun from is used
-        // (bInteractionInProgress), and kept so.
+        // While she is bound to an interaction: the use location it was begun from
+        // (bInteractionInProgress) has just been used.
         void NoteUsed(double now)
         {
             if (now - g_usedAskedAt < 0.5) return;
             g_usedAskedAt = now;
-            ReadUsed();
             for (UObject* actor : g_useLocations)
             {
                 UseState state;
                 if (!obj::IsLive(actor) || !ReadUseState(actor, state) || !state.inProgress) continue;
                 g_justUsed.Used(actor);
-                std::wstring core;
-                const auto label = UseLocationLabel(actor, core);
-                if (core.empty() || !g_used.insert(core).second) continue;
-                log::Info(L"explore: \"{}\" ({}) is used: its road keeps the ways along it in the list from now on, unless it is chosen", label, core);
-                const auto path = UsedPath();
-                if (path.empty()) continue;
-                std::ofstream out{std::filesystem::path(path), std::ios::app | std::ios::binary};
-                out << str::WideToUtf8(core) << "\n";
             }
         }
 
@@ -3093,7 +3050,6 @@ namespace da::features
                 e.earlier = t.reach == 1 || t.reach == 3;
                 // Listed at the last look: a thing at once, a way once judged and kept.
                 e.shown = !t.hidden && (!t.way || t.passed);
-                e.used = !t.way && Used(t.coreName);
                 e.streams = t.way && !t.streams.empty();
                 e.passed = t.passed;
                 e.epoch = t.rowEpoch;
@@ -8401,10 +8357,8 @@ namespace da::features
             {
                 if (u.way) continue;
                 const auto judged = std::find_if(g_targets.begin(), g_targets.end(), [&](const Target& t) { return t.actor == u.actor; });
-                // A thing used before is not gone to again (ways::Entry::used).
-                const bool goneTo = (judged == g_targets.end() ||
-                                     !(judged->offPath || judged->behind || judged->unreachable || judged->room == rooms::Verdict::Apart)) &&
-                                    (!Used(u.coreName) || u.actor == g_selected);
+                const bool goneTo = judged == g_targets.end() ||
+                                    !(judged->offPath || judged->behind || judged->unreachable || judged->room == rooms::Verdict::Apart);
                 things.push_back(Thing{Aim(u), goneTo, u.actor});
             }
             std::erase_if(fresh,

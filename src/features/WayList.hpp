@@ -47,7 +47,6 @@ namespace da::ways
         bool known = true;        // its road is known now: the navigation mesh, the map, the path she is held to
         bool earlier = false;     // an earlier map found it reachable, or beyond a door, and this one has not judged it yet
         bool shown = false;       // listed at the last look (a way: judged and listed)
-        bool used = false;        // a thing the player has used before, here or where the game put it before
         bool streams = false;     // a way of no story that streams in more of the world (StreamsMore)
         // The list's verdict, kept from look to look: whether the row rule has judged it since it
         // came, and the index of the target whose road it lies on, or -1.
@@ -71,11 +70,11 @@ namespace da::ways
     // that two ways never leave each other out, nor a road that is itself left out leaves a way
     // out. A way behind, unreachable, unjudged, reached or chosen is not judged; a road counts only
     // from a target listed and not closed off (the road to a closed-off thing ends short of it, a
-    // dead end no walk gets through), and not from a thing the player has used before unless she
-    // chose it: she has no more cause to walk there. The game uses one place in several chapters
-    // (the lodge in chapters 2 and 5), and a way it turns on later can lie on the roads to things
-    // seen long before, which the player does not walk to again (Andrey, 2026-11-08). An entry
-    // whose verdict is `kept` keeps it, and counts as a road as it stands.
+    // dead end no walk gets through), used before or not: a road that left ways out only while its
+    // thing was not chosen offered the shed's way on in act6_4 and took it back the moment Andrey's
+    // list came to the scarecrow he had looked at (research/sessions/s61-play.log, 18:48:44 to
+    // 18:48:47), and he asked for the rule to go ("let it be what it is"). An entry whose verdict is
+    // `kept` keeps it, and counts as a road as it stands.
     // Returns, for each entry, the index of the target whose road it lies on, or -1.
     std::vector<int> RowRule(const std::vector<Entry>& entries, const Enters& enters);
 

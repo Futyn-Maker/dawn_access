@@ -1789,25 +1789,6 @@ TEST_CASE("with nothing else listed a way is judged as the list settles, and onc
     CHECK(e[0].onRoadOf == 1);
 }
 
-TEST_CASE("a thing used before gives no road that keeps a way out of the list, unless it is chosen")
-{
-    // Andrey on chapter 5's lodge (2026-11-08): the game puts its places to use again in later
-    // chapters, and a way it turns on later can lie on the roads to things seen long before, which he
-    // does not walk to again.
-    std::vector<ways::Entry> e(2);
-    e[0].way = true;
-    e[0].hasBox = true;
-    e[0].distance = 800.0;
-    e[1].hasBox = true;
-    e[1].distance = 1300.0;
-    const auto enters = [](size_t way, size_t other) { return way == 0 && other == 1; };
-    CHECK(ways::RowRule(e, enters)[0] == 1); // a thing not used yet: the way is left out
-    e[1].used = true;
-    CHECK(ways::RowRule(e, enters)[0] == -1); // used: the way is listed
-    e[1].chosen = true;
-    CHECK(ways::RowRule(e, enters)[0] == 1); // chosen again: the walk there sets it off
-}
-
 namespace
 {
     // The deer's hill on 2026-11-08 (research/sessions/s57-full.log, 01:28:12.3 to 01:28:17), in
@@ -2058,4 +2039,21 @@ TEST_CASE("a hold resumed after a scene that moved her begins a new map: the lod
     // A short exchange where she stands keeps the map: its roads hold.
     CHECK_FALSE(ways::MovedFromMap(40.0));
     CHECK_FALSE(ways::MovedFromMap(ways::kMovedFromMap));
+}
+
+TEST_CASE("a way on the road to a thing stays left out whichever target is chosen: the shed's exit, 2026-11-08")
+{
+    // research/sessions/s61-play.log, 18:48:44 to 18:48:47: T_exit_shed, 12 m off, on the road to the
+    // scarecrow he had looked at, 85 m off. A road that left ways out only while its thing was chosen
+    // listed the way, and took it back as his list came to the scarecrow; Andrey asked for the rule to go.
+    std::vector<ways::Entry> e(2);
+    e[0].way = true;
+    e[0].hasBox = true;
+    e[0].distance = 1233.0;
+    e[1].hasBox = true;
+    e[1].distance = 8463.0;
+    const auto enters = [](size_t way, size_t other) { return way == 0 && other == 1; };
+    CHECK(ways::RowRule(e, enters)[0] == 1);
+    e[1].chosen = true;
+    CHECK(ways::RowRule(e, enters)[0] == 1);
 }
