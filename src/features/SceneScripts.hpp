@@ -133,6 +133,10 @@ namespace da::scripts
         bool story = false;                   // walking in moves the scene on
         std::vector<std::wstring> calls;      // on the way on, in order
         std::vector<std::wstring> activities; // named on the way on
+        // Moves the scene on only by sending a companion on ahead (`sentOn`, by name), which counts
+        // only where the level waits for that companion (WeighCompanions).
+        bool sentOnly = false;
+        std::vector<std::wstring> sentOn;
     };
 
     // What a trigger's script turns on or off when she walks into the volume or out of it
@@ -156,6 +160,18 @@ namespace da::scripts
 
     // Every question of the state machines in a script, judged. `source` names the script.
     std::vector<Poll> ParsePolls(const std::wstring& script, const std::wstring& source);
+
+    // A companion sent on ahead moves the scene on only where a scene of the level waits for that
+    // companion to come into a volume, and that wait moves the scene on by itself: Act2_2's story
+    // waits for Jessica in T_EnterMineChoice to start the mine's choice, and its companion's machine
+    // sends her on volume by volume as Mike walks. act5_2's companion's machine sends Matt about the
+    // radio tower as Emily walks, and no scene waits for him there: its volumes came and went from
+    // the list as ways on, said reached and gone with nothing of the story behind them (2026-11-08).
+    // A companion no scene of the level ever waits for is weighed here, once, over every question of
+    // the level's scripts (`polls`, all of them); one a scene waits for at some time only counts while
+    // that wait is asked (Waits::Judge). Returns how many questions it judged no longer to move the
+    // scene on.
+    size_t WeighCompanions(std::vector<Poll>& polls);
 
     // A state's question whether a character is moving (SF_IsCharacterMoving, the game's
     // UBatesGameScriptInterface::IsCharacterMoving) and whether walking on moves the scene on: after
@@ -247,6 +263,11 @@ namespace da::scripts
         bool AskedNow(double now, const std::wstring& trigger, bool player) const;
         // Whether a state other than `state` of the machine is known to be the one it stands in.
         bool ElsewhereNow(double now, const Poll& poll) const;
+        // Whether a scene waits now for a companion the question sends on, the player's character
+        // `character` not being that companion: a wait of the story's for her in a volume, asked
+        // within kAskedWithin (WeighCompanions). The deer's scene waits for Matt while he is the
+        // player, and is over long before Emily walks the tower with him.
+        bool CompanionAwaited(double now, const Poll& poll, const std::wstring& character) const;
 
         struct Asking
         {

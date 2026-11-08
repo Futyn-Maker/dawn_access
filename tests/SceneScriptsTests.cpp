@@ -1807,3 +1807,196 @@ gRegisteredStatemachines.Event_t_disable_cigar_box_leave = {
     // A script of no trigger has no switches.
     CHECK(scripts::ParseActivitySwitches(L"SF_SetEnableActivity(sm, {activities = \"I_x\"})").empty());
 }
+
+namespace
+{
+    // act5_2's scene03_calling_for_help_ai.lua, the companion's machine in the radio tower: Emily
+    // walking into T_Tower_FuseBox_To_Telescope has Matt lead her to the radio.
+    const std::wstring kTowerMatt = LR"lua(
+function Scene03_calling_for_help_ai_State_10(sm)
+  Debug_SetSMEDStateID(sm, 5300)
+  if SF_IsBoundToActivity(sm, {characters = "Emily",
+      activity = "I_UseCurcuitBreaker"}) then
+    M_JumpToState(sm,16)
+    return
+  end
+end
+function Scene03_calling_for_help_ai_State_16(sm)
+  Debug_SetSMEDStateID(sm, 5330)
+  SF_OrderForceIdle(sm, {character = "Matt"})
+end
+function Scene03_calling_for_help_ai_State_17(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 5350)
+  SF_Comment(sm, {comment = "Power on, Player has moved far enough away from the door that LEAD orders are ok to use"})
+  SF_OrderLeadTo(sm, {lead = "Player",
+      alterMovementStyle = true,
+      character = "Matt",
+      allowTurningWhileWaiting = true,
+      useMarkerHeading = true,
+      marker = "M_ai_TowerInside_Radio",
+      moveType = "Marker",
+      movementStyle = "Lead_3m"})
+end
+function Scene03_calling_for_help_ai_State_18(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 5353)
+  if SF_IsInTrigger(sm, {gameObjects = "Player",
+      trigger = "T_Tower_FuseBox_To_Telescope"}) then
+    -- Auto-generated JumpToState(), since the condition has a link
+    M_JumpToState(sm,17)
+    return
+  end
+end
+gRegisteredStatemachines.Scene03_calling_for_help_ai = {
+    startState = 18,
+    name = 'Scene03_calling_for_help_ai',
+    states = {
+      {nextState = nil,	func = Scene03_calling_for_help_ai_State_10, 	funcList = 'Is Emily Bound To Activity I_UseCurcuitBreaker'},
+      {nextState = 11,	func = Scene03_calling_for_help_ai_State_16, 	funcList = 'Emily interacting with circuit breaker, Force Matt to idle.'},
+      {nextState = 10,	func = Scene03_calling_for_help_ai_State_17, 	funcList = 'Power on, Order Matt to Lead Player to M_ai_TowerInside_Radio using Lead_3m'},
+      {nextState = nil,	func = Scene03_calling_for_help_ai_State_18, 	funcList = 'Is Player In Trigger T_Tower_FuseBox_To_Telescope'},
+    },
+  }
+)lua";
+
+    // act5_2's scene01_deer_confrontation_deerwall.lua: the deer's scene waits for Matt, the
+    // player then, in the herd's first stage.
+    const std::wstring kDeerWall = LR"lua(
+function Scene01_deer_confrontation_deerwall_State_2(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 5986)
+  if SF_IsInTrigger(sm, {gameObjects = "Matt",
+      trigger = "T_DeerWall_Stage1"}) then
+    -- Auto-generated JumpToState(), since the condition has a link
+    M_JumpToState(sm,6)
+    return
+  end
+end
+function Scene01_deer_confrontation_deerwall_State_3(sm)
+  Debug_SetSMEDStateID(sm, 5988)
+  if SF_IsInTrigger(sm, {gameObjects = "Matt",
+      trigger = "T_DeerWall_Stage2"}) then
+    SF_SendMessageToActivity(sm, {activities = "A_deer_wall",
+        message = "Activate"})
+    M_JumpToState(sm,4)
+    return
+  end
+end
+function Scene01_deer_confrontation_deerwall_State_4(sm)
+  Debug_SetSMEDStateID(sm, 5990)
+  SF_End(sm, {statemachine = nil})
+  return
+end
+function Scene01_deer_confrontation_deerwall_State_6(sm)
+  Debug_SetSMEDStateID(sm, 5996)
+  SF_SendMessageToActivity(sm, {activities = "A_deer_wall",
+      message = "Activate"})
+end
+gRegisteredStatemachines.Scene01_deer_confrontation_deerwall = {
+    startState = 1,
+    name = 'Scene01_deer_confrontation_deerwall',
+    states = {
+      {nextState = nil,	func = Scene01_deer_confrontation_deerwall_State_2, 	funcList = 'Is Matt In Trigger T_DeerWall_Stage1'},
+      {nextState = nil,	func = Scene01_deer_confrontation_deerwall_State_3, 	funcList = 'Is Matt In Trigger T_DeerWall_Stage2'},
+      {nextState = nil,	func = Scene01_deer_confrontation_deerwall_State_4, 	funcList = 'End '},
+      {nextState = 3,	func = Scene01_deer_confrontation_deerwall_State_6, 	funcList = 'Send Activate Message To Activity A_deer_wall'},
+    },
+  }
+)lua";
+
+    // Act2_2's scene03_gotomine.lua: the story waits for Jessica at the mine's choice.
+    const std::wstring kGoToMine = LR"lua(
+function Scene03_gotomine_State_2(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 361)
+  if SF_IsInTrigger(sm, {gameObjects = "Jessica",
+      trigger = "T_EnterMineChoice"}) then
+    -- Auto-generated JumpToState(), since the condition has a link
+    M_JumpToState(sm,3)
+    return
+  end
+end
+function Scene03_gotomine_State_3(sm)
+  Debug_SetSMEDStateID(sm, 364)
+  SF_StartActivity(sm, {activities = "A_EnterMineChoice"})
+end
+function Scene03_gotomine_State_4(sm)
+  Debug_SetSMEDStateID(sm, 366)
+  if SF_IsActivityComplete(sm, {activity = "A_EnterMineChoice"}) then
+    M_JumpToState(sm,6)
+    return
+  end
+end
+gRegisteredStatemachines.Scene03_gotomine = {
+    startState = 1,
+    name = 'Scene03_gotomine',
+    states = {
+      {nextState = nil,	func = Scene03_gotomine_State_2, 	funcList = 'Is Jessica In Trigger T_EnterMineChoice'},
+      {nextState = 4,	func = Scene03_gotomine_State_3, 	funcList = 'Start Activity A_EnterMineChoice'},
+      {nextState = nil,	func = Scene03_gotomine_State_4, 	funcList = 'Is Activity A_EnterMineChoice Complete?'},
+    },
+  }
+)lua";
+
+    std::vector<Poll> Level(std::initializer_list<std::pair<const std::wstring*, const wchar_t*>> scripts)
+    {
+        std::vector<Poll> all;
+        for (const auto& [script, source] : scripts)
+        {
+            auto polls = scripts::ParsePolls(*script, source);
+            all.insert(all.end(), polls.begin(), polls.end());
+        }
+        return all;
+    }
+}
+
+TEST_CASE("scripts: a companion sent on moves the scene on only while a scene waits for her, the radio tower, 2026-11-08")
+{
+    // Alone in its level the tower's question moves the scene on only by sending Matt on, and no
+    // scene of the level waits for Matt: it is no way on.
+    auto alone = Level({{&kTowerMatt, L"scene03_calling_for_help_ai"}});
+    const Poll* lead = Find(alone, L"T_Tower_FuseBox_To_Telescope");
+    REQUIRE(lead);
+    CHECK(lead->story);
+    CHECK(lead->sentOnly);
+    CHECK(Has(lead->sentOn, L"Matt"));
+    CHECK(scripts::WeighCompanions(alone) == 1);
+    CHECK_FALSE(Find(alone, L"T_Tower_FuseBox_To_Telescope")->story);
+    // In act5_2 the deer's scene waits for Matt, while he is the player, long before: the question
+    // stands, but moves the scene on only while that wait is asked about someone else.
+    auto act = Level({{&kTowerMatt, L"scene03_calling_for_help_ai"}, {&kDeerWall, L"scene01_deer_confrontation_deerwall"}});
+    CHECK(scripts::WeighCompanions(act) == 0);
+    scripts::Waits waits;
+    waits.SetPolls(act);
+    waits.Asked(100.0, L"T_Tower_FuseBox_To_Telescope", true);
+    CHECK(waits.Judge(100.2, L"T_Tower_FuseBox_To_Telescope", L"Emily").kind == scripts::Waits::Kind::NoStory);
+    // Were the deer's scene asking about Matt then, sending him on would move it on.
+    waits.Asked(100.1, L"T_DeerWall_Stage1", false);
+    CHECK(waits.Judge(100.2, L"T_Tower_FuseBox_To_Telescope", L"Emily").kind == scripts::Waits::Kind::Waiting);
+    // Not while the player is Matt himself.
+    CHECK(waits.Judge(100.2, L"T_Tower_FuseBox_To_Telescope", L"Matt").kind == scripts::Waits::Kind::NoStory);
+}
+
+TEST_CASE("scripts: Jessica led on to the mine moves the scene on while the story waits for her at its choice")
+{
+    auto act = Level({{&kJessicaLoop, L"aicontroller"}, {&kGoToMine, L"scene03_gotomine"}});
+    const Poll* mine = Find(act, L"T_MineEntrance");
+    REQUIRE(mine);
+    CHECK(mine->sentOnly);
+    CHECK(Has(mine->sentOn, L"Jessica"));
+    const Poll* choice = Find(act, L"T_EnterMineChoice");
+    REQUIRE(choice);
+    CHECK(choice->story);
+    CHECK_FALSE(choice->sentOnly);
+    CHECK(scripts::WeighCompanions(act) == 0);
+    CHECK(Find(act, L"T_MineEntrance")->story);
+    scripts::Waits waits;
+    waits.SetPolls(act);
+    waits.Asked(10.0, L"T_MineEntrance", true);
+    waits.Asked(10.0, L"T_EnterMineChoice", false);
+    CHECK(waits.Judge(10.5, L"T_MineEntrance", L"Mike").kind == scripts::Waits::Kind::Waiting);
+    // The choice's wait no longer asked (the choice made), the entrance moves nothing on.
+    waits.Asked(20.0, L"T_MineEntrance", true);
+    CHECK(waits.Judge(20.5, L"T_MineEntrance", L"Mike").kind == scripts::Waits::Kind::NoStory);
+}

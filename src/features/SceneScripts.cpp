@@ -299,8 +299,28 @@ namespace da::scripts
             std::vector<std::wstring> calls;
             std::vector<std::wstring> activities;
             std::vector<int> waits;
-            bool enables = false; // turns on an activity (SF_SetEnableActivity with enable = true)
+            bool enables = false;             // turns on an activity (SF_SetEnableActivity with enable = true)
+            std::vector<std::wstring> sentOn; // the companions sent on ahead (SentOn calls' "character")
         };
+
+        // The companions a text sends on ahead: the "character" of each SF_OrderLeadTo and
+        // SF_OrderMoveTo.
+        std::vector<std::wstring> SentOnIn(const std::wstring& text)
+        {
+            static const std::wregex call(LR"re((SF_[A-Za-z0-9_]+)\s*\(\s*sm\s*,\s*\{([^}]*)\})re");
+            static const std::wregex character(LR"re(character\s*=\s*"([^"]*)")re");
+            std::vector<std::wstring> sent;
+            for (auto it = std::wsregex_iterator(text.begin(), text.end(), call); it != std::wsregex_iterator(); ++it)
+            {
+                if (!SentOn((*it)[1].str())) continue;
+                const auto args = (*it)[2].str();
+                std::wsmatch m;
+                if (!std::regex_search(args, m, character)) continue;
+                const auto name = str::Trim(m[1].str());
+                if (!name.empty() && std::find(sent.begin(), sent.end(), name) == sent.end()) sent.emplace_back(name);
+            }
+            return sent;
+        }
 
         // Whether a text turns an activity on for the player to use.
         bool EnablesIn(const std::wstring& text)
@@ -323,6 +343,10 @@ namespace da::scripts
                 if (std::find(path.activities.begin(), path.activities.end(), a) == path.activities.end()) path.activities.push_back(a);
             }
             if (EnablesIn(text)) path.enables = true;
+            for (const auto& c : SentOnIn(text))
+            {
+                if (std::find(path.sentOn.begin(), path.sentOn.end(), c) == path.sentOn.end()) path.sentOn.push_back(c);
+            }
         }
 
         void WalkFrom(const Machine& machine, int state, Path& path, std::set<int>& visited)
@@ -687,8 +711,11 @@ namespace da::scripts
                         p.activities = path.activities;
                         // Turning on a thing to use once she stands there moves the scene on too: she can
                         // only bring it about by standing there.
-                        p.story = !q.negated && waits && leaves && (MovesOn(path.calls, path.activities, true) || path.enables) &&
+                        const bool alone = MovesOn(path.calls, path.activities, false) || path.enables;
+                        p.story = !q.negated && waits && leaves && (alone || MovesOn(path.calls, path.activities, true)) &&
                                   !ComesBack(machine, number, path);
+                        p.sentOnly = p.story && !alone;
+                        if (p.sentOnly) p.sentOn = path.sentOn;
                         polls.push_back(std::move(p));
                         restsIn.push_back(path.waits);
                     }
@@ -705,13 +732,13 @@ namespace da::scripts
         for (size_t i = 0; i < polls.size(); ++i)
         {
             Poll& p = polls[i];
-            if (p.story || p.negated || !p.waits || !p.leaves) continue;
+            if ((p.story && !p.sentOnly) || p.negated || !p.waits || !p.leaves) continue;
             const auto machine = machines.find(p.machine);
             if (machine == machines.end()) continue;
             const auto asks = [&](const Question& q) { return std::find(q.triggers.begin(), q.triggers.end(), p.trigger) != q.triggers.end(); };
             for (const int rest : restsIn[i])
             {
-                if (rest == p.state || p.story) continue;
+                if (rest == p.state || (p.story && !p.sentOnly)) continue;
                 const auto found = machine->second.states.find(rest);
                 if (found == machine->second.states.end()) continue;
                 std::vector<std::pair<const Block*, Question>> asked;
@@ -724,10 +751,21 @@ namespace da::scripts
                     const auto questions = QuestionsIn(block.condition);
                     if (std::any_of(questions.begin(), questions.end(), asks) || JumpsIn(block.text).empty()) continue;
                     const Path on = Follow(machine->second, rest, block.text);
-                    if (MovesOn(on.calls, on.activities, true) || on.enables)
+                    if (MovesOn(on.calls, on.activities, false) || on.enables)
                     {
                         p.story = true;
+                        p.sentOnly = false;
+                        p.sentOn.clear();
                         break;
+                    }
+                    if (MovesOn(on.calls, on.activities, true))
+                    {
+                        p.story = true;
+                        p.sentOnly = true;
+                        for (const auto& c : on.sentOn)
+                        {
+                            if (std::find(p.sentOn.begin(), p.sentOn.end(), c) == p.sentOn.end()) p.sentOn.push_back(c);
+                        }
                     }
                 }
             }
@@ -739,18 +777,61 @@ namespace da::scripts
             changed = false;
             for (size_t i = 0; i < polls.size(); ++i)
             {
-                if (polls[i].story || polls[i].negated || !polls[i].waits || !polls[i].leaves) continue;
-                for (size_t k = 0; k < polls.size() && !polls[i].story; ++k)
+                Poll& p = polls[i];
+                if ((p.story && !p.sentOnly) || p.negated || !p.waits || !p.leaves) continue;
+                for (size_t k = 0; k < polls.size() && !(p.story && !p.sentOnly); ++k)
                 {
                     const Poll& other = polls[k];
-                    if (!other.story || other.machine != polls[i].machine || !SameCharacter(other.who, polls[i].who)) continue;
+                    if (k == i || !other.story || other.machine != p.machine || !SameCharacter(other.who, p.who)) continue;
                     if (std::find(restsIn[i].begin(), restsIn[i].end(), other.state) == restsIn[i].end()) continue;
-                    polls[i].story = true;
-                    changed = true;
+                    // As that question moves the scene on: by itself, or only by the companions it
+                    // sends on.
+                    if (!other.sentOnly)
+                    {
+                        p.story = true;
+                        p.sentOnly = false;
+                        p.sentOn.clear();
+                        changed = true;
+                        continue;
+                    }
+                    if (!p.story)
+                    {
+                        p.story = true;
+                        p.sentOnly = true;
+                        changed = true;
+                    }
+                    for (const auto& c : other.sentOn)
+                    {
+                        if (std::find(p.sentOn.begin(), p.sentOn.end(), c) != p.sentOn.end()) continue;
+                        p.sentOn.push_back(c);
+                        changed = true;
+                    }
                 }
             }
         }
         return polls;
+    }
+
+    size_t WeighCompanions(std::vector<Poll>& polls)
+    {
+        std::vector<std::wstring> awaited;
+        for (const auto& p : polls)
+        {
+            if (!p.story || p.sentOnly || p.who.empty() || str::EqualsNoCase(p.who, L"Player")) continue;
+            if (std::none_of(awaited.begin(), awaited.end(), [&](const std::wstring& a) { return str::EqualsNoCase(a, p.who); })) awaited.push_back(p.who);
+        }
+        size_t demoted = 0;
+        for (auto& p : polls)
+        {
+            if (!p.story || !p.sentOnly) continue;
+            const bool waitedFor = std::any_of(p.sentOn.begin(), p.sentOn.end(),
+                                               [&](const std::wstring& c)
+                                               { return std::any_of(awaited.begin(), awaited.end(), [&](const std::wstring& a) { return str::EqualsNoCase(a, c); }); });
+            if (waitedFor) continue;
+            p.story = false;
+            ++demoted;
+        }
+        return demoted;
     }
 
     std::vector<MoveWait> ParseMoveWaits(const std::wstring& script, const std::wstring& source)
@@ -826,6 +907,20 @@ namespace da::scripts
         return now - (player ? found->second.player : found->second.any) <= kAskedWithin;
     }
 
+    bool Waits::CompanionAwaited(double now, const Poll& poll, const std::wstring& character) const
+    {
+        for (const auto& companion : poll.sentOn)
+        {
+            if (str::EqualsNoCase(companion, character) || str::EqualsNoCase(companion, L"Player")) continue;
+            for (const auto& wait : m_polls)
+            {
+                if (!wait.story || wait.sentOnly || !str::EqualsNoCase(wait.who, companion)) continue;
+                if (AskedNow(now, wait.trigger, false) && !ElsewhereNow(now, wait)) return true;
+            }
+        }
+        return false;
+    }
+
     bool Waits::ElsewhereNow(double now, const Poll& poll) const
     {
         for (const auto& other : m_polls)
@@ -849,7 +944,8 @@ namespace da::scripts
         {
             if (p.trigger != trigger || !(str::EqualsNoCase(p.who, L"Player") || str::EqualsNoCase(p.who, character))) continue;
             if (!verdict.poll) verdict.poll = &p;
-            if (p.story) story.push_back(&p);
+            // Sending a companion on moves the scene on only while a scene waits for that companion.
+            if (p.story && (!p.sentOnly || CompanionAwaited(now, p, character))) story.push_back(&p);
         }
         if (!verdict.poll) return verdict;
         verdict.kind = Kind::NoStory;

@@ -48,13 +48,16 @@ namespace da::ways
         bool earlier = false;     // an earlier map found it reachable, or beyond a door, and this one has not judged it yet
         bool shown = false;       // listed at the last look (a way: judged and listed)
         bool used = false;        // a thing the player has used before, here or where the game put it before
+        bool streams = false;     // a way of no story that streams in more of the world (StreamsMore)
         // The list's verdict, kept from look to look: whether the row rule has judged it since it
         // came, and the index of the target whose road it lies on, or -1.
         bool passed = false;
         int onRoadOf = -1;
-        // The hold the verdict was given in (Lister::NewHold), and whether it stands as it is at this
-        // judgement (Lister::Judge sets it): a verdict of the hold given before the list froze.
+        // The stretch of story (Lister::StoryMoved) and the hold (Lister::NewHold) the verdict was
+        // given in, and whether it stands as it is at this judgement (Lister::Judge sets it): a
+        // verdict of the hold given before the list froze, or a listed way's.
         int epoch = -1;
+        int hold = -1;
         bool kept = false;
     };
 
@@ -75,6 +78,16 @@ namespace da::ways
     // whose verdict is `kept` keeps it, and counts as a road as it stands.
     // Returns, for each entry, the index of the target whose road it lies on, or -1.
     std::vector<int> RowRule(const std::vector<Entry>& entries, const Enters& enters);
+
+    // A trigger that only streams in more of the world (StreamsMore) is a way on only while no way
+    // of the story leads on: one the list offers, or leaves out on a listed road. The game streams a
+    // section in as she walks toward it, so a way of the story leads through as well; the trigger is
+    // the way on only where the map stops at ground the game has not loaded and nothing of the story
+    // is reachable (the asylum's grounds, 2026-11-07). In the lodge on 2026-11-08 the candlelight's
+    // way stood listed with four triggers into the kitchen, the cinema and the cellar beside it; one
+    // walked to loaded the cinema and left the list, nothing of the story behind it ("decorative").
+    // Returns, for each entry, whether it is such a trigger with a way of the story listed.
+    std::vector<bool> StreamsSuperseded(const std::vector<Entry>& entries);
 
     // A way's volume as a box turned about the upright: its middle, its sides along its own axes,
     // its yaw in degrees, and the box round it on the world's axes (the actor's bounds).
@@ -240,24 +253,46 @@ namespace da::ways
     // they took ways off the list and put them back as she went (the mine on 2026-11-05: two ways on
     // listed, left out and listed again within five seconds as Mike walked to the totem). After the
     // freeze only a target that came since, or one whose road-giver has left the list, is judged; a
-    // new hold, or the story moving on, judges every one afresh.
+    // new hold, or the ground grown, judges every one afresh.
+    //
+    // The story moving on judges afresh every target but a way listed: what the list has offered
+    // stays offered for the hold while the scene still waits for her there. On the tower's hill on
+    // 2026-11-08 the security light's way was said as news, and 25 s later a trigger Emily walked
+    // through on the way to the totem moved the story on; judged again, the way lay on the road to the
+    // death whistle and left the list without a word, and ten seconds later she walked into it and its
+    // scene began (research/sessions/s57-full.log, 01:32:54 to 01:33:28).
+    //
+    // Only a verdict the row rule gave counts: a way it could not weigh at a judgement (unjudged then)
+    // waits for the judgement that weighs it, and is not listed meanwhile. On the deer's hill on
+    // 2026-11-08 the list settled while the things beside the path still counted as listed, so both
+    // ways waited for the map; a third of a second later the things were out, both ways were listed
+    // with no verdict, and the next judgement kept the nearer one, though the walk to the farther ran
+    // through it (01:28:15).
     class Lister
     {
     public:
         // Whether the row rule judges the list at this look.
         bool Due(const Settling& settle, bool settlesNow, double now) const;
         // Each entry's `unjudged` at this look, and, when `due`, the row rule over the entries:
-        // `onRoadOf` and `passed` for every one. Without `roads` (neither a map nor the navigation
-        // mesh judges them: a hand-over before its first map, a search that laid the grid afresh)
-        // a list that stands stays as it is.
+        // `onRoadOf` and `passed` for every one it weighed. Without `roads` (neither a map nor the
+        // navigation mesh judges them: a hand-over before its first map, a search that laid the grid
+        // afresh) a list that stands stays as it is.
         void Judge(std::vector<Entry>& entries, const Settling& settle, bool due, bool roads, bool mapDone, double now, const Enters& enters);
         // The next look judges the list: a target was judged, came or went.
         void Again()
         {
             m_judgedAt = -10.0;
         }
-        // A hold begun afresh, or the story moved on: every verdict is given anew.
+        // A hold begun afresh, or the ground grown under the list: every verdict is given anew.
         void NewHold()
+        {
+            ++m_epoch;
+            ++m_hold;
+            m_frozen = false;
+            Again();
+        }
+        // The story moved on: every verdict is given anew but a listed way's.
+        void StoryMoved()
         {
             ++m_epoch;
             m_frozen = false;
@@ -274,8 +309,16 @@ namespace da::ways
         }
 
     private:
+        // Whether an entry's verdict stands as the rule gave it in this hold: given since the last
+        // change of story, or a listed way's of the hold.
+        bool Weighed(const Entry& e) const
+        {
+            return e.passed && (e.epoch == m_epoch || (e.way && e.shown && e.hold == m_hold));
+        }
+
         double m_judgedAt = -10.0;
         int m_epoch = 0;
+        int m_hold = 0;
         bool m_frozen = false;
     };
 
@@ -424,6 +467,22 @@ namespace da::ways
     // put off under Chris's feet, the mod chose the kitchen's door 47 m behind, and the walk turned
     // back to it.
     bool WalkGoesOn(const void* walkFor, const void* chosen);
+
+    // The other character standing in a walk's way, if any: the nearest of `others` within
+    // kInTheWayReach of her and within kInTheWayAngle of the way to `toward`, as the game's own steering
+    // stops her short of a companion rather than walking her into him. In the lodge's cinema airlock on
+    // 2026-11-08 Chris stood in the middle of the 2.4 m airlock, 91 cm from Ashley, as she turned back
+    // west toward the bedroom door the scene waited at, and she stood there pushing, at no speed,
+    // whichever way the walk leant (research/sessions/s57-full.log, 02:04:56). Returns the index, or -1.
+    constexpr double kInTheWayReach = 150.0;
+    constexpr double kInTheWayAngle = 60.0;
+    int InTheWay(const Vec& here, const Vec& toward, const std::vector<Vec>& others);
+
+    // Whether a walk whose target left the list ended in arriving: a way on's volume she stands in
+    // (`wayVolume` and `inside`), which the scene it set going took off the list in the same look,
+    // is reached and said so; a use location, or a volume she is not in, has gone. In the lodge's
+    // cinema on 2026-11-08 the walk into the door slam's volume ended in silence (s57).
+    bool WalkEndsArrived(bool wayVolume, bool inside);
     // A target the list stood on as out of reach when its verdicts were frozen (`reachWhenFrozen`:
     // 2 closed off, 3 beyond a door, as Exploration's reach map judges; 0 not judged, 1 reached) that
     // a later map reaches (`reachNow` 1): the ground has grown, a door has opened beside her, and

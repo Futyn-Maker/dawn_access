@@ -89,6 +89,16 @@ namespace da::ways
         return onRoadOf;
     }
 
+    std::vector<bool> StreamsSuperseded(const std::vector<Entry>& entries)
+    {
+        const bool leads = std::any_of(entries.begin(), entries.end(), [](const Entry& e)
+                                       { return e.way && !e.streams && !e.unreachable && !e.behind && !e.unjudged && !e.closedOff; });
+        std::vector<bool> out(entries.size(), false);
+        for (size_t i = 0; i < entries.size(); ++i)
+            out[i] = leads && entries[i].way && entries[i].streams;
+        return out;
+    }
+
     Box TurnedBox(const Vec& middle, const Vec& size, double yaw)
     {
         Box box;
@@ -188,18 +198,23 @@ namespace da::ways
         {
             if (settle.Keeping() && e.passed) continue;
             const bool waitsForMap = !mapDone && anyShown && !e.shown;
-            e.unjudged = e.way && (!settle.Settled() || waitsForMap || !(e.known || (settle.Kept() && e.earlier)));
+            // Between two judgements a way the rule has not weighed waits for the next.
+            const bool unweighed = !due && !Weighed(e);
+            e.unjudged = e.way && (!settle.Settled() || waitsForMap || !(e.known || (settle.Kept() && e.earlier)) || unweighed);
         }
         if (!due) return;
         m_judgedAt = now;
         for (auto& e : entries)
-            e.kept = e.passed && e.epoch == m_epoch && (m_frozen || (e.way && e.shown));
+            e.kept = Weighed(e) && (m_frozen || (e.way && e.shown));
         const auto onRoadOf = RowRule(entries, enters);
         for (size_t i = 0; i < entries.size(); ++i)
         {
             entries[i].onRoadOf = onRoadOf[i];
+            // A way the rule could not weigh keeps no verdict of this judgement's.
+            if (entries[i].way && entries[i].unjudged) continue;
             entries[i].passed = true;
             entries[i].epoch = m_epoch;
+            entries[i].hold = m_hold;
         }
     }
 
@@ -303,6 +318,31 @@ namespace da::ways
     bool WalkGoesOn(const void* walkFor, const void* chosen)
     {
         return walkFor != nullptr && chosen == walkFor;
+    }
+
+    int InTheWay(const Vec& here, const Vec& toward, const std::vector<Vec>& others)
+    {
+        const double wx = toward.x - here.x, wy = toward.y - here.y;
+        const double way = std::hypot(wx, wy);
+        if (way < 1.0) return -1;
+        int best = -1;
+        double nearest = kInTheWayReach;
+        for (size_t i = 0; i < others.size(); ++i)
+        {
+            const double ox = others[i].x - here.x, oy = others[i].y - here.y;
+            const double apart = std::hypot(ox, oy);
+            if (apart > nearest || apart < 1.0) continue;
+            const double cosine = (ox * wx + oy * wy) / (apart * way);
+            if (cosine < std::cos(kInTheWayAngle * std::numbers::pi / 180.0)) continue;
+            nearest = apart;
+            best = static_cast<int>(i);
+        }
+        return best;
+    }
+
+    bool WalkEndsArrived(bool wayVolume, bool inside)
+    {
+        return wayVolume && inside;
     }
 
     bool Reopened(int reachWhenFrozen, int reachNow)

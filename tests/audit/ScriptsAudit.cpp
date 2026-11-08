@@ -52,17 +52,33 @@ int main(int argc, char** argv)
         if (entry.is_regular_file() && entry.path().extension() == ".lua") files.push_back(entry.path());
     }
     std::sort(files.begin(), files.end());
+    // The questions of each act's scripts together, as the game runs one act's at a time: a
+    // companion sent on is weighed against the waits of its own act (scripts::WeighCompanions).
+    std::vector<std::pair<std::wstring, std::vector<scripts::Poll>>> acts;
     for (const auto& file : files)
     {
         const auto script = ReadWide(file);
-        const auto source = std::filesystem::relative(file, argv[1]).wstring();
-        for (const auto& p : scripts::ParsePolls(script, source))
+        const auto relative = std::filesystem::relative(file, argv[1]);
+        const auto source = relative.wstring();
+        const auto act = relative.begin() != relative.end() ? relative.begin()->wstring() : std::wstring();
+        if (acts.empty() || acts.back().first != act) acts.emplace_back(act, std::vector<scripts::Poll>{});
+        auto polls = scripts::ParsePolls(script, source);
+        acts.back().second.insert(acts.back().second.end(), polls.begin(), polls.end());
+    }
+    for (auto& [act, polls] : acts)
+    {
+        scripts::WeighCompanions(polls);
+        for (const auto& p : polls)
         {
             std::wstring calls;
             for (const auto& c : p.calls)
                 calls += (calls.empty() ? L"" : L" ") + c;
-            std::printf("%s\t%s\t%d\t%s\t%s\t%d\t%d\t%d\t%d\t%s\n", Narrow(p.source).c_str(), Narrow(p.machine).c_str(), p.state, Narrow(p.who).c_str(),
-                        Narrow(p.trigger).c_str(), p.negated ? 1 : 0, p.waits ? 1 : 0, p.leaves ? 1 : 0, p.story ? 1 : 0, Narrow(calls).c_str());
+            std::wstring sent;
+            for (const auto& c : p.sentOn)
+                sent += (sent.empty() ? L"" : L" ") + c;
+            std::printf("%s\t%s\t%d\t%s\t%s\t%d\t%d\t%d\t%d\t%s\t%s\n", Narrow(p.source).c_str(), Narrow(p.machine).c_str(), p.state, Narrow(p.who).c_str(),
+                        Narrow(p.trigger).c_str(), p.negated ? 1 : 0, p.waits ? 1 : 0, p.leaves ? 1 : 0, p.story ? 1 : 0, Narrow(calls).c_str(),
+                        p.sentOnly ? Narrow(sent).c_str() : "");
         }
     }
     return 0;

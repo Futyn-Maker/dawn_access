@@ -1807,3 +1807,198 @@ TEST_CASE("a thing used before gives no road that keeps a way out of the list, u
     e[1].chosen = true;
     CHECK(ways::RowRule(e, enters)[0] == 1); // chosen again: the walk there sets it off
 }
+
+namespace
+{
+    // The deer's hill on 2026-11-08 (research/sessions/s57-full.log, 01:28:12.3 to 01:28:17), in
+    // seconds of that minute: the hold's first map begun at 12.29 and done at 15.89; the way of the
+    // herd's first stage (T_DeerWall_Stage1, 20 cm on foot) reached at 12.39, the way to the deer's
+    // charge (T_DeerCombat_Start_Evil, 453 cm) at 12.53, the walk to the charge running through the
+    // first stage's slab; a thing far beyond, listed at the first looks and found beside the path the
+    // game holds her to at the first judgement (15.33), which the list settled at by its while.
+    // Returns, for the near way, the times it was listed.
+    std::vector<double> RunDeerHill(std::vector<ways::Entry>& e)
+    {
+        enum
+        {
+            Stage1,
+            Evil,
+            Thing,
+            Count
+        };
+        const double knownAt[Count] = {12.39, 12.53, 1000.0};
+        const double distance[Count] = {20.0, 453.0, 5720.0};
+        ways::Settling settle;
+        settle.Reset();
+        settle.Begin(12.29);
+        ways::Lister lister;
+        e.assign(Count, ways::Entry{});
+        for (int i = 0; i < Count; ++i)
+        {
+            e[i].way = i != Thing;
+            e[i].hasBox = true;
+            e[i].distance = distance[i];
+        }
+        const auto enters = [](size_t way, size_t other) { return way == Stage1 && other == Evil; };
+        std::vector<bool> listed(Count, false);
+        listed[Thing] = true; // listed before any judgement: beside the path is found only then
+        bool judgedOnce = false;
+        std::vector<double> listedAt;
+        std::vector<bool> wasKnown(Count, false);
+        for (double now = 12.39; now < 17.0; now += 0.05)
+        {
+            size_t judged = 0;
+            for (int i = 0; i < Count; ++i)
+            {
+                const bool known = now >= knownAt[i];
+                if (known && !wasKnown[i]) lister.Again();
+                wasKnown[i] = known;
+                judged += known ? 1 : 0;
+                e[i].known = known;
+            }
+            const bool settlesNow = settle.Update(now, now >= 15.89, judged, Count);
+            const bool due = lister.Due(settle, settlesNow, now);
+            // The thing is found beside the path at the first judgement, before the list is weighed.
+            if (due) judgedOnce = true;
+            e[Thing].unreachable = judgedOnce;
+            for (int i = 0; i < Count; ++i)
+                e[i].shown = listed[i] && (!e[i].way || e[i].passed);
+            lister.Judge(e, settle, due, true, now >= 15.89, now, enters);
+            for (int i = 0; i < Count; ++i)
+                listed[i] = !e[i].unreachable && !(e[i].way && (e[i].unjudged || e[i].onRoadOf >= 0));
+            if (listed[Stage1]) listedAt.push_back(now);
+        }
+        return listedAt;
+    }
+}
+
+TEST_CASE("a way the row rule has not weighed is not listed, and a verdict it never gave is never kept: the deer's hill, 2026-11-08")
+{
+    std::vector<ways::Entry> e;
+    // Now: the herd's first stage is never listed, and the last judgement leaves it on the road to the
+    // deer's charge, which stays listed.
+    const auto now = RunDeerHill(e);
+    CHECK(now.empty());
+    CHECK(e[0].onRoadOf == 1);
+    CHECK(e[1].onRoadOf == -1);
+    CHECK_FALSE(e[1].unjudged);
+}
+
+TEST_CASE("the story moved on judges every target afresh but a way listed: the security light, 2026-11-08")
+{
+    // Emily on the tower's hill (research/sessions/s57-full.log, 01:32:54 to 01:33:18): the security
+    // light's way listed and said as news; a trigger she walked through moved the story on, and the
+    // roads judged again ran the walk to the death whistle through the way.
+    ways::Settling settle;
+    settle.Reset();
+    settle.Begin(0.0);
+    ways::Lister lister;
+    std::vector<ways::Entry> e(2);
+    e[0].way = true; // the security light
+    e[0].hasBox = true;
+    e[0].known = true;
+    e[0].distance = 921.0;
+    e[1].hasBox = true; // the death whistle
+    e[1].distance = 3788.0;
+    e[1].unreachable = true; // not reached by the map at the way's judgement
+    const auto enters = [](size_t way, size_t other) { return way == 0 && other == 1; };
+    REQUIRE(settle.Update(3.0, true, 2, 2));
+    lister.Judge(e, settle, lister.Due(settle, true, 3.0), true, true, 3.0, enters);
+    REQUIRE(e[0].onRoadOf == -1);
+    e[0].shown = true;
+    // The story moves on; the death whistle's road now known.
+    e[1].unreachable = false;
+    e[1].shown = true;
+    lister.StoryMoved();
+    lister.Judge(e, settle, lister.Due(settle, false, 25.0), true, true, 25.0, enters);
+    CHECK(e[0].onRoadOf == -1); // the way stays listed
+    CHECK_FALSE(e[0].unjudged);
+    lister.Judge(e, settle, lister.Due(settle, false, 27.0), true, true, 27.0, enters);
+    CHECK(e[0].onRoadOf == -1);
+    // A way not listed is judged afresh as the story moves on, and a new hold judges every one.
+    e[0].shown = false;
+    lister.StoryMoved();
+    lister.Judge(e, settle, lister.Due(settle, false, 30.0), true, true, 30.0, enters);
+    CHECK(e[0].onRoadOf == 1);
+    e[0].onRoadOf = -1;
+    e[0].shown = true;
+    lister.NewHold();
+    lister.Judge(e, settle, lister.Due(settle, false, 31.0), true, true, 31.0, enters);
+    CHECK(e[0].onRoadOf == 1);
+}
+
+TEST_CASE("a trigger that only streams the world in gives way to a way of the story: the lodge, 2026-11-08")
+{
+    // Ashley at the lodge's balcony (research/sessions/s57-full.log, 01:58:17): the candlelight's way
+    // 75 cm off, and four triggers into the sections of the kitchen, the cinema and the cellar.
+    std::vector<ways::Entry> e(4);
+    for (auto& one : e)
+    {
+        one.way = true;
+        one.hasBox = true;
+    }
+    e[0].distance = 75.0; // T_candlelight
+    e[1].streams = true;  // T_STREAMING_SECTION_HALL_TO_KITCHEN_LOAD
+    e[1].distance = 539.0;
+    e[2].streams = true; // T_STREAMING_SECTION_HALL_TO_CINEMA_LOAD
+    e[2].distance = 1051.0;
+    e[3].streams = true; // T_STREAMING_SECTION_CINEMA_TO_CELLAR_LOAD
+    e[3].distance = 2211.0;
+    auto out = ways::StreamsSuperseded(e);
+    CHECK_FALSE(out[0]);
+    CHECK(out[1]);
+    CHECK(out[2]);
+    CHECK(out[3]);
+    // A way of the story left out on a listed road leads on all the same.
+    e[0].onRoadOf = 2;
+    CHECK(ways::StreamsSuperseded(e)[2]);
+    // None reachable (the asylum's grounds, the map stopped at ground not loaded): the triggers lead.
+    e[0].closedOff = true;
+    out = ways::StreamsSuperseded(e);
+    CHECK_FALSE(out[1]);
+    CHECK_FALSE(out[2]);
+    e[0].closedOff = false;
+    e[0].unreachable = true;
+    CHECK_FALSE(ways::StreamsSuperseded(e)[1]);
+    // Nor does one not judged yet, or behind on the path.
+    e[0].unreachable = false;
+    e[0].unjudged = true;
+    CHECK_FALSE(ways::StreamsSuperseded(e)[1]);
+    e[0].unjudged = false;
+    e[0].behind = true;
+    CHECK_FALSE(ways::StreamsSuperseded(e)[1]);
+    // A thing to use does not lead on: the story may wait beyond the section.
+    e[0].behind = false;
+    e[0].way = false;
+    CHECK_FALSE(ways::StreamsSuperseded(e)[1]);
+}
+
+TEST_CASE("a walk whose way left the list as she walked into it has arrived: the cinema's door slam, 2026-11-08")
+{
+    // The walk to the door slam's volume (research/sessions/s57-full.log, 02:03:13.5): she stood in
+    // it, its scene took it off the list in the same look; the walk ended and nothing was heard.
+    CHECK(ways::WalkEndsArrived(true, true));
+    CHECK_FALSE(ways::WalkEndsArrived(true, false)); // turned off before she got there: gone
+    CHECK_FALSE(ways::WalkEndsArrived(false, true)); // a use location the game took away: gone
+}
+
+TEST_CASE("the character standing in a walk's way: Chris in the cinema airlock, 2026-11-08")
+{
+    // Ashley at (832, -9121), the walk turned back west to the way's next corner at (305, -8997);
+    // Chris 91 cm off and 976 cm from the airlock door the walk was aimed at (453, -8206): on the
+    // west side of her, in the way (research/sessions/s57-full.log, 02:04:57).
+    const ways::Vec here{832, -9121, 0};
+    const ways::Vec corner{305, -8997, 0};
+    const ways::Vec chris{743, -9138, 0}; // 91 cm west-south-west of her
+    CHECK(std::hypot(chris.x - here.x, chris.y - here.y) == doctest::Approx(90.6).epsilon(0.02));
+    CHECK(ways::InTheWay(here, corner, {chris}) == 0);
+    // Walking east to the vase from the doorway (926, -9141), Chris 148 cm behind: not in the way.
+    const ways::Vec door{926, -9141, 0};
+    const ways::Vec east{985, -9157, 0};
+    const ways::Vec behind{778, -9130, 0};
+    CHECK(ways::InTheWay(door, east, {behind}) == -1);
+    // Beside the way, or past reach: not in it; the nearer of two in it is named.
+    CHECK(ways::InTheWay(here, corner, {ways::Vec{832, -9021, 0}}) == -1);
+    CHECK(ways::InTheWay(here, corner, {ways::Vec{600, -9070, 0}}) == -1);
+    CHECK(ways::InTheWay(here, corner, {ways::Vec{720, -9110, 0}, chris}) == 1);
+}
