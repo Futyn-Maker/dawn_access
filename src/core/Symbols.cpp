@@ -169,6 +169,8 @@ namespace da::sym
             {L"UBatesShootingStage.CachedScreenDistanceToClosestTarget", 0x378}, // float
             {L"UBatesShootingStage.CachedYaw", 0x390},                           // float
             {L"UBatesShootingStage.CachedPitch", 0x394},                         // float
+            // Where the stage's aim starts: CachedYaw and CachedPitch turn the camera's line to it.
+            {L"UBatesShootingStage.InitialTargetWorldPosition", 0x330},          // TVector<double>
             // The fade the HUD lays over the picture between scenes: whether it goes to black
             // (or holds black) rather than coming back from it.
             {L"UBatesUIFade.bFadeToBlack", 0x2d1}, // bool

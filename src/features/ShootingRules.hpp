@@ -3,6 +3,9 @@
 // the aim sound leads to, when the word to fire is said, and the blip's pace, side and pitch. What
 // a target is and whether a shot now would take it are the game's, read by features/Shooting.
 
+#include "features/Vec.hpp"
+
+#include <cstddef>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -193,4 +196,70 @@ namespace da::shoot
         double interval = kDilemmaPace;
     };
     DilemmaLead LeadDilemma(const DilemmaPlace& p, int option, bool highlighted, bool invert);
+
+    // ---- the aim put on a target (the walk key in a shooting stage) ----------------------------
+
+    // The walk key snaps the stage's aim onto a target and holds it there, as the walk takes the
+    // character to one (Andrey on 2026-11-08: the windows are too short to aim in by ear; "pressing G
+    // or Square snaps onto the target. It does not shoot, only the player can fire"). The stage's aim
+    // is two angles (UBatesShootingStage.CachedYaw and CachedPitch, degrees of offset from the
+    // direction to InitialTargetWorldPosition): every frame UpdateStage aims along the start's
+    // direction turned by them (TargetWorldPosition = camera + |D0| * (Rotator(D0) + (pitch, yaw))),
+    // its camera looks there, and a target is highlighted while its projection lies within its radius
+    // of the aim's (research/shooting/notes.md, sections 1 to 3). The angles that aim along the line
+    // to a target are the target's own direction from the camera less the start's, as the game's aim
+    // assist measures a target (CalculateAimAssistTargetBounds: YawOffsetFromStart,
+    // PitchOffsetFromStart); on that line the two project to the same point, whatever the screen,
+    // the field of view, the aim's sensitivity or the device. The game clamps the angles itself before
+    // it aims by them, every frame: to the stage's camera limits, or with aim assist on to the bounds of
+    // its targets' own offsets, which reach every target. The yaw's difference is taken the short way
+    // round, as the camera limits measure it, unless aim assist is on (`assisted`): then as the game's
+    // assist measures a target, unwrapped (a start at 179 degrees and a target at -179 is -358), since
+    // its sticky aim pulls the aim to that very value, and the short way would have the two pulling
+    // against each other at the seam.
+    struct AimAngles
+    {
+        double yaw = 0.0;
+        double pitch = 0.0;
+    };
+    using features::world::Vec;
+    AimAngles AimOnto(const Vec& camera, const Vec& start, const Vec& target, bool assisted = false);
+    // The direction the stage aims along for its angles, as UpdateStage composes it (for the tests).
+    Vec AimDirection(const Vec& camera, const Vec& start, const AimAngles& angles);
+
+    // Whether the walk key puts the aim on a target in a stage: one with targets to shoot, the
+    // player's to fire. Not the stage aimed only (the rifle scope of act3_2, which the aim itself
+    // completes), not one whose targets the game hides (it resolves those itself), not one a highlight
+    // ends (bFinishOnHighlight: the aim put on a target would choose it), and not the death room's
+    // dilemma, whose aim is the choice (Andrey: "my request for the auto-aim function does not apply
+    // to the choice of who to shoot, Chris or Ashley, in Chapter 6").
+    struct SnapStage
+    {
+        size_t targets = 0;
+        bool aimingOnly = false;
+        bool targetsHidden = false;
+        bool finishOnHighlight = false;
+        bool dilemma = false;
+    };
+    bool Snaps(const SnapStage& stage);
+
+    // Whether the aim stays held on its target: until the stage ends, the target is no longer
+    // placed, or the player aims by herself, the stick, the mouse or the keys the game maps to its
+    // aim (IA_SequenceAim) moved; her own aim always wins, as her own steering ends the walk. Where
+    // the aim's keys cannot be read, whether she aims is not known (`aimKnown` false), and the aim
+    // is not held against what may be her own.
+    enum class Lock
+    {
+        Holds,
+        StageOver,
+        TargetGone,
+        PlayerAims,
+        AimUnknown,
+    };
+    Lock LockHolds(bool stageRuns, bool targetPlaced, bool playerAims, bool aimKnown = true);
+
+    // Whether the walk key may put the aim on a target now: not while the fire key is held. The shot
+    // has no trigger of its own (IA_SequenceShoot), so a held key fires the frame a target lights up,
+    // and the aim put on it would choose what is shot (the squirrel or the sack, the robin).
+    bool SnapNow(bool fireHeld);
 }

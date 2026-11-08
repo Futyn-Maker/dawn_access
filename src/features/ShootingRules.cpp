@@ -189,6 +189,62 @@ namespace da::shoot
         return s;
     }
 
+    namespace
+    {
+        constexpr double kDegrees = 180.0 / 3.14159265358979323846;
+
+        // The engine's FRotator of a direction (FVector::ToOrientationRotator): yaw about the up axis
+        // from the X axis, pitch up from the ground, in degrees.
+        AimAngles Orientation(const Vec& d)
+        {
+            return AimAngles{std::atan2(d.y, d.x) * kDegrees, std::atan2(d.z, std::hypot(d.x, d.y)) * kDegrees};
+        }
+
+        double ShortWay(double degrees)
+        {
+            degrees = std::fmod(degrees, 360.0);
+            if (degrees > 180.0) degrees -= 360.0;
+            if (degrees <= -180.0) degrees += 360.0;
+            return degrees;
+        }
+    }
+
+    AimAngles AimOnto(const Vec& camera, const Vec& start, const Vec& target, bool assisted)
+    {
+        const auto toStart = Orientation(Vec{start.x - camera.x, start.y - camera.y, start.z - camera.z});
+        const auto toTarget = Orientation(Vec{target.x - camera.x, target.y - camera.y, target.z - camera.z});
+        const double yaw = toTarget.yaw - toStart.yaw;
+        return AimAngles{assisted ? yaw : ShortWay(yaw), toTarget.pitch - toStart.pitch};
+    }
+
+    Vec AimDirection(const Vec& camera, const Vec& start, const AimAngles& angles)
+    {
+        const auto toStart = Orientation(Vec{start.x - camera.x, start.y - camera.y, start.z - camera.z});
+        const double yaw = (toStart.yaw + angles.yaw) / kDegrees;
+        const double pitch = (toStart.pitch + angles.pitch) / kDegrees;
+        // FRotator::Vector: (cos pitch cos yaw, cos pitch sin yaw, sin pitch).
+        return Vec{std::cos(pitch) * std::cos(yaw), std::cos(pitch) * std::sin(yaw), std::sin(pitch)};
+    }
+
+    bool Snaps(const SnapStage& stage)
+    {
+        return stage.targets > 0 && !stage.aimingOnly && !stage.targetsHidden && !stage.finishOnHighlight && !stage.dilemma;
+    }
+
+    Lock LockHolds(bool stageRuns, bool targetPlaced, bool playerAims, bool aimKnown)
+    {
+        if (!stageRuns) return Lock::StageOver;
+        if (!targetPlaced) return Lock::TargetGone;
+        if (!aimKnown) return Lock::AimUnknown;
+        if (playerAims) return Lock::PlayerAims;
+        return Lock::Holds;
+    }
+
+    bool SnapNow(bool fireHeld)
+    {
+        return !fireHeld;
+    }
+
     bool Cadence::Due(double now, bool onTarget, double interval)
     {
         const bool rose = onTarget && !m_onTarget;

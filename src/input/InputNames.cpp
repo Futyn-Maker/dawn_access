@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <chrono>
 #include <map>
 #include <memory>
@@ -192,14 +193,13 @@ namespace da::input
         // looks its details up by the name, and keeps them in the key, which is given back to it as
         // the call ends).
         template <class Read>
-        bool CallOnKey(const wchar_t* function, std::wstring_view keyName, const Read& read)
+        bool CallOnKeyOf(UObject* target, const wchar_t* function, std::wstring_view keyName, const Read& read)
         {
-            auto* lib = obj::FindObject(L"/Script/Engine.Default__KismetInputLibrary");
-            auto* fn = lib ? obj::FindFunction(lib, function) : nullptr;
+            auto* fn = target ? obj::FindFunction(target, function) : nullptr;
             if (!fn) return false;
             const std::wstring name(keyName);
             return obj::Call(
-                lib, fn,
+                target, fn,
                 [&](void* params)
                 {
                     for (auto* prop : fn->ForEachProperty())
@@ -220,6 +220,12 @@ namespace da::input
                         else if (prop->GetName() == L"Key") prop->DestroyValue(prop->ContainerPtrToValuePtr<void>(params));
                     }
                 });
+        }
+
+        template <class Read>
+        bool CallOnKey(const wchar_t* function, std::wstring_view keyName, const Read& read)
+        {
+            return CallOnKeyOf(obj::FindObject(L"/Script/Engine.Default__KismetInputLibrary"), function, keyName, read);
         }
 
         std::wstring EngineDisplayName(std::wstring_view keyName)
@@ -538,6 +544,54 @@ namespace da::input
         bool on = false;
         if (settings) obj::CallReturn(settings, L"GetUseSixAxis", [&](void* params, FProperty* returnValue) { obj::ReadBoolAt(params, returnValue, on); });
         return on;
+    }
+
+    std::optional<bool> ActionWorked(std::wstring_view actionName, double deadZone)
+    {
+        UObject* controller = obj::LocalPlayerController();
+        if (!controller) return std::nullopt;
+        // The action's keys, asked of the engine again every couple of seconds (a key rebound in the
+        // settings counts from then on).
+        struct Asked
+        {
+            std::vector<std::wstring> keys;
+            double at = -100.0;
+        };
+        static std::map<std::wstring, Asked> asked;
+        auto& known = asked[std::wstring(actionName)];
+        const double now = gamethread::NowSeconds();
+        if (now - known.at > 2.0)
+        {
+            known.keys = KeysOfAction(ActionByName(std::wstring(actionName)));
+            std::erase_if(known.keys, [](const std::wstring& key) { return key.empty() || key == L"None"; });
+            known.at = now;
+        }
+        if (known.keys.empty()) return std::nullopt;
+        for (const auto& key : known.keys)
+        {
+            if (key.empty() || key == L"None") continue;
+            // A stick at rest reads a little off its middle; a mouse at rest moves nothing, a key at
+            // rest is up.
+            const double least = IsGamepadKey(key) ? deadZone : 0.0;
+            double value = 0.0;
+            if (key.size() > 2 && key.compare(key.size() - 2, 2, L"2D") == 0)
+            {
+                // A stick or the mouse as one key of two axes: its vector, X and Y (FVector).
+                CallOnKeyOf(controller, L"GetInputVectorKeyState", key,
+                            [&](void* params, FProperty* prop)
+                            {
+                                if (prop->GetSize() < 2 * static_cast<int32_t>(sizeof(double))) return;
+                                const auto* v = static_cast<const double*>(prop->ContainerPtrToValuePtr<void>(params));
+                                value = std::hypot(v[0], v[1]);
+                            });
+            }
+            else
+            {
+                CallOnKeyOf(controller, L"GetInputAnalogKeyState", key, [&](void* params, FProperty* prop) { obj::ReadFloatAt(params, prop, value); });
+            }
+            if (std::fabs(value) > least) return true;
+        }
+        return false;
     }
 
     bool ToggleGrabOn()

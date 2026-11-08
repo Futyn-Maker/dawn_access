@@ -95,6 +95,12 @@ namespace da::features
             double maxYaw = 0.0;
             bool invertX = false;
             int dilemmaRegion = -2;
+            // The walk key's aim on a target (shoot::Snaps, shoot::AimOnto): whether the stage takes it,
+            // the pitch's limits beside the yaw's, and the target the aim is held on (-1 for none).
+            bool snaps = false;
+            double minPitch = 0.0;
+            double maxPitch = 0.0;
+            int locked = -1;
             UObject* shotWidget = nullptr; // a target's circle the game destroyed as shot
             int chosen = -1;               // the target the player chose by key
             int leading = -1;              // the target the sound led to at the last look
@@ -276,21 +282,25 @@ namespace da::features
             return gamestate::Paused() || watch::CurrentScreen() != nullptr;
         }
 
-        // The dilemma's measure as the stage keeps it (shoot::DilemmaAt): the yaw's limits from its
-        // camera settings (ShootingStageCameraSettings, MinYawAngle and MaxYawAngle), its middle
-        // (ChrisAshleyMiddleChoiceSize), whether a side reached commits (bFinishOnHighlight), and the
-        // player's setting that inverts the aiming's X axis (bInvertAimingXAxis).
-        void ReadDilemma(UObject* stage, Stage& s)
+        // The limits of the stage's aim, from its camera settings (ShootingStageCameraSettings:
+        // MinYawAngle, MaxYawAngle, MinPitchAngle, MaxPitchAngle), which UpdateInputAngles clamps it to.
+        void ReadLimits(UObject* stage, Stage& s)
         {
-            obj::ReadBool(stage, L"bFinishOnHighlight", s.finishOnHighlight);
-            obj::ReadFloat(stage, L"ChrisAshleyMiddleChoiceSize", s.middle);
             auto* camera = obj::FindProperty(stage, L"ShootingStageCameraSettings");
             void* settings = camera ? obj::ValuePtr(stage, camera) : nullptr;
-            if (settings)
-            {
-                obj::ReadFloatAt(settings, obj::StructMember(camera, L"MinYawAngle"), s.minYaw);
-                obj::ReadFloatAt(settings, obj::StructMember(camera, L"MaxYawAngle"), s.maxYaw);
-            }
+            if (!settings) return;
+            obj::ReadFloatAt(settings, obj::StructMember(camera, L"MinYawAngle"), s.minYaw);
+            obj::ReadFloatAt(settings, obj::StructMember(camera, L"MaxYawAngle"), s.maxYaw);
+            obj::ReadFloatAt(settings, obj::StructMember(camera, L"MinPitchAngle"), s.minPitch);
+            obj::ReadFloatAt(settings, obj::StructMember(camera, L"MaxPitchAngle"), s.maxPitch);
+        }
+
+        // The dilemma's measure as the stage keeps it (shoot::DilemmaAt): the yaw's limits
+        // (ReadLimits), its middle (ChrisAshleyMiddleChoiceSize), and the player's setting that
+        // inverts the aiming's X axis (bInvertAimingXAxis).
+        void ReadDilemma(UObject* stage, Stage& s)
+        {
+            obj::ReadFloat(stage, L"ChrisAshleyMiddleChoiceSize", s.middle);
             if (UObject* user = obj::FindFirstLive(L"BatesGameUserSettings")) obj::ReadBool(user, L"bInvertAimingXAxis", s.invertX);
         }
 
@@ -335,6 +345,8 @@ namespace da::features
             obj::ReadBool(stage, L"bHideTargets", s.targetsHidden);
             obj::ReadBool(stage, L"bHideReticule", s.reticleHidden);
             obj::ReadBool(stage, L"bIsChrisAshleyDilemma", s.dilemma);
+            obj::ReadBool(stage, L"bFinishOnHighlight", s.finishOnHighlight);
+            ReadLimits(stage, s);
             if (s.dilemma) ReadDilemma(stage, s);
             int64_t type = -1;
             obj::ReadInt(stage, L"ShootingType", type);
@@ -383,10 +395,13 @@ namespace da::features
                 // Chris, right: Ashley" left him asking what makes the choice).
                 if (!left.empty() && !right.empty()) speech::Announce(locale::Mod(L"shoot.dilemma", left, right));
             }
-            log::Info(L"shooting: {} begins ({}): type {}, {} target(s) [{}]; {}; aim assist {}; aiming only {}; targets {}, reticle {}", s.name, why, type,
-                      s.targets.size(), str::Join(logged, L"; "), s.timed ? std::format(L"{:.1f} s on the clock", s.timeLimit) : std::wstring(L"no clock"),
-                      Flag(stage, L"UBatesShootingStage.bUseAimAssist"), s.aimingOnly, s.targetsHidden ? L"hidden" : L"shown",
-                      s.reticleHidden ? L"hidden" : L"shown");
+            s.snaps = shoot::Snaps({s.targets.size(), s.aimingOnly, s.targetsHidden, s.finishOnHighlight, s.dilemma});
+            log::Info(L"shooting: {} begins ({}): type {}, {} target(s) [{}]; {}; aim assist {}; aiming only {}; targets {}, reticle {}; the aim between yaw "
+                      L"{:g} and {:g}, pitch {:g} and {:g}; {}",
+                      s.name, why, type, s.targets.size(), str::Join(logged, L"; "),
+                      s.timed ? std::format(L"{:.1f} s on the clock", s.timeLimit) : std::wstring(L"no clock"), Flag(stage, L"UBatesShootingStage.bUseAimAssist"),
+                      s.aimingOnly, s.targetsHidden ? L"hidden" : L"shown", s.reticleHidden ? L"hidden" : L"shown", s.minYaw, s.maxYaw, s.minPitch, s.maxPitch,
+                      s.snaps ? L"the walk key puts the aim on a target" : L"the walk key puts the aim on nothing here");
             // A timed stage draws its clock on every target as a ring: the timer cue marks it, as it
             // marks a timed choice. The key a shot takes is what the circles show, said once.
             if (s.timed) sounds::Play(sounds::Cue::Timer);
@@ -502,6 +517,62 @@ namespace da::features
                          s.timeLimit, str::Join(parts, L"; "));
         }
 
+        // ---- the aim put on a target --------------------------------------------------------
+
+        // Where the game's camera stands, as the stage's update asks it (GetCameraLocation).
+        bool CameraPlace(Vec& out)
+        {
+            UObject* controller = Controller();
+            UObject* camera = nullptr;
+            if (!controller || !obj::ReadObject(controller, L"PlayerCameraManager", camera) || !obj::IsLive(camera)) return false;
+            return VecReturn(camera, L"GetCameraLocation", out);
+        }
+
+        // The stage's aim turned onto a target (shoot::AimOnto): the game clamps it to its own limits
+        // and aims there from its next update on, and judges the highlight as ever. Only a stage that
+        // runs is written to.
+        bool PutAim(Stage& s, Target& t, shoot::AimAngles* put = nullptr)
+        {
+            if (!Started(s.stage)) return false;
+            const auto* start = static_cast<const double*>(sym::MemberOf(s.stage, L"UBatesShootingStage.InitialTargetWorldPosition"));
+            auto* yaw = static_cast<float*>(sym::MemberOf(s.stage, L"UBatesShootingStage.CachedYaw"));
+            auto* pitch = static_cast<float*>(sym::MemberOf(s.stage, L"UBatesShootingStage.CachedPitch"));
+            Vec eye;
+            Vec at;
+            if (!start || !yaw || !pitch || !CameraPlace(eye) || !TargetLocation(t, at)) return false;
+            const auto angles = shoot::AimOnto(eye, Vec{start[0], start[1], start[2]}, at, Flag(s.stage, L"UBatesShootingStage.bUseAimAssist"));
+            *yaw = static_cast<float>(angles.yaw);
+            *pitch = static_cast<float>(angles.pitch);
+            if (put) *put = angles;
+            return true;
+        }
+
+        // The game's dead zone of the aim's stick (MC_Gameplay: IA_SequenceAim on Gamepad_Right2D).
+        constexpr double kAimDeadZone = 0.1;
+
+        // The aim held on its target while the player does not aim herself (shoot::LockHolds): put on
+        // it again at each look, so that it stays on a target that moves.
+        void HoldAim(Stage& s)
+        {
+            if (s.locked < 0) return;
+            Target* t = nullptr;
+            for (auto& x : s.targets)
+            {
+                if (x.index == s.locked) t = &x;
+            }
+            Vec at;
+            const bool placed = t && TargetLocation(*t, at);
+            const auto aims = input::ActionWorked(L"IA_SequenceAim", kAimDeadZone);
+            const auto lock = shoot::LockHolds(Started(s.stage), placed, aims.value_or(false), aims.has_value());
+            if (lock == shoot::Lock::Holds && PutAim(s, *t)) return;
+            log::Info(L"shooting: the aim is no longer held on target {}: {}", s.locked,
+                      lock == shoot::Lock::PlayerAims   ? L"the player aims herself"
+                      : lock == shoot::Lock::AimUnknown ? L"the keys of the aim cannot be read, so the player's own aim cannot be told"
+                      : lock == shoot::Lock::StageOver  ? L"the stage is over"
+                                                        : L"the target is no longer placed");
+            s.locked = -1;
+        }
+
         // The aim sound: a blip on the side of the target, higher when it stands above the aim
         // and lower below, quicker as the aim nears it, and the double ping while the game would
         // take a shot on it. Where the game hides its targets, nothing leads to them: only the
@@ -515,6 +586,7 @@ namespace da::features
                 GuideDilemma(s, now);
                 return;
             }
+            HoldAim(s);
             Vec eye;
             double pitch = 0.0;
             double yaw = 0.0;
@@ -779,6 +851,13 @@ namespace da::features
                 speech::Now(locale::Mod(L"explore.notarget"));
                 return true;
             }
+            // The aim held on a target lets go of it: the target chosen now is the one the sound leads
+            // to, and the walk key puts the aim on it.
+            if (s.locked >= 0)
+            {
+                log::Info(L"shooting: the aim is no longer held on target {}: another target is being chosen", s.locked);
+                s.locked = -1;
+            }
             int at = 0;
             const int current = s.chosen >= 0 ? s.chosen : s.leading;
             for (size_t i = 0; i < s.targets.size(); ++i)
@@ -820,6 +899,40 @@ namespace da::features
             ToggleShootingSound();
             return true;
         }
+
+        // The walk key puts the aim on the target chosen, else on the one the sound leads to, and holds
+        // it there (HoldAim); nothing is said: the double ping says the game would take the shot, and
+        // the shot is the player's to fire. The dilemma is left as it is: its aim is the choice.
+        bool OnSnap()
+        {
+            Stage& s = g_stage;
+            if (!ShootingActive() || s.dilemma) return false;
+            const int index = s.chosen >= 0 ? s.chosen : s.leading;
+            Target* t = nullptr;
+            for (auto& x : s.targets)
+            {
+                if (x.index == index) t = &x;
+            }
+            // Not while the fire key is held: the shot would take whatever the aim is put on.
+            if (s.snaps && t && !shoot::SnapNow(input::ActionWorked(L"IA_SequenceShoot", kAimDeadZone).value_or(false)))
+            {
+                log::Info(L"shooting: the walk key puts the aim on nothing while the fire key is held");
+                speech::Now(locale::Mod(L"shoot.snap.release", input::KeyForAction(L"IA_SequenceShoot")));
+                return true;
+            }
+            shoot::AimAngles angles;
+            if (!s.snaps || !t || !PutAim(s, *t, &angles))
+            {
+                log::Info(L"shooting: the walk key puts the aim on nothing: {}", !s.snaps ? L"the stage takes no aim put on a target" : L"no target placed");
+                speech::Now(locale::Mod(L"explore.notarget"));
+                return true;
+            }
+            s.locked = t->index;
+            s.fire.Reset();
+            log::Info(L"shooting: the aim is put on target {} \"{}\" (yaw {:.2f}, pitch {:.2f}) and held there until the player aims herself", t->index, t->label,
+                      angles.yaw, angles.pitch);
+            return true;
+        }
     }
 
     void ShootingFeature::Install()
@@ -831,6 +944,7 @@ namespace da::features
         hotkeys::OnCommand(Command::PreviousTarget, &OnPrevious);
         hotkeys::OnCommand(Command::Where, &OnWhere);
         hotkeys::OnCommand(Command::Beacon, &OnAimSound);
+        hotkeys::OnCommand(Command::Walk, &OnSnap);
         hooks::OnScript(L"BatesShootingStageReticuleWidget", L"Show", &OnReticleShown);
         hooks::OnScript(L"BatesShootingStageTargetWidget", L"Setup", &OnTargetSetUp);
         hooks::OnScript(L"BatesShootingStageTargetWidget", L"SetHighlighted", &OnTargetHighlighted);
@@ -861,6 +975,7 @@ namespace da::features
         out.push_back(locale::Mod(pad ? L"help.shoot.pad" : L"help.shoot",
                                   {input::KeyForAction(L"IA_SequenceShoot"), hotkeys::SpokenKey(Command::NextTarget),
                                    hotkeys::SpokenKey(Command::PreviousTarget), hotkeys::SpokenKey(Command::Where), hotkeys::SpokenKey(Command::Beacon)}));
+        if (g_stage.snaps) out.push_back(locale::Mod(L"help.shoot.snap", {hotkeys::SpokenKey(Command::Walk), input::KeyForAction(L"IA_SequenceShoot")}));
     }
 
     bool ShootingActive()

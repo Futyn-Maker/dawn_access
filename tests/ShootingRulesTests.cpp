@@ -3,6 +3,7 @@
 #include "Support.hpp"
 #include "features/ShootingRules.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <vector>
 
@@ -314,4 +315,119 @@ TEST_CASE("the dilemma's sound leads to no side the player has not chosen, and t
     CHECK(lead.blip.pan < 0.0);
     // Within the chosen side: on target.
     CHECK(shoot::LeadDilemma(shoot::DilemmaAt(-3.0, -5.0, 3.7, 0.5), 0, true, false).blip.locked);
+}
+
+namespace
+{
+    // The angle in degrees between two directions.
+    double Apart(const shoot::Vec& a, const shoot::Vec& b)
+    {
+        const double dot = a.x * b.x + a.y * b.y + a.z * b.z;
+        const double la = std::sqrt(a.x * a.x + a.y * a.y + a.z * a.z);
+        const double lb = std::sqrt(b.x * b.x + b.y * b.y + b.z * b.z);
+        return std::acos(std::clamp(dot / (la * lb), -1.0, 1.0)) * 180.0 / 3.14159265358979323846;
+    }
+}
+
+TEST_CASE("the aim put on a target aims along the camera's line to it, wherever it stands, 2026-11-08")
+{
+    // The stage aims along the start's direction turned by its two angles (UpdateStage: Euler of
+    // MakeFromXZ(start - camera, up), pitch and yaw added, MakeFromEuler, Vector). The angles AimOnto
+    // gives must aim along the line from the camera to the target, for targets on every side, near
+    // and far, above and below, and for a start on either side of the yaw's seam at 180 degrees.
+    const std::vector<shoot::Vec> cameras{{0, 0, 0}, {4551.2, -7686.2, 3071.1}, {-27235.4, 12406.0, -5694.2}};
+    const std::vector<shoot::Vec> starts{{1000, 0, 0}, {-1000, 5, 40}, {-1000, -5, -40}, {300, 900, 120}, {-20, -1500, -300}};
+    const std::vector<shoot::Vec> targets{{1200, 150, 60}, {-990, -30, 10}, {-990, 40, 70}, {500, 700, 300}, {800, -1300, -500}, {50, 50, 900}};
+    int cases = 0;
+    for (const auto& c : cameras)
+    {
+        for (const auto& s0 : starts)
+        {
+            for (const auto& t0 : targets)
+            {
+                const shoot::Vec start{c.x + s0.x, c.y + s0.y, c.z + s0.z};
+                const shoot::Vec target{c.x + t0.x, c.y + t0.y, c.z + t0.z};
+                const auto angles = shoot::AimOnto(c, start, target);
+                CHECK(std::fabs(angles.yaw) <= 180.0);
+                const auto aimed = shoot::AimDirection(c, start, angles);
+                CHECK(Apart(aimed, t0) < 1e-6);
+                ++cases;
+            }
+        }
+    }
+    CHECK(cases == 90);
+    // Across the seam the yaw is taken the short way: a start at 179 degrees and a target at -179
+    // is 2 degrees to the right, not 358 to the left.
+    const shoot::Vec camera{0, 0, 0};
+    const double r = 1000.0;
+    const double d = 3.14159265358979323846 / 180.0;
+    const auto across = shoot::AimOnto(camera, {r * std::cos(179 * d), r * std::sin(179 * d), 0}, {r * std::cos(-179 * d), r * std::sin(-179 * d), 0});
+    CHECK(across.yaw == doctest::Approx(2.0).epsilon(1e-9));
+    CHECK(across.pitch == doctest::Approx(0.0).epsilon(1e-9));
+    // A target straight on the start's line asks for no turn at all; one higher up for pitch alone.
+    const auto ahead = shoot::AimOnto(camera, {1000, 0, 0}, {2000, 0, 0});
+    CHECK(std::fabs(ahead.yaw) < 1e-9);
+    CHECK(std::fabs(ahead.pitch) < 1e-9);
+    const auto up = shoot::AimOnto(camera, {1000, 0, 0}, {1000, 0, 1000});
+    CHECK(up.pitch == doctest::Approx(45.0));
+    CHECK(std::fabs(up.yaw) < 1e-9);
+}
+
+TEST_CASE("with aim assist on, the yaw is the game's own unwrapped offset, which aims the same way")
+{
+    // A start at 179 degrees and a target at -179: the camera limits measure 2 to the right; the
+    // game's aim assist measures -358 (CalculateAimAssistTargetBounds takes the two orientations'
+    // difference unwrapped) and pulls a highlighted aim there; written the short way, the two pulled
+    // against each other each frame.
+    const shoot::Vec camera{0, 0, 0};
+    const double r = 1000.0;
+    const double d = 3.14159265358979323846 / 180.0;
+    const shoot::Vec start{r * std::cos(179 * d), r * std::sin(179 * d), 0};
+    const shoot::Vec target{r * std::cos(-179 * d), r * std::sin(-179 * d), 0};
+    const auto assisted = shoot::AimOnto(camera, start, target, true);
+    CHECK(assisted.yaw == doctest::Approx(-358.0).epsilon(1e-9));
+    CHECK(Apart(shoot::AimDirection(camera, start, assisted), target) < 1e-6);
+    CHECK(shoot::AimOnto(camera, start, target, false).yaw == doctest::Approx(2.0).epsilon(1e-9));
+    // Away from the seam the two agree.
+    const auto plain = shoot::AimOnto(camera, {1000, 0, 0}, {1000, 300, 100}, false);
+    const auto both = shoot::AimOnto(camera, {1000, 0, 0}, {1000, 300, 100}, true);
+    CHECK(plain.yaw == doctest::Approx(both.yaw));
+    CHECK(plain.pitch == doctest::Approx(both.pitch));
+}
+
+TEST_CASE("the walk key puts the aim on targets to shoot, and not on the scope, hidden targets, a highlight that ends the stage or the dilemma")
+{
+    // research/mechanics/shooting_stages.tsv: the range's rounds, the Wendigo fights' stages of one
+    // target and of six (act7_2, act8_1).
+    CHECK(shoot::Snaps({1, false, false, false, false}));
+    CHECK(shoot::Snaps({6, false, false, false, false}));
+    // act3_2's rifle scope is aimed only, and its aim is what it waits for.
+    CHECK_FALSE(shoot::Snaps({0, true, false, false, false}));
+    // act7_2's barrel stage has no target.
+    CHECK_FALSE(shoot::Snaps({0, false, false, false, false}));
+    // act3_2's Wendigo_Dodge hides its targets and the game resolves it.
+    CHECK_FALSE(shoot::Snaps({1, false, true, false, false}));
+    // A stage a highlight ends: the aim put on a target would choose it.
+    CHECK_FALSE(shoot::Snaps({2, false, false, true, false}));
+    // The death room's dilemma, its first turn and each shot after it (Andrey: left as it is).
+    CHECK_FALSE(shoot::Snaps({2, false, true, true, true}));
+    CHECK_FALSE(shoot::Snaps({2, false, false, false, true}));
+}
+
+TEST_CASE("the aim is held on its target until the stage ends, the target goes, or the player aims herself")
+{
+    CHECK(shoot::LockHolds(true, true, false) == shoot::Lock::Holds);
+    CHECK(shoot::LockHolds(true, true, true) == shoot::Lock::PlayerAims);
+    CHECK(shoot::LockHolds(true, false, false) == shoot::Lock::TargetGone);
+    CHECK(shoot::LockHolds(false, true, false) == shoot::Lock::StageOver);
+    CHECK(shoot::LockHolds(false, false, true) == shoot::Lock::StageOver);
+    // The aim's keys cannot be read: the player's own aim cannot be told, so it is not held.
+    CHECK(shoot::LockHolds(true, true, false, false) == shoot::Lock::AimUnknown);
+}
+
+TEST_CASE("the walk key puts the aim on nothing while the fire key is held")
+{
+    // IA_SequenceShoot has no trigger: a held key fires the frame a target lights up.
+    CHECK(shoot::SnapNow(false));
+    CHECK_FALSE(shoot::SnapNow(true));
 }

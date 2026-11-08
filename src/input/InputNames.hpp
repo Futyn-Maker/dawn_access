@@ -5,6 +5,7 @@
 // gamepad as the game reads it (so the mod's chords answer in the menus as well as in play)
 // and the keys or the stick a walk is driven with.
 
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -60,6 +61,13 @@ namespace da::input
     // Whether the game's Motion Sensor Function is on (its controls settings), as the game's own
     // shake and tilt readings ask it (UBatesGameUserSettings::GetUseSixAxis).
     bool MotionSensorOn();
+
+    // Whether the player is working any key the game maps to an action, as the game's own player
+    // controller holds the keys' states (APlayerController::GetInputVectorKeyState for a stick or the
+    // mouse taken as one key of two axes, GetInputAnalogKeyState for the rest): a stick past
+    // `deadZone` of its throw, the mouse moved this frame, a key down. None where the action's keys
+    // cannot be read (no controller, no such action, no key mapped). Asked on the game thread.
+    std::optional<bool> ActionWorked(std::wstring_view actionName, double deadZone);
 
     // Whether the game's "toggle grab" setting is on
     // (UBatesGameUserSettings::GetUseToggleGrabForInteractions): one press takes hold of a thing and
