@@ -249,6 +249,16 @@ TEST_CASE("prompts: a staged shimmy's two-way input names the way on: act4_3's l
     CHECK(prompt::LinearForward(L"LeftRight", false).empty());
 }
 
+TEST_CASE("prompts: a page turned by a swipe names the way on by the swipe's own one-way action: Hannah's diary, 2026-11-08")
+{
+    // research/sessions/s58-whole.log, 11:19:46: the diary's stage 2 on IA_SwipeLeftRight, inverted;
+    // the one-way prompts the game drew were IA_Swipe_Left and IA_Swipe_Right ("left stick left").
+    // Built as IA_SwipeLeft, the action named no key and the way on was never said.
+    CHECK(prompt::LinearForward(L"IA_SwipeLeftRight", true) == L"IA_Swipe_Left");
+    CHECK(prompt::LinearForward(L"IA_SwipeLeftRight", false) == L"IA_Swipe_Right");
+    CHECK(prompt::LinearForward(L"IA_SwipeUpDown", false) == L"IA_Swipe_Up");
+}
+
 TEST_CASE("prompts: the tower radio's dial keeps its place in a global state, the station at 3 up the scale, chapter 6")
 {
     // act5_2's BP_Radio (research/mechanics/json_int/auto/bp_radio_b422d0.json): its stages keep the
@@ -262,4 +272,29 @@ TEST_CASE("prompts: the tower radio's dial keeps its place in a global state, th
     CHECK(std::wstring(dial->forward) == L"IA_RotateRightGesture");
     CHECK_FALSE(prompt::DialOf(L"BP_Deathmachinelever_C"));
     CHECK_FALSE(prompt::DialOf(L""));
+}
+
+TEST_CASE("prompts: a staged climb's steps sound as a pitch that rises on and falls back, the tower's ladder, 2026-11-08")
+{
+    // act5_2's BP_Tower_ladder: 20 steps (MaxAnimationStage), the left stick up climbs, down climbs back.
+    prompt::LinearProgress climb;
+    CHECK_FALSE(climb.Update(0, 20)); // the stage's first reading: no step
+    const auto one = climb.Update(1, 20);
+    REQUIRE(one);
+    CHECK(*one == doctest::Approx(0.05));
+    CHECK_FALSE(climb.Update(1, 20)); // the same step: nothing
+    const auto two = climb.Update(2, 20);
+    REQUIRE(two);
+    CHECK(*two > *one);
+    const auto back = climb.Update(1, 20);
+    REQUIRE(back);
+    CHECK(*back < *two);
+    const auto top = climb.Update(20, 20);
+    REQUIRE(top);
+    CHECK(*top == doctest::Approx(1.0));
+    // A new stage starts over; no step known, or no last, sounds nothing.
+    climb.Reset();
+    CHECK_FALSE(climb.Update(5, 20));
+    CHECK_FALSE(climb.Update(-1, 20));
+    CHECK_FALSE(climb.Update(6, 0));
 }

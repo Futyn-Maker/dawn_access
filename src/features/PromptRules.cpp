@@ -87,11 +87,29 @@ namespace da::prompt
         return waited && now != atLimit;
     }
 
+    std::optional<double> LinearProgress::Update(int64_t step, int64_t last)
+    {
+        if (step < 0 || last <= 0) return std::nullopt;
+        const bool first = m_step < 0;
+        const bool changed = step != m_step;
+        m_step = step;
+        if (first || !changed) return std::nullopt;
+        return std::clamp(static_cast<double>(step) / static_cast<double>(last), 0.0, 1.0);
+    }
+
     std::wstring LinearForward(std::wstring_view action, bool invert)
     {
         const auto ends = [&](std::wstring_view tail) { return action.size() > tail.size() && action.substr(action.size() - tail.size()) == tail; };
-        if (ends(L"LeftRight")) return std::wstring(action.substr(0, action.size() - 9)) + (invert ? L"Left" : L"Right");
-        if (ends(L"UpDown")) return std::wstring(action.substr(0, action.size() - 6)) + (invert ? L"Down" : L"Up");
+        // The one-way actions keep an underscore before their way: IA_InteractionMovement_LeftRight
+        // has IA_InteractionMovement_Left, IA_SwipeLeftRight has IA_Swipe_Left.
+        const auto oneWay = [&](size_t tail, const wchar_t* way)
+        {
+            std::wstring base(action.substr(0, action.size() - tail));
+            if (base.back() != L'_') base += L'_';
+            return base + way;
+        };
+        if (ends(L"LeftRight")) return oneWay(9, invert ? L"Left" : L"Right");
+        if (ends(L"UpDown")) return oneWay(6, invert ? L"Down" : L"Up");
         return {};
     }
 

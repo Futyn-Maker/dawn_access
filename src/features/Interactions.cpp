@@ -481,11 +481,16 @@ namespace da::features
         int64_t g_linearStage = -1;
         double g_linearSince = -1.0;
         bool g_linearSaid = false;
+        // Each staged stage's last step (MaxAnimationStage), and the step sounded as it changes.
+        std::map<int64_t, int64_t> g_linearLast;
+        prompt::LinearProgress g_linearProgress;
         constexpr double kLinearAfterPrompt = 1.0; // the game's own prompt comes up first
 
         void FindLinearStages(UObject* interaction)
         {
             g_linearForward.clear();
+            g_linearLast.clear();
+            g_linearProgress.Reset();
             g_linearStage = -1;
             g_linearSaid = false;
             std::vector<UObject*> components;
@@ -499,19 +504,39 @@ namespace da::features
                 obj::ReadObject(component, L"InputActionAssigned", action);
                 obj::ReadBool(component, L"bInvertInput", invert);
                 obj::ReadInt(component, L"Stage", index);
+                int64_t last = 0;
+                if (obj::ReadInt(component, L"MaxAnimationStage", last) && last > 0) g_linearLast[index] = last;
                 const std::wstring name = obj::IsLive(action) ? obj::ObjectName(action) : std::wstring();
                 const auto forward = prompt::LinearForward(name, invert);
-                log::Info(L"interactions: {} has a staged stage {} ({}) on {}{}{}", obj::ObjectName(interaction), index + 1, obj::ObjectName(component),
-                          name.empty() ? L"no action" : name, invert ? L", inverted" : L"", forward.empty() ? std::wstring() : L": it goes on with " + forward);
+                log::Info(L"interactions: {} has a staged stage {} ({}) on {}{}{}{}", obj::ObjectName(interaction), index + 1, obj::ObjectName(component),
+                          name.empty() ? L"no action" : name, invert ? L", inverted" : L"", forward.empty() ? std::wstring() : L": it goes on with " + forward,
+                          last > 0 ? std::format(L"; its steps run to {}", last) : std::wstring(L"; its steps unbounded"));
                 if (!forward.empty()) g_linearForward[index] = forward;
             }
         }
 
-        // The way on of a staged climb or shimmy whose input has two ways, said once its stage is the
-        // current one and the game's prompt has come up.
+        // The step a staged stage stands at, as the stage hands it to the anim graphs: its step on or
+        // back (UBatesInteractionLinearStaged::OnIncreaseAnimationStage, OnDecreaseAnimationStage) is
+        // written by ApplyAnimationStage into every one of the interaction's anim instances that is a
+        // UBatesIntSimpleGrabAnimInst (AnimationStage, 0x5B8), the complex graphs of the diary, the
+        // sketchbook and the tower's ladders among them. The like-named member of
+        // UBatesInteractionLinStageAnimInst is not written there: read from it, the diary of
+        // 2026-11-08 sounded no step at all (research/sessions/s58-whole.log, 11:22 to 11:25).
+        int64_t LinearStep(UObject* interaction)
+        {
+            for (UObject* instance : AnimInstances(interaction))
+            {
+                int64_t step = -1;
+                if (obj::IsA(instance, L"BatesIntSimpleGrabAnimInst") && obj::ReadInt(instance, L"AnimationStage", step)) return step;
+            }
+            return -1;
+        }
+
+        // Each step of a staged stage as a pitch, and the way on of a staged climb or shimmy whose
+        // input has two ways, said once its stage is the current one and the game's prompt has come up.
         void PollLinear(UObject* interaction, double now)
         {
-            if (g_linearForward.empty()) return;
+            if (g_linearForward.empty() && g_linearLast.empty()) return;
             int64_t current = -1;
             if (!obj::ReadInt(interaction, L"CurrentStage", current)) return;
             if (current != g_linearStage)
@@ -519,7 +544,19 @@ namespace da::features
                 g_linearStage = current;
                 g_linearSince = now;
                 g_linearSaid = false;
+                g_linearProgress.Reset();
             }
+            // Each step on or back, as a pitch (prompt::LinearProgress).
+            if (const auto last = g_linearLast.find(current); last != g_linearLast.end())
+            {
+                const int64_t step = LinearStep(interaction);
+                if (const auto level = g_linearProgress.Update(step, last->second))
+                {
+                    sounds::Tick(*level);
+                    log::Verbose(L"interactions: the staged stage {} stands at step {} of {}", current + 1, step, last->second);
+                }
+            }
+            if (g_linearForward.empty()) return;
             const auto forward = g_linearForward.find(current);
             if (forward == g_linearForward.end() || g_linearSaid || now - g_linearSince < kLinearAfterPrompt) return;
             g_linearSaid = true;

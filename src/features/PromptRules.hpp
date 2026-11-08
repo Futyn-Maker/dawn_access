@@ -117,12 +117,33 @@ namespace da::prompt
 
     // The way a staged climb or shimmy goes on (UBatesInteractionLinearStaged: the positive half of its
     // input raises its stage, the negative half lowers it, unless bInvertInput): for an axis action
-    // (IA_InteractionMovement_LeftRight, _UpDown), the game's own one-way action for the half that goes
-    // on, whose key the player is told; empty for any other action, whose prompt names its one way
+    // (IA_InteractionMovement_LeftRight, _UpDown, IA_SwipeLeftRight, IA_SwipeUpDown), the game's own
+    // one-way action for the half that goes on (IA_InteractionMovement_Right, IA_Swipe_Left), whose key
+    // the player is told; empty for any other action, whose prompt names its one way
     // already. act4_3's ledge shimmy asks for "the left stick left and right" and only one of them
     // takes Matt and Emily along the ledge: Andrey stepped back and forth until he held right
     // (research/sessions/s55-full.log).
     std::wstring LinearForward(std::wstring_view action, bool invert);
+
+    // The step a staged climb, shimmy or page turn stands at (the AnimationStage the stage writes into
+    // its graphs, UBatesIntSimpleGrabAnimInst's) out of its stage's last
+    // (UBatesInteractionLinearStaged.MaxAnimationStage), as a pitch: each step
+    // on raises it, each step back lowers it, the stage's first reading none (Andrey on 2026-11-08,
+    // chapter 5's ledge and chapter 6's tower ladders: "a rising tone from zero to one hundred going
+    // forward, and the opposite going back", like the phone's swipe in the woods). Update gives the
+    // level (0 to 1) to sound when the step has changed.
+    class LinearProgress
+    {
+    public:
+        std::optional<double> Update(int64_t step, int64_t last);
+        void Reset()
+        {
+            m_step = -1;
+        }
+
+    private:
+        int64_t m_step = -1;
+    };
 
     // The first question an interaction asks waits a moment for a hint the game shows with it, so
     // that the hint comes first and its keys after, whichever the game draws first: at the danger
