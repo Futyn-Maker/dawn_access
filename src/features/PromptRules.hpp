@@ -3,6 +3,8 @@
 // question is new and when it is said, which lines of the action bar are said, and the blips
 // that follow the phone's unlock swipe.
 
+#include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <set>
 #include <string>
@@ -144,6 +146,97 @@ namespace da::prompt
     private:
         int64_t m_step = -1;
     };
+
+    // The last step of a staged stage that keeps no last of its own. MaxAnimationStage counts only with
+    // bClampAnimationStage (UBatesInteractionLinearStaged::OnIncreaseAnimationStage raises the step
+    // without limit otherwise), and act6_1's ladders clamp nothing: their stages said "unbounded" and
+    // no step sounded up either ladder on 2026-11-08 (research/sessions/s59-full.log 15:47:41,
+    // 15:53:05). Where the stage keeps none, the item's anim graph decides the end: its transitions
+    // compare the step it is handed with each step's number (the hub ladder's EqualEqual_IntInt
+    // against 0 to 14, the last to Step13_to_End). The largest number a graph's compiled script
+    // compares the member with is the last step. A comparison is a math library call (EX_CallMath,
+    // 0x68, and the function's address) whose two operands are the member, read as
+    // EX_InstanceVariable (0x01) and its property's address (UObject::execInstanceVariable takes eight
+    // bytes), and a number, EX_IntConst (0x1D) and four bytes or EX_IntConstByte (0x2C) and one, in
+    // either order. Only such a call counts: a byte of the function's address may read 0x1D, and an
+    // assignment to the member reads the same operands with no call. None where no call compares the
+    // member with a number.
+    std::optional<int64_t> LastComparedStep(const uint8_t* script, size_t size, const void* property);
+
+    // The last step of a staged stage: its MaxAnimationStage where it clamps its steps there; else its
+    // graph's (`graph`, LastComparedStep), the graph being what ends an unclamped stage; else the
+    // MaxAnimationStage it names all the same, as the stage was read before the graph was asked;
+    // none where neither knows.
+    std::optional<int64_t> LastStep(bool clamp, int64_t named, std::optional<int64_t> graph);
+
+    // A staged stage's prompt drawn again at each step: ApplyAnimationStage takes the stage's prompt
+    // down at every step and UpdateStage sets it up again once the step has stood UIIdleTime, the same
+    // words for the same input while the stage stands. Where the steps sound (LinearProgress) the
+    // prompt said at every step only talked over them: fourteen times up act6_1's broken ladder while
+    // Andrey held the stick, and at the hub's ladder the prompt, the way on, and the prompt again
+    // within 0.6 s ("a huge number of prompts, and they didn't stop even when holding it",
+    // research/sessions/s59-full.log 15:47:42, 15:53:05 to 15:53:19). Such a prompt is said when its
+    // stage begins and again only when its words change (another device in hand, another input) or
+    // another stage stands. `stage` identifies the stage in its interaction, -1 for none whose steps
+    // sound (every prompt is then said); `last` keeps what was said.
+    struct StagePrompt
+    {
+        int64_t stage = -1;
+        std::wstring text;
+        std::wstring actions;
+    };
+    bool SayAtStep(StagePrompt& last, int64_t stage, const std::wstring& text, const std::wstring& actions);
+
+    // An activity's input stage (UBatesActivitySimpleInputStage) sets its prompt up as it begins (its
+    // InputWidget, an interaction prompt) and takes it down as it ends, and the input it binds counts
+    // only while it stands (bContinueOnInputInitialPress binds ETriggerEvent::Triggered, which a stick
+    // held fires from the stage's first frame). How long it stands is the stage's own: a stage on a clock
+    // (bShouldTimeOut, SecondsUntilTimeout: chapter 8's bolt door, 3 s) ends with its clock; one that
+    // goes on at its end marker (EEndMarkerReachedAction GoToNextStage) ends with its stretch of the
+    // activity's sequence; one that loops or pauses there waits for the input. Emily's three swings in
+    // act6_1 (A_cut_the_cable_emilyhanging, MSQ_Emilyhanging's markers) stand 0.83, 0.67 and 0.60 s, a
+    // swing missed played again 5 s on; read as an interaction's prompt, 0.15 to 0.2 s after it came up
+    // and its direction the last word, the key came too late for eleven of fourteen
+    // (research/sessions/s59-full.log 15:35:36 to 15:36:28; the swing passed only once Andrey held the
+    // stick). A prompt that does not wait is a quick-time event's: its direction's cue at once, its key
+    // over anything being said, the stage's own verdict as it goes.
+    enum class InputWindow
+    {
+        Waits,  // looping or pausing at its end marker: the prompt stands until the input
+        Moment, // gone at its end marker
+        Clock,  // gone when its clock runs out
+    };
+    // A stage gone at its end marker asks for nothing at a moment where its end leads into a stage that
+    // waits for the same input: chapter 4's mine shimmy (act3_2 A_aim_at_killer) steps on in windows
+    // of 0.9 to 1.3 s, and a window run out takes it to an idle (TempIdle, looping) that goes on with
+    // the same push (research/mechanics/input_stages.tsv, the audit of every such stage). So does an
+    // end outcome that is the input's own (UpdateStage writes OverrideStageOutcome over StageOutcome
+    // as it takes the input, and a stage played again keeps it).
+    struct InputStage
+    {
+        int endAction = 0;     // EEndMarkerReachedAction: GoToNextStage 0, Loop 1, Pause 2
+        bool timesOut = false; // bShouldTimeOut
+        double seconds = 0.0;  // SecondsUntilTimeout (5 s in the stage's constructor)
+        bool endWaits = false; // its end marker leads where the same input is still taken
+    };
+    InputWindow WindowOf(const InputStage& stage);
+
+    // How such a stage ended, by its own record as its prompt goes (OnFinished destroys the prompt
+    // before the next stage begins): the input taken (bInputComplete, set by ProcessAssignedInput,
+    // or the stage going on by the input's own outcome), its clock run out (bHasTimedOut), or its
+    // stretch over with neither. A stretch over is a clock run out like any other: the Fail cue and
+    // "Time's up" (Andrey, 2026-11-06), where the stage names what a miss leads to (`endNamed`: the
+    // swings' StageOutcome, their swing played again). One whose end names nothing (act20_3's page
+    // windows, which no play has reached) leaves the activity to go on as the game has it, and the
+    // mod says nothing of it (Over).
+    enum class InputEnd
+    {
+        Taken,
+        TimedOut,
+        Closed,
+        Over,
+    };
+    InputEnd EndOf(bool inputComplete, bool timedOut, bool byInputsOutcome, bool endNamed);
 
     // The first question an interaction asks waits a moment for a hint the game shows with it, so
     // that the hint comes first and its keys after, whichever the game draws first: at the danger

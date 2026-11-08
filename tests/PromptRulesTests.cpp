@@ -3,6 +3,8 @@
 #include "Support.hpp"
 #include "features/PromptRules.hpp"
 
+#include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -297,6 +299,231 @@ TEST_CASE("prompts: a staged climb's steps sound as a pitch that rises on and fa
     CHECK_FALSE(climb.Update(5, 20));
     CHECK_FALSE(climb.Update(-1, 20));
     CHECK_FALSE(climb.Update(6, 0));
+}
+
+namespace
+{
+    // A compiled script as the engine keeps it in memory: EX_CallMath (0x68) and the function's
+    // address, the comparison's operands, EX_EndFunctionParms (0x16).
+    void Compare(std::vector<uint8_t>& script, const void* property, int number, bool memberFirst, bool byteConst = false)
+    {
+        const auto put = [&](const void* data, size_t size)
+        {
+            const auto* bytes = static_cast<const uint8_t*>(data);
+            script.insert(script.end(), bytes, bytes + size);
+        };
+        const void* function = reinterpret_cast<const void*>(uintptr_t{0x7FF6'1234'5678});
+        script.push_back(0x68);
+        put(&function, sizeof function);
+        const auto member = [&]
+        {
+            script.push_back(0x01);
+            put(&property, sizeof property);
+        };
+        const auto constant = [&]
+        {
+            if (byteConst)
+            {
+                script.push_back(0x2C);
+                script.push_back(static_cast<uint8_t>(number));
+                return;
+            }
+            script.push_back(0x1D);
+            const int32_t n = number;
+            put(&n, sizeof n);
+        };
+        if (memberFirst)
+        {
+            member();
+            constant();
+        }
+        else
+        {
+            constant();
+            member();
+        }
+        script.push_back(0x16);
+    }
+}
+
+TEST_CASE("prompts: a staged ladder that keeps no last step ends where its graph compares the step: act6_1's hub ladder, 2026-11-08")
+{
+    // BP_Hubladder's stage clamps nothing (bClampAnimationStage off), so the stage said "its steps
+    // unbounded" and no step sounded up the ladder (research/sessions/s59-full.log 15:47:41). Its graph
+    // (ABP_Act6_1_groundfloorhub_climbladder_template) compares AnimationStage with 0 to 14 in
+    // EqualEqual_IntInt, 14 taking it to Step13_to_End.
+    int animationStage = 0; // stands for the member's property: only its address is compared
+    int otherMember = 0;
+    std::vector<uint8_t> script;
+    for (int n = 0; n <= 14; ++n)
+        Compare(script, &animationStage, n, true);
+    // Another member compared with a larger number is no step.
+    Compare(script, &otherMember, 99, true);
+    auto last = prompt::LastComparedStep(script.data(), script.size(), &animationStage);
+    REQUIRE(last.has_value());
+    CHECK(*last == 14);
+    // The number before the member, and a number kept in a byte, either side, count the same.
+    const auto alone = [&](int number, bool memberFirst, bool byteConst) -> std::optional<int64_t>
+    {
+        std::vector<uint8_t> one;
+        Compare(one, &otherMember, 99, true);
+        Compare(one, &animationStage, number, memberFirst, byteConst);
+        return prompt::LastComparedStep(one.data(), one.size(), &animationStage);
+    };
+    CHECK(alone(3, false, false) == std::optional<int64_t>{3});
+    CHECK(alone(16, false, true) == std::optional<int64_t>{16});
+    CHECK(alone(9, true, true) == std::optional<int64_t>{9});
+    CHECK(alone(12, true, false) == std::optional<int64_t>{12});
+    std::vector<uint8_t> swapped;
+    Compare(swapped, &animationStage, 3, false);
+    Compare(swapped, &animationStage, 16, false, true);
+    Compare(swapped, &animationStage, 9, true, true);
+    last = prompt::LastComparedStep(swapped.data(), swapped.size(), &animationStage);
+    REQUIRE(last.has_value());
+    CHECK(*last == 16);
+    // A graph that never compares the step with a number ends nothing; nor does a script that only
+    // names the member's address elsewhere (not as a member read).
+    std::vector<uint8_t> none;
+    Compare(none, &otherMember, 4, true);
+    const void* bare = &animationStage;
+    const auto* bytes = reinterpret_cast<const uint8_t*>(&bare);
+    none.push_back(0x2B);
+    none.insert(none.end(), bytes, bytes + sizeof bare);
+    none.push_back(0x1D);
+    none.insert(none.end(), {7, 0, 0, 0});
+    CHECK_FALSE(prompt::LastComparedStep(none.data(), none.size(), &animationStage).has_value());
+    CHECK_FALSE(prompt::LastComparedStep(nullptr, 0, &animationStage).has_value());
+    // A math function whose address has 0x1D for its fourth byte, the member its first operand: the
+    // bytes before the member read like a number (the address's top half, 498 here), and are not one.
+    {
+        std::vector<uint8_t> call;
+        const uint64_t function = 0x000001F21D345678ull;
+        const void* member = &animationStage;
+        call.push_back(0x68);
+        const auto* f = reinterpret_cast<const uint8_t*>(&function);
+        call.insert(call.end(), f, f + sizeof function);
+        call.push_back(0x01);
+        const auto* m = reinterpret_cast<const uint8_t*>(&member);
+        call.insert(call.end(), m, m + sizeof member);
+        call.push_back(0x1D);
+        call.insert(call.end(), {14, 0, 0, 0});
+        call.push_back(0x16);
+        const auto found = prompt::LastComparedStep(call.data(), call.size(), &animationStage);
+        REQUIRE(found.has_value());
+        CHECK(*found == 14);
+    }
+    // An assignment to the member (EX_Let, 0x0F, the member's address, its read, the number) is no
+    // comparison.
+    {
+        std::vector<uint8_t> let;
+        const void* member = &animationStage;
+        const auto* m = reinterpret_cast<const uint8_t*>(&member);
+        let.push_back(0x0F);
+        let.insert(let.end(), m, m + sizeof member);
+        let.push_back(0x01);
+        let.insert(let.end(), m, m + sizeof member);
+        let.push_back(0x1D);
+        let.insert(let.end(), {40, 0, 0, 0});
+        CHECK_FALSE(prompt::LastComparedStep(let.data(), let.size(), &animationStage).has_value());
+    }
+    // The graph ends a stage that clamps nothing, whatever MaxAnimationStage names; a clamped stage
+    // ends at its own last; a stage whose graph compares nothing keeps the last it names.
+    CHECK(prompt::LastStep(false, 0, 14) == std::optional<int64_t>{14});
+    CHECK(prompt::LastStep(false, 4, 14) == std::optional<int64_t>{14});
+    CHECK(prompt::LastStep(true, 4, 14) == std::optional<int64_t>{4});
+    CHECK(prompt::LastStep(true, 3, std::nullopt) == std::optional<int64_t>{3});
+    CHECK(prompt::LastStep(false, 4, std::nullopt) == std::optional<int64_t>{4});
+    CHECK_FALSE(prompt::LastStep(false, 0, std::nullopt).has_value());
+    CHECK_FALSE(prompt::LastStep(false, 0, 0).has_value());
+    // Each step up the ladder then sounds, rising to the top.
+    prompt::LinearProgress progress;
+    CHECK_FALSE(progress.Update(1, 14).has_value());
+    const auto second = progress.Update(2, 14);
+    REQUIRE(second.has_value());
+    CHECK(*second == doctest::Approx(2.0 / 14.0));
+    CHECK(*progress.Update(14, 14) == doctest::Approx(1.0));
+}
+
+TEST_CASE("prompts: a staged stage's prompt drawn again at each step is said once: act6_1's ladders, 2026-11-08")
+{
+    // The hub ladder (BP_Hubladder, stage 1): the prompt came up at 15:47:42.458 and again at
+    // 15:47:43.033 after the first step, the way on said between them; Andrey went over to the
+    // keyboard at 15:47:52 ("W, S") and back to the pad at 15:48:30.
+    prompt::StagePrompt last;
+    const int64_t ladder = 1 * 1024 + 0;
+    const std::wstring pad = L"\u043b\u0435\u0432\u044b\u0439 \u0441\u0442\u0438\u043a \u0432\u0432\u0435\u0440\u0445 \u0438 \u0432\u043d\u0438\u0437";
+    const std::wstring keys = L"W, S";
+    const std::wstring action = L"IA_InteractionMovement_UpDown";
+    CHECK(prompt::SayAtStep(last, ladder, pad, action));
+    CHECK_FALSE(prompt::SayAtStep(last, ladder, pad, action));
+    CHECK(prompt::SayAtStep(last, ladder, keys, action));
+    CHECK_FALSE(prompt::SayAtStep(last, ladder, keys, action));
+    CHECK(prompt::SayAtStep(last, ladder, pad, action));
+    CHECK_FALSE(prompt::SayAtStep(last, ladder, pad, action));
+    // The broken ladder by the miner's accident (BP_Climbladder, held up to the top at 15:53:05 to
+    // 15:53:19): fourteen prompts, said once.
+    const int64_t broken = 2 * 1024 + 0;
+    const std::wstring up = L"\u043b\u0435\u0432\u044b\u0439 \u0441\u0442\u0438\u043a \u0432\u0432\u0435\u0440\u0445";
+    int said = 0;
+    for (int step = 0; step < 14; ++step)
+        said += prompt::SayAtStep(last, broken, up, L"IA_InteractionMovement_Up") ? 1 : 0;
+    CHECK(said == 1);
+    // Out of a staged stage whose steps sound every prompt is said, the same words or not.
+    CHECK(prompt::SayAtStep(last, -1, up, L"IA_InteractionMovement_Up"));
+    CHECK(prompt::SayAtStep(last, -1, up, L"IA_InteractionMovement_Up"));
+    // Another stage, or the same ladder used again, says its prompt again.
+    CHECK(prompt::SayAtStep(last, broken, up, L"IA_InteractionMovement_Up"));
+    CHECK(prompt::SayAtStep(last, 3 * 1024 + 0, up, L"IA_InteractionMovement_Up"));
+}
+
+TEST_CASE("prompts: an activity's input stage that does not wait is a quick-time event's: Emily's swings and chapter 8's bolt, 2026-11-08")
+{
+    using W = prompt::InputWindow;
+    // A_cut_the_cable_emilyhanging: EmilyHangingIdle1 loops at its end marker and waits for the push;
+    // swing1_QTE to swing3_QTE go on at theirs (0.83, 0.67 and 0.60 s).
+    CHECK(prompt::WindowOf(prompt::InputStage{1, false, 5.0, false}) == W::Waits);
+    CHECK(prompt::WindowOf(prompt::InputStage{0, false, 5.0, false}) == W::Moment);
+    CHECK(prompt::WindowOf(prompt::InputStage{2, false, 5.0, false}) == W::Waits);
+    // Chapter 4's shimmy steps go on at their end marker into an idle that takes the same push: no
+    // moment to catch (act3_2 act3_2_minechase_shimmy_step1 to step7, 0.9 to 1.3 s, to TempIdle..6).
+    CHECK(prompt::WindowOf(prompt::InputStage{0, false, 5.0, true}) == W::Waits);
+    // act6_3's BoltDoorInteraction: bShouldTimeOut, 3 s; act7_2's stand_idle keeps the stage's 5 s.
+    CHECK(prompt::WindowOf(prompt::InputStage{1, true, 3.0, false}) == W::Clock);
+    CHECK(prompt::WindowOf(prompt::InputStage{0, true, 5.0, true}) == W::Clock);
+    // The stage's own record as its prompt goes: the push taken, else its time up.
+    CHECK(prompt::EndOf(true, false, false, true) == prompt::InputEnd::Taken);
+    CHECK(prompt::EndOf(true, true, false, true) == prompt::InputEnd::Taken);
+    CHECK(prompt::EndOf(false, true, false, true) == prompt::InputEnd::TimedOut);
+    CHECK(prompt::EndOf(false, false, false, true) == prompt::InputEnd::Closed);
+    // A swing played again after its push was taken once keeps the push's outcome: it goes on as if
+    // pushed, and nothing was missed.
+    CHECK(prompt::EndOf(false, false, true, true) == prompt::InputEnd::Taken);
+    CHECK(prompt::EndOf(false, true, true, true) == prompt::InputEnd::TimedOut);
+    // A window whose end names no stage (act20_3's pages) has no verdict; its clock, if it had one,
+    // would still be a clock.
+    CHECK(prompt::EndOf(false, false, false, false) == prompt::InputEnd::Over);
+    CHECK(prompt::EndOf(false, true, false, false) == prompt::InputEnd::TimedOut);
+    CHECK(prompt::EndOf(true, false, false, false) == prompt::InputEnd::Taken);
+    // The swings of 15:35:36 to 15:36:28: windows gone without the push, the push taken in the fourth
+    // swing1 window and the first swing2 window, then five swing3 windows missed until the stick was
+    // held, taken as the sixth came up.
+    struct Window
+    {
+        double up, gone;
+        bool taken;
+    };
+    const Window windows[] = {{36.597, 37.437, false}, {41.583, 42.432, false}, {46.582, 47.432, false}, {51.607, 52.179, true},
+                              {57.517, 58.140, true},  {63.368, 63.978, false}, {68.371, 68.989, false}, {73.390, 74.003, false},
+                              {78.383, 78.991, false}, {83.369, 83.968, false}, {88.348, 88.349, true}};
+    int taken = 0;
+    int missed = 0;
+    for (const auto& w : windows)
+    {
+        CHECK(w.gone > w.up);
+        (prompt::EndOf(w.taken, false, false, true) == prompt::InputEnd::Taken ? taken : missed) += 1;
+    }
+    CHECK(taken == 3);
+    CHECK(missed == 8);
 }
 
 TEST_CASE("prompts: the snow globe's hidden shake is named by what takes it, chapter 7")

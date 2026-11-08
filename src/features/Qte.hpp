@@ -5,6 +5,7 @@
 // verdict: a tone, and the word when the mod is detailed.
 
 #include "features/Feature.hpp"
+#include "speech/Sounds.hpp"
 
 #include <string>
 #include <vector>
@@ -25,4 +26,7 @@ namespace da::features
 
     // True while a quick-time event of the game's is running.
     bool QteInProgress();
+    // The cue a quick-time event plays for the way its action points (qte::DirectionOf): the
+    // stick's way, or the side of the pad a face button sits on.
+    sounds::Cue DirectionCue(const std::wstring& action);
 }

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <cwctype>
 
 namespace da::prompt
@@ -95,6 +96,82 @@ namespace da::prompt
         m_step = step;
         if (first || !changed) return std::nullopt;
         return std::clamp(static_cast<double>(step) / static_cast<double>(last), 0.0, 1.0);
+    }
+
+    std::optional<int64_t> LastComparedStep(const uint8_t* script, size_t size, const void* property)
+    {
+        constexpr uint8_t kCallMath = 0x68, kInstanceVariable = 0x01, kIntConst = 0x1D, kIntConstByte = 0x2C;
+        constexpr size_t kPointer = sizeof(void*);
+        if (!script || !property) return std::nullopt;
+        std::optional<int64_t> last;
+        const auto take = [&](int64_t number) { last = last ? std::max(*last, number) : number; };
+        // The member's read at `at`: its opcode and its property's address; the bytes it takes.
+        const auto member = [&](size_t at) -> size_t
+        {
+            if (at + 1 + kPointer > size || script[at] != kInstanceVariable || std::memcmp(script + at + 1, &property, kPointer) != 0) return 0;
+            return 1 + kPointer;
+        };
+        // A number at `at`: its value and the bytes it takes, none for another operand.
+        const auto number = [&](size_t at, int64_t& value) -> size_t
+        {
+            if (at + 5 <= size && script[at] == kIntConst)
+            {
+                int32_t n = 0;
+                std::memcpy(&n, script + at + 1, sizeof n);
+                value = n;
+                return 5;
+            }
+            if (at + 2 <= size && script[at] == kIntConstByte)
+            {
+                value = script[at + 1];
+                return 2;
+            }
+            return 0;
+        };
+        for (size_t c = 0; c + 1 + kPointer < size; ++c)
+        {
+            if (script[c] != kCallMath) continue;
+            const size_t first = c + 1 + kPointer;
+            int64_t value = 0;
+            if (const size_t taken = member(first))
+            {
+                if (number(first + taken, value)) take(value);
+            }
+            else if (const size_t taken = number(first, value))
+            {
+                if (member(first + taken)) take(value);
+            }
+        }
+        return last;
+    }
+
+    std::optional<int64_t> LastStep(bool clamp, int64_t named, std::optional<int64_t> graph)
+    {
+        if (clamp && named > 0) return named;
+        if (graph && *graph > 0) return graph;
+        if (named > 0) return named;
+        return std::nullopt;
+    }
+
+    bool SayAtStep(StagePrompt& last, int64_t stage, const std::wstring& text, const std::wstring& actions)
+    {
+        const bool again = stage >= 0 && last.stage == stage && last.text == text && last.actions == actions;
+        last = StagePrompt{stage, text, actions};
+        return !again;
+    }
+
+    InputWindow WindowOf(const InputStage& stage)
+    {
+        if (stage.timesOut && stage.seconds > 0.0) return InputWindow::Clock;
+        return stage.endAction == 0 && !stage.endWaits ? InputWindow::Moment : InputWindow::Waits;
+    }
+
+    InputEnd EndOf(bool inputComplete, bool timedOut, bool byInputsOutcome, bool endNamed)
+    {
+        if (inputComplete) return InputEnd::Taken;
+        if (timedOut) return InputEnd::TimedOut;
+        if (byInputsOutcome) return InputEnd::Taken;
+        return endNamed ? InputEnd::Closed : InputEnd::Over;
     }
 
     std::wstring LinearForward(std::wstring_view action, bool invert)

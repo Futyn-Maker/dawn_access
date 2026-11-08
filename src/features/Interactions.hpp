@@ -6,6 +6,7 @@
 
 #include "features/Feature.hpp"
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -29,4 +30,7 @@ namespace da::features
     bool RevealLed();
     // True while the interaction the character is bound to is in a stage that runs on a clock.
     bool InteractionStageTimed();
+    // The staged stage the interaction stands in, where its steps sound (prompt::SayAtStep): a number
+    // for that stage of that interaction, another for the next interaction bound; -1 for none.
+    int64_t SoundingStagedStage();
 }

@@ -2,9 +2,11 @@
 
 #include "features/Hud.hpp"
 #include "features/Interactions.hpp"
+#include "features/Qte.hpp"
 
 #include "features/Exploration.hpp"
 #include "features/PromptRules.hpp"
+#include "features/QteRules.hpp"
 
 #include "core/Config.hpp"
 #include "core/GameThread.hpp"
@@ -23,6 +25,7 @@
 #include "watch/Watchers.hpp"
 
 #include <algorithm>
+#include <format>
 #include <string>
 #include <vector>
 
@@ -42,8 +45,19 @@ namespace da::features
             bool glint = false;
             double fade = 0.0; // a glint: the fade of its prompt its Blueprint was last handed
             bool up = false;   // a glint: its prompt shown, for the log
+            // The prompt of an activity's input stage that does not wait (prompt::WindowOf): the stage,
+            // how it stands, whether its window is open (its verdict due as it goes), whether its key was
+            // said as it came up (its words not said again), and when its cue played.
+            obj::ObjectKey inputStage;
+            prompt::InputWindow window = prompt::InputWindow::Waits;
+            bool windowOpen = false;
+            bool saidAhead = false;
+            double aheadAt = -100.0;
         };
         std::vector<Shown> g_shown;
+
+        // The last staged stage's prompt said (prompt::SayAtStep).
+        prompt::StagePrompt g_stagePrompt;
 
         // The action bar in play (prompt::Bar); the menus read the same bar while a page is up.
         prompt::Bar g_bar;
@@ -169,6 +183,153 @@ namespace da::features
             return ui::PromptLines(prompts);
         }
 
+        // ---- an activity's input stage that does not wait ----------------------------------------
+
+        // The activity input stages seen (UBatesActivitySimpleInputStage): a prompt's stage is the one
+        // whose InputWidget it is (the stage keeps the widget before it sets it up), looked for among
+        // these first, and among every live one when none of these has it, at most once a moment: an
+        // interaction's prompts, set up at every step of a climb, belong to no such stage, and every
+        // look among every live object walks the whole object array. The stages come with their
+        // levels, which load well before their activities begin.
+        std::vector<obj::ObjectKey> g_inputStages;
+        double g_inputStagesAt = -100.0;
+        constexpr double kInputStagesApart = 1.0;
+
+        UObject* InputStageOf(UObject* widget, double now)
+        {
+            const auto owns = [&](UObject* stage)
+            {
+                UObject* shown = nullptr;
+                return obj::ReadObject(stage, L"InputWidget", shown) && shown == widget;
+            };
+            for (const auto& known : g_inputStages)
+            {
+                if (obj::IsSame(known) && owns(known.object)) return known.object;
+            }
+            if (now - g_inputStagesAt < kInputStagesApart) return nullptr;
+            g_inputStagesAt = now;
+            g_inputStages.clear();
+            UObject* found = nullptr;
+            for (UObject* stage : obj::FindAllLive(L"BatesActivitySimpleInputStage"))
+            {
+                g_inputStages.push_back(obj::KeyOf(stage));
+                if (!found && owns(stage)) found = stage;
+            }
+            return found;
+        }
+
+        // Whether an input stage's end marker leads where the same input is still taken
+        // (prompt::InputStage::endWaits): the outcome its end takes (IdleOverrideStageOutcome with
+        // bUseIdleOutcomeIfEndMarkerReached, else StageOutcome) is the input's own, or names a stage of
+        // its activity that waits for the same action (loops or pauses at its end, with no clock).
+        bool EndWaits(UObject* stage, UObject* action)
+        {
+            bool useIdle = false;
+            obj::ReadBool(stage, L"bUseIdleOutcomeIfEndMarkerReached", useIdle);
+            UObject* end = nullptr;
+            UObject* own = nullptr;
+            obj::ReadObject(stage, useIdle ? L"IdleOverrideStageOutcome" : L"StageOutcome", end);
+            obj::ReadObject(stage, L"OverrideStageOutcome", own);
+            if (!obj::IsLive(end)) return false;
+            if (end == own) return true;
+            std::wstring next;
+            if (!obj::ReadString(end, L"NextStageName", next) || next.empty() || next == L"None") return false;
+            UObject* activity = obj::Outer(stage);
+            std::vector<UObject*> stages;
+            if (!obj::IsLive(activity) || !obj::ReadObjectArray(activity, L"Stages", stages)) return false;
+            for (UObject* other : stages)
+            {
+                std::wstring name;
+                if (!obj::IsLive(other) || !obj::ReadString(other, L"StageName", name) || name != next) continue;
+                if (!obj::IsA(other, L"BatesActivitySimpleInputStage")) return false;
+                UObject* otherAction = nullptr;
+                int64_t otherEnd = 0;
+                bool otherTimed = false;
+                obj::ReadObject(other, L"InputActionAssigned", otherAction);
+                obj::ReadInt(other, L"EndMarkerReachedAction", otherEnd);
+                obj::ReadBool(other, L"bShouldTimeOut", otherTimed);
+                return otherAction == action && otherEnd != 0 && !otherTimed;
+            }
+            return false;
+        }
+
+        // A prompt an activity's input stage sets up: one that stands until the input is read as any
+        // prompt; one gone at its end marker or its clock is a quick-time event's (prompt::WindowOf):
+        // the cue at once (the Timer's for a clock, else the way its action points) and its key over
+        // anything being said, its words not said again as they are read.
+        void TakeInputStage(Shown& s, double now)
+        {
+            UObject* stage = InputStageOf(s.widget, now);
+            if (!stage) return;
+            prompt::InputStage facts;
+            // A stage whose end it cannot read is taken for one that waits: its prompt is read as any.
+            int64_t endAction = 1;
+            if (!obj::ReadInt(stage, L"EndMarkerReachedAction", endAction)) endAction = 1;
+            facts.endAction = static_cast<int>(endAction);
+            obj::ReadBool(stage, L"bShouldTimeOut", facts.timesOut);
+            obj::ReadFloat(stage, L"SecondsUntilTimeout", facts.seconds);
+            UObject* action = nullptr;
+            obj::ReadObject(stage, L"InputActionAssigned", action);
+            facts.endWaits = facts.endAction == 0 && EndWaits(stage, action);
+            const std::wstring actionName = obj::IsLive(action) ? obj::ObjectName(action) : std::wstring();
+            std::wstring stageName;
+            obj::ReadString(stage, L"StageName", stageName);
+            const auto window = prompt::WindowOf(facts);
+            log::Info(L"prompts: {} is the prompt of the activity stage {} \"{}\" on {}: {}", obj::ObjectName(s.widget), obj::ObjectName(stage), stageName,
+                      actionName.empty() ? std::wstring(L"no action") : actionName,
+                      window == prompt::InputWindow::Clock    ? std::format(L"it stands on a clock of {:.1f} s, said at once", facts.seconds)
+                      : window == prompt::InputWindow::Moment ? std::wstring(L"it goes at its end marker, said at once")
+                      : facts.endWaits                        ? std::wstring(L"its end marker leads where the same input is taken")
+                                                              : std::wstring(L"it waits for the input"));
+            if (window == prompt::InputWindow::Waits) return;
+            s.inputStage = obj::KeyOf(stage);
+            s.window = window;
+            s.windowOpen = true;
+            s.aheadAt = now;
+            sounds::Play(window == prompt::InputWindow::Clock ? sounds::Cue::Timer : DirectionCue(actionName));
+            // Its key over anything; one the mod cannot name is left to the prompt's own words, read as
+            // any prompt's.
+            const auto key = actionName.empty() ? std::wstring() : input::KeyForAction(actionName);
+            if (!key.empty())
+            {
+                speech::Urgent(key);
+                s.saidAhead = true;
+            }
+            if (window == prompt::InputWindow::Clock && cfg::Detailed()) speech::Announce(locale::Mod(L"cue.timer"));
+        }
+
+        // The stage's own verdict as its prompt goes: the input taken, else its time up, whether its
+        // clock or its stretch of the sequence ran out (prompt::EndOf).
+        void InputStageEnds(Shown& s)
+        {
+            const bool open = s.windowOpen && obj::IsSame(s.inputStage);
+            UObject* stage = open ? s.inputStage.object : nullptr;
+            s.windowOpen = false;
+            s.saidAhead = false;
+            s.inputStage = obj::ObjectKey{};
+            if (!stage) return;
+            const auto* complete = static_cast<const uint8_t*>(sym::MemberOf(stage, L"UBatesActivitySimpleInputStage.bInputComplete"));
+            const auto* timedOut = static_cast<const uint8_t*>(sym::MemberOf(stage, L"UBatesActivitySequenceStage.bHasTimedOut"));
+            if (!complete || !timedOut) return;
+            // The outcome the stage goes on by (GetStageOutcome: StageOutcome, which the input's own
+            // replaces as it is taken, and keeps in a stage played again; the idle's where it ends at
+            // its end marker with bUseIdleOutcomeIfEndMarkerReached, copied in as it began).
+            UObject* took = nullptr;
+            UObject* own = nullptr;
+            obj::ReadObject(stage, L"StageOutcome", took);
+            obj::ReadObject(stage, L"OverrideStageOutcome", own);
+            const auto end = prompt::EndOf(*complete != 0, *timedOut != 0, took && took == own, obj::IsLive(took));
+            log::Info(L"prompts: the activity stage {} ends: {}", obj::ObjectName(stage),
+                      end == prompt::InputEnd::Taken      ? L"the input taken"
+                      : end == prompt::InputEnd::TimedOut ? L"its clock ran out"
+                      : end == prompt::InputEnd::Closed   ? L"its stretch over, no input"
+                                                          : L"its stretch over, no input, its end naming no stage: nothing said");
+            if (end == prompt::InputEnd::Over) return;
+            const bool taken = end == prompt::InputEnd::Taken;
+            sounds::Play(taken ? sounds::Cue::Confirm : sounds::Cue::Fail);
+            if (cfg::Detailed()) speech::Announce(locale::Mod(taken ? L"result.success" : L"result.timeout"));
+        }
+
         // The game sets an interaction prompt up for each question it asks and sends it away
         // with HideAndDestroy (a fade, then off the screen 0.3 s later): prompt::SetUp, Hide.
         void OnSetup(UObject* self, FFrame&)
@@ -177,7 +338,17 @@ namespace da::features
             Shown* s = Find(self);
             if (!s) return;
             if (s->hidden) log::Verbose(L"prompts: {} set up anew", obj::ObjectName(self));
-            prompt::SetUp(*s, gamethread::NowSeconds());
+            // Set up again while it stays (prompt::SetUp), told twice in a moment: the same question, its
+            // cue already played. A window whose prompt went with no word of it is over all the same.
+            const double now = gamethread::NowSeconds();
+            const bool again = s->windowOpen && !s->hidden && now - s->aheadAt < qte::kSameSetUp;
+            prompt::SetUp(*s, now);
+            if (again) return;
+            s->windowOpen = false;
+            s->saidAhead = false;
+            s->inputStage = obj::ObjectKey{};
+            s->window = prompt::InputWindow::Waits;
+            if (gamestate::InPlay()) TakeInputStage(*s, now);
         }
 
         void OnHide(UObject* self, FFrame&)
@@ -186,6 +357,7 @@ namespace da::features
             if (!s || s->hidden) return;
             prompt::Hide(*s);
             log::Verbose(L"prompts: {} sent away", obj::ObjectName(self));
+            InputStageEnds(*s);
         }
 
         // A glint's widget hands its prompt's fade to its Blueprint every frame it ticks: what
@@ -372,8 +544,16 @@ namespace da::features
                 }
                 if (prompt::Read(*it, now, text, actions, it->glint))
                 {
-                    log::Info(L"prompts: {} {} \"{}\" [{}]", obj::ClassName(it->widget), obj::ObjectName(it->widget), text, actions);
-                    speech::Announce(text);
+                    // An activity's prompt that does not wait had its key said as it came up; a staged
+                    // stage's prompt drawn again at a step, the same as it was, is the steps' pitch's
+                    // (prompt::SayAtStep).
+                    const bool ahead = it->saidAhead;
+                    const bool again = !it->glint && !ahead && !prompt::SayAtStep(g_stagePrompt, SoundingStagedStage(), text, actions);
+                    log::Info(L"prompts: {} {} \"{}\" [{}]{}", obj::ClassName(it->widget), obj::ObjectName(it->widget), text, actions,
+                              ahead   ? L": said as it came up"
+                              : again ? L": the same prompt again at a step of its stage, not said"
+                                      : L"");
+                    if (!ahead && !again) speech::Announce(text);
                     if (!it->glint)
                     {
                         g_lastQuestion = text;

@@ -151,6 +151,9 @@ namespace da::sym
             // whether it ran out.
             {L"UBatesActivitySequenceStage.SecondsInCurrentStage", 0x90}, // float
             {L"UBatesActivitySequenceStage.bHasTimedOut", 0x94},          // bool
+            // An activity's input stage records the input it took (ProcessAssignedInput sets it,
+            // OnStarted clears it), which decides its outcome at its end.
+            {L"UBatesActivitySimpleInputStage.bInputComplete", 0x98}, // bool
             // A shooting stage runs between StartShootingStage and OnFinished; its aim is kept as
             // degrees off the direction it began in, and the nearest target's distance from the
             // aim in the screen's pixels, which its highlight is judged by.

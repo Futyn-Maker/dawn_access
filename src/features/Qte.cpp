@@ -335,4 +335,9 @@ namespace da::features
     {
         return std::any_of(g_qtes.begin(), g_qtes.end(), [](const Qte& q) { return !q.finished && !q.demonstration && obj::IsLive(q.widget); });
     }
+
+    sounds::Cue DirectionCue(const std::wstring& action)
+    {
+        return CueOf(action);
+    }
 }

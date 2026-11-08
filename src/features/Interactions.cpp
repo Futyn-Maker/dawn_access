@@ -47,6 +47,7 @@ namespace da::features
         // the player at a use location, or by the scene cutting to it.
         UObject* g_interaction = nullptr;
         obj::ObjectKey g_interactionKey;
+        int64_t g_bindings = 0; // counts the interactions bound, so that a stage of the next is another stage
 
         UObject* BoundInteraction()
         {
@@ -481,8 +482,18 @@ namespace da::features
         int64_t g_linearStage = -1;
         double g_linearSince = -1.0;
         bool g_linearSaid = false;
-        // Each staged stage's last step (MaxAnimationStage), and the step sounded as it changes.
+        // Each staged stage's last step (MaxAnimationStage where the stage clamps its steps, else its
+        // graph's: prompt::LastComparedStep), and the step sounded as it changes.
         std::map<int64_t, int64_t> g_linearLast;
+        // The staged stages that keep no last step of their own, to be asked of their graph once the
+        // graphs are up: whether each has been asked, and the MaxAnimationStage it names all the same
+        // (taken where no graph compares the step, as the stage was read before).
+        struct Unclamped
+        {
+            bool asked = false;
+            int64_t named = 0;
+        };
+        std::map<int64_t, Unclamped> g_linearUnclamped;
         prompt::LinearProgress g_linearProgress;
         constexpr double kLinearAfterPrompt = 1.0; // the game's own prompt comes up first
 
@@ -490,6 +501,7 @@ namespace da::features
         {
             g_linearForward.clear();
             g_linearLast.clear();
+            g_linearUnclamped.clear();
             g_linearProgress.Reset();
             g_linearStage = -1;
             g_linearSaid = false;
@@ -500,19 +512,55 @@ namespace da::features
                 if (!obj::IsLive(component) || !obj::IsA(component, L"BatesInteractionLinearStaged")) continue;
                 UObject* action = nullptr;
                 bool invert = false;
+                bool clamp = false;
                 int64_t index = -1;
                 obj::ReadObject(component, L"InputActionAssigned", action);
                 obj::ReadBool(component, L"bInvertInput", invert);
+                obj::ReadBool(component, L"bClampAnimationStage", clamp);
                 obj::ReadInt(component, L"Stage", index);
                 int64_t last = 0;
-                if (obj::ReadInt(component, L"MaxAnimationStage", last) && last > 0) g_linearLast[index] = last;
+                obj::ReadInt(component, L"MaxAnimationStage", last);
+                // MaxAnimationStage holds the steps only where the stage clamps them
+                // (UBatesInteractionLinearStaged::OnIncreaseAnimationStage); else the graph ends them.
+                if (clamp && last > 0)
+                    g_linearLast[index] = *prompt::LastStep(true, last, std::nullopt);
+                else
+                    g_linearUnclamped[index] = Unclamped{false, last};
                 const std::wstring name = obj::IsLive(action) ? obj::ObjectName(action) : std::wstring();
                 const auto forward = prompt::LinearForward(name, invert);
                 log::Info(L"interactions: {} has a staged stage {} ({}) on {}{}{}{}", obj::ObjectName(interaction), index + 1, obj::ObjectName(component),
                           name.empty() ? L"no action" : name, invert ? L", inverted" : L"", forward.empty() ? std::wstring() : L": it goes on with " + forward,
-                          last > 0 ? std::format(L"; its steps run to {}", last) : std::wstring(L"; its steps unbounded"));
+                          clamp && last > 0 ? std::format(L"; its steps run to {}", last) : std::wstring(L"; it keeps no last step, its graph ends it"));
                 if (!forward.empty()) g_linearForward[index] = forward;
             }
+        }
+
+        // The last step the item's graph takes (prompt::LastComparedStep): the largest number its
+        // compiled script compares the step it is handed with, in any of the Blueprint classes of the
+        // anim instances the stage writes the step into; none where no graph compares it.
+        std::optional<int64_t> GraphLastStep(UObject* interaction, std::wstring& from)
+        {
+            std::optional<int64_t> last;
+            for (UObject* instance : AnimInstances(interaction))
+            {
+                if (!obj::IsA(instance, L"BatesIntSimpleGrabAnimInst")) continue;
+                FProperty* property = obj::FindProperty(instance, L"AnimationStage");
+                if (!property) continue;
+                for (UClass* cls = instance->GetClassPrivate(); cls && !cls->HasAnyClassFlags(RC::Unreal::CLASS_Native); cls = cls->GetSuperClass())
+                {
+                    for (RC::Unreal::UFunction* fn : cls->ForEachFunction())
+                    {
+                        if (!fn) continue;
+                        const auto& script = fn->GetScript();
+                        const auto step = prompt::LastComparedStep(reinterpret_cast<const uint8_t*>(script.GetData()), static_cast<size_t>(script.Num()),
+                                                                   static_cast<const void*>(property));
+                        if (!step || (last && *last >= *step)) continue;
+                        last = step;
+                        from = obj::ClassName(cls);
+                    }
+                }
+            }
+            return last;
         }
 
         // The step a staged stage stands at, as the stage hands it to the anim graphs: its step on or
@@ -536,7 +584,7 @@ namespace da::features
         // input has two ways, said once its stage is the current one and the game's prompt has come up.
         void PollLinear(UObject* interaction, double now)
         {
-            if (g_linearForward.empty() && g_linearLast.empty()) return;
+            if (g_linearForward.empty() && g_linearLast.empty() && g_linearUnclamped.empty()) return;
             int64_t current = -1;
             if (!obj::ReadInt(interaction, L"CurrentStage", current)) return;
             if (current != g_linearStage)
@@ -545,6 +593,28 @@ namespace da::features
                 g_linearSince = now;
                 g_linearSaid = false;
                 g_linearProgress.Reset();
+            }
+            // A stage that keeps no last step: its graph's, asked once the stage stands and its graphs
+            // are up.
+            if (const auto open = g_linearUnclamped.find(current); open != g_linearUnclamped.end() && !open->second.asked && LinearStep(interaction) >= 0)
+            {
+                open->second.asked = true;
+                std::wstring from;
+                const auto graph = GraphLastStep(interaction, from);
+                if (const auto last = prompt::LastStep(false, open->second.named, graph))
+                {
+                    g_linearLast[current] = *last;
+                    if (graph && *graph == *last)
+                        log::Info(L"interactions: the staged stage {}'s steps run to {}, the last its graph {} takes", current + 1, *last, from);
+                    else
+                        log::Info(L"interactions: the staged stage {}'s steps run to {}, its MaxAnimationStage, no graph of it comparing the step",
+                                  current + 1, *last);
+                }
+                else
+                {
+                    log::Info(L"interactions: the staged stage {} keeps no last step and no graph of it compares the step with a number: no step sounds",
+                              current + 1);
+                }
             }
             // Each step on or back, as a pitch (prompt::LinearProgress).
             if (const auto last = g_linearLast.find(current); last != g_linearLast.end())
@@ -985,6 +1055,7 @@ namespace da::features
                 {
                     g_interactionKey = key;
                     g_interaction = bound;
+                    ++g_bindings;
                     StopFraming(L"the character left the interaction");
                     g_framingTaken = false;
                     ResetTurn();
@@ -1153,5 +1224,13 @@ namespace da::features
     bool InteractionStageTimed()
     {
         return g_interaction && obj::IsSame(g_interactionKey) && TimedStageSeconds(g_interaction) > 0.0;
+    }
+
+    int64_t SoundingStagedStage()
+    {
+        if (!g_interaction || !obj::IsSame(g_interactionKey)) return -1;
+        int64_t current = -1;
+        if (!obj::ReadInt(g_interaction, L"CurrentStage", current) || current < 0 || !g_linearLast.count(current)) return -1;
+        return g_bindings * 1024 + current;
     }
 }
