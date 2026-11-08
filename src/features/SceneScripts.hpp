@@ -93,6 +93,16 @@ namespace da::scripts
     class SetOff
     {
     public:
+        // What the game's own scripts keep of a trigger's script: its entry in gEvents.EnterTrigger,
+        // kept while it has runs left and taken out once they are used up (Events.lua's Event_Start
+        // counts triggerLimit down and removes the trigger at 0); unknown where the scripts' state
+        // cannot be read.
+        enum class Entry
+        {
+            Unknown,
+            Gone,
+            Kept,
+        };
         void Walked(const std::wstring& trigger)
         {
             if (!trigger.empty()) m_triggers.insert(trigger);
@@ -102,14 +112,41 @@ namespace da::scripts
         {
             return event.limit > 0 && m_triggers.count(event.trigger) > 0;
         }
+        // The same by the game's own record where it can be read, by her walking in where it cannot.
+        // The mod's record is what its looks saw, and a trigger whose script starts its scene in the
+        // frame she walks in is gone from under her before any look: act6_1's
+        // T_hannahslair_roofcollapse took Emily into the roof's fall at once, and after the scene the
+        // trigger, run once and spent, was offered again 15 m back, reached, and gone with nothing
+        // happening (research/sessions/s59-full.log 16:00:44 to 16:01:25).
+        bool Spent(const EnterEvent& event, Entry entry) const
+        {
+            if (entry == Entry::Gone) return true;
+            if (entry == Entry::Kept) return false;
+            return Spent(event);
+        }
+        // The game's record as it was last read stands for a read that fails (the scripts' lock held a
+        // moment by another thread): the roof's trigger, spent, would otherwise turn back into a way on
+        // for that look, said as news, and its going again would forget every refusal of the ground.
+        Entry Known(const std::wstring& trigger, Entry entry)
+        {
+            if (entry != Entry::Unknown)
+            {
+                m_entries[trigger] = entry;
+                return entry;
+            }
+            const auto known = m_entries.find(trigger);
+            return known == m_entries.end() ? entry : known->second;
+        }
         // Other scripts run: the level's script group changed.
         void NewScripts()
         {
             m_triggers.clear();
+            m_entries.clear();
         }
 
     private:
         std::set<std::wstring> m_triggers;
+        std::map<std::wstring, Entry> m_entries;
     };
 
     // A state's question whether a character is inside a volume, at any depth of its conditions,

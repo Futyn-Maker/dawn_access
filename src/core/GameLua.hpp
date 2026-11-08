@@ -36,6 +36,12 @@ namespace da::lua
     // Game thread only.
     Value Global(std::string_view table, std::string_view field);
 
+    // A field of a table kept in a global table (`table`.`field`.`key`): the trigger scripts still to
+    // run as gEvents.EnterTrigger.<trigger> (Events.lua: an event whose runs are used up is taken out,
+    // and the table of a trigger left with none is nil). Nil also where `table`.`field` is no table:
+    // gEvents.EnterTrigger goes once no trigger keeps a script to run. Game thread only.
+    Value Nested(std::string_view table, std::string_view field, std::string_view key);
+
     // The scenes' state machines running now and the state each stands in: the scripts' own record,
     // gStateMachines (StateMachineHandler.lua: each machine's name and currentState). Empty when it
     // cannot be read. Game thread only.

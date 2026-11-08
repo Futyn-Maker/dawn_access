@@ -230,6 +230,20 @@ namespace da::features
             return scripts::WaitsToMove(g_moveWaits, s_machines, character);
         }
 
+        // What the game's scripts keep of a trigger's script (scripts::SetOff::Entry): its entry in
+        // gEvents.EnterTrigger, a table while it has runs left, nil once they are used up.
+        scripts::SetOff::Entry LuaEnterEntry(const std::wstring& trigger)
+        {
+            if (trigger.empty()) return scripts::SetOff::Entry::Unknown;
+            const auto value = lua::Nested("gEvents", "EnterTrigger", str::WideToUtf8(trigger));
+            switch (value.kind)
+            {
+            case lua::Value::Kind::Nil: return scripts::SetOff::Entry::Gone;
+            case lua::Value::Kind::Unknown: return scripts::SetOff::Entry::Unknown;
+            default: return scripts::SetOff::Entry::Kept;
+            }
+        }
+
         // A number of the scripts' gVariables as the game's Lua state holds it now (lua::Global),
         // read once a frame whatever the number of conditions asking, and logged when it changes.
         scripts::Number ScriptVariable(const std::wstring& name)
@@ -2432,7 +2446,8 @@ namespace da::features
                 }
                 const auto lua = name.empty() ? g_luaEvents.end() : g_luaEvents.find(name);
                 const bool luaStory = lua != g_luaEvents.end() && lua->second.story;
-                const bool spent = lua != g_luaEvents.end() && g_setOff.Spent(lua->second);
+                // Spent by the game's own record of its trigger scripts where it can be read.
+                const bool spent = lua != g_luaEvents.end() && g_setOff.Spent(lua->second, g_setOff.Known(lua->second.trigger, LuaEnterEntry(lua->second.trigger)));
                 // What the script does now, its comparisons weighed with the game's own variables
                 // (scripts::StoryNow).
                 const bool luaNow = luaStory && !spent && scripts::StoryNow(lua->second, ScriptVariable);

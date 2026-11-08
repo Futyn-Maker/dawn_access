@@ -79,8 +79,33 @@ namespace da::lua
             lua_State* state = nullptr;
             const char* table = nullptr;
             const char* field = nullptr;
+            const char* key = nullptr; // a field of the field, or none
             Value out;
         };
+
+        // The value on the top of the stack, as the scripts' comparisons see it.
+        void TakeTop(const Api& a, lua_State* state, Value& out)
+        {
+            const int type = a.type(state, -1);
+            if (type == kNil)
+            {
+                out.kind = Value::Kind::Nil;
+            }
+            else if (type == kNumber)
+            {
+                out.kind = Value::Kind::Number;
+                out.number = a.toNumber(state, -1);
+            }
+            else if (type == kBoolean)
+            {
+                out.kind = Value::Kind::Boolean;
+                out.boolean = a.toBoolean(state, -1) != 0;
+            }
+            else
+            {
+                out.kind = Value::Kind::Other;
+            }
+        }
 
         // Under the fault boundary: no C++ object lives here.
         void ReadField(void* context)
@@ -93,25 +118,17 @@ namespace da::lua
             if (a.type(r.state, -1) == kTable)
             {
                 a.getField(r.state, -1, r.field);
-                const int type = a.type(r.state, -1);
-                if (type == kNil)
+                if (!r.key)
+                    TakeTop(a, r.state, r.out);
+                else if (a.type(r.state, -1) == kTable)
                 {
+                    a.getField(r.state, -1, r.key);
+                    TakeTop(a, r.state, r.out);
+                }
+                else if (a.type(r.state, -1) == kNil)
                     r.out.kind = Value::Kind::Nil;
-                }
-                else if (type == kNumber)
-                {
-                    r.out.kind = Value::Kind::Number;
-                    r.out.number = a.toNumber(r.state, -1);
-                }
-                else if (type == kBoolean)
-                {
-                    r.out.kind = Value::Kind::Boolean;
-                    r.out.boolean = a.toBoolean(r.state, -1) != 0;
-                }
                 else
-                {
                     r.out.kind = Value::Kind::Other;
-                }
             }
             a.setTop(r.state, top);
         }
@@ -200,31 +217,46 @@ namespace da::lua
         return true;
     }
 
+    namespace
+    {
+        // A field (and a field of it) of a global table of the running script, under its lock.
+        Value ReadPath(std::string_view table, std::string_view field, const std::string* key)
+        {
+            Value none;
+            if (!gamethread::IsGameThread()) return none;
+            const Api& api = Library();
+            if (!api.Complete()) return none;
+            // The updater is a subsystem of the game instance: found once, asked again only when gone.
+            static obj::ObjectKey s_updater;
+            if (!obj::IsSame(s_updater))
+            {
+                UObject* found = obj::FindFirstLive(L"BatesLuaScriptUpdater");
+                if (!found) return none;
+                s_updater = obj::KeyOf(found);
+            }
+            UObject* updater = s_updater.object;
+            UObject* script = nullptr;
+            if (!updater || !obj::ReadObject(updater, L"RunningScript", script) || !obj::IsLive(script)) return none;
+            auto* const* state = static_cast<lua_State* const*>(sym::MemberOf(script, L"UScript.mScriptData"));
+            auto* lock = static_cast<CRITICAL_SECTION*>(sym::MemberOf(script, L"UScript.mScriptAccessMutex"));
+            if (!state || !*state || !lock) return none;
+            if (!TryEnterCriticalSection(lock)) return none;
+            const std::string t(table), f(field);
+            Read read{&api, *state, t.c_str(), f.c_str(), key ? key->c_str() : nullptr, {}};
+            const bool ran = fault::InvokeLogged(L"lua.Global", &ReadField, &read);
+            LeaveCriticalSection(lock);
+            return ran ? read.out : none;
+        }
+    }
+
     Value Global(std::string_view table, std::string_view field)
     {
-        Value none;
-        if (!gamethread::IsGameThread()) return none;
-        const Api& api = Library();
-        if (!api.Complete()) return none;
-        // The updater is a subsystem of the game instance: found once, asked again only when gone.
-        static obj::ObjectKey s_updater;
-        if (!obj::IsSame(s_updater))
-        {
-            UObject* found = obj::FindFirstLive(L"BatesLuaScriptUpdater");
-            if (!found) return none;
-            s_updater = obj::KeyOf(found);
-        }
-        UObject* updater = s_updater.object;
-        UObject* script = nullptr;
-        if (!updater || !obj::ReadObject(updater, L"RunningScript", script) || !obj::IsLive(script)) return none;
-        auto* const* state = static_cast<lua_State* const*>(sym::MemberOf(script, L"UScript.mScriptData"));
-        auto* lock = static_cast<CRITICAL_SECTION*>(sym::MemberOf(script, L"UScript.mScriptAccessMutex"));
-        if (!state || !*state || !lock) return none;
-        if (!TryEnterCriticalSection(lock)) return none;
-        const std::string t(table), f(field);
-        Read read{&api, *state, t.c_str(), f.c_str(), {}};
-        const bool ran = fault::InvokeLogged(L"lua.Global", &ReadField, &read);
-        LeaveCriticalSection(lock);
-        return ran ? read.out : none;
+        return ReadPath(table, field, nullptr);
+    }
+
+    Value Nested(std::string_view table, std::string_view field, std::string_view key)
+    {
+        const std::string k(key);
+        return ReadPath(table, field, &k);
     }
 }

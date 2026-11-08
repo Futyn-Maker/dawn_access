@@ -843,6 +843,84 @@ TEST_CASE("scripts: a trigger script run once stays run when the player changes 
     CHECK_FALSE(record.Spent(plaque));
 }
 
+TEST_CASE("scripts: a trigger script the game has used up is spent though no look saw her walk in: the roof's fall, 2026-11-08")
+{
+    // act6_1's T_hannahslair_roofcollapse (run once) starts A_hannahslair_intoremains as Emily walks
+    // in: at 16:00:44 the walk to it ended in the scene, her look had never seen her inside, and
+    // after the scene (16:01:04) the trigger was listed again 15 m back; she walked to it, reached
+    // it, and nothing happened, the game's script having been taken out of gEvents.EnterTrigger.
+    const auto script = std::wstring(LR"lua(
+if gEvents["EnterTrigger"] == nil then
+	gEvents["EnterTrigger"] = {}
+end
+gEvents["EnterTrigger"]["T_hannahslair_roofcollapse"] = {
+	stateMachine = "Event_t_hannahslair_roofcollapse_enter",
+	triggerLimit = 1,
+	delay = 0,
+}
+function Event_T_hannahslair_roofcollapse_Enter_State_1(sm)
+  Debug_SetSMEDStateID(sm, 3928)
+  SF_Start(sm, {})
+end
+function Event_T_hannahslair_roofcollapse_Enter_State_2(sm)
+  Debug_SetSMEDStateID(sm, 3930)
+  if SF_IsActivityComplete(sm, {activity = "A_hannahslair_roofcollapse"}) then
+    M_JumpToState(sm,4)
+    return
+  end
+end
+function Event_T_hannahslair_roofcollapse_Enter_State_3(sm)
+  Debug_SetSMEDStateID(sm, 3933)
+  SF_StartActivity(sm, {activities = "A_hannahslair_intoremains"})
+end
+function Event_T_hannahslair_roofcollapse_Enter_State_4(sm)
+  Debug_SetSMEDStateID(sm, 3934)
+  SF_End(sm, {statemachine = nil})
+  return
+end
+gRegisteredStatemachines.Event_t_hannahslair_roofcollapse_enter = {
+    startState = 1,
+    name = 'Event_t_hannahslair_roofcollapse_enter',
+    states = {
+      {nextState = 3,	func = Event_T_hannahslair_roofcollapse_Enter_State_1, 	funcList = 'Start'},
+      {nextState = nil,	func = Event_T_hannahslair_roofcollapse_Enter_State_2, 	funcList = 'Is Activity A_hannahslair_roofcollapse Complete?'},
+      {nextState = 2,	func = Event_T_hannahslair_roofcollapse_Enter_State_3, 	funcList = 'Start Activity A_hannahslair_intoremains'},
+      {nextState = nil,	func = Event_T_hannahslair_roofcollapse_Enter_State_4, 	funcList = 'End '},
+    },
+  }
+)lua");
+    scripts::EnterEvent roof;
+    REQUIRE(scripts::ParseEnterEvent(script, roof));
+    CHECK(roof.trigger == L"T_hannahslair_roofcollapse");
+    CHECK(roof.limit == 1);
+    CHECK(roof.story);
+    using Entry = scripts::SetOff::Entry;
+    scripts::SetOff record;
+    // Before she walks in, the game keeps the script: a way on.
+    CHECK_FALSE(record.Spent(roof, Entry::Kept));
+    // The scene played; no look of the mod saw her inside. The game's record says spent.
+    CHECK_FALSE(record.Spent(roof));
+    CHECK(record.Spent(roof, Entry::Gone));
+    // The game's record stands over the mod's either way: kept is not spent whatever the mod saw
+    // (a trigger run twice of three, or a look that took her for inside a moment early).
+    record.Walked(L"T_hannahslair_roofcollapse");
+    CHECK(record.Spent(roof));
+    CHECK_FALSE(record.Spent(roof, Entry::Kept));
+    // Where the scripts cannot be read, the mod's own record answers.
+    CHECK(record.Spent(roof, Entry::Unknown));
+    record.NewScripts();
+    CHECK_FALSE(record.Spent(roof, Entry::Unknown));
+    // A read that fails a moment (the scripts' lock held by another thread) keeps the game's record
+    // as last read: the spent trigger does not turn back into a way on for that look.
+    CHECK(record.Known(L"T_hannahslair_roofcollapse", Entry::Gone) == Entry::Gone);
+    CHECK(record.Known(L"T_hannahslair_roofcollapse", Entry::Unknown) == Entry::Gone);
+    CHECK(record.Spent(roof, record.Known(L"T_hannahslair_roofcollapse", Entry::Unknown)));
+    CHECK(record.Known(L"T_other", Entry::Unknown) == Entry::Unknown);
+    // The next level's scripts start their own record.
+    record.NewScripts();
+    CHECK(record.Known(L"T_hannahslair_roofcollapse", Entry::Unknown) == Entry::Unknown);
+}
+
 namespace
 {
     // act2_1's MainFlow sets the wait every scene of the act makes between its shots.
