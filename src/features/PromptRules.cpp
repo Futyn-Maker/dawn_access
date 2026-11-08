@@ -204,4 +204,10 @@ namespace da::prompt
         }
         return step;
     }
+    const wchar_t* ShakeHelp(bool pad, bool playStation, bool motionSensor)
+    {
+        if (!pad) return L"help.shake";
+        if (!playStation) return L"help.shake.pad";
+        return motionSensor ? L"help.shake.ps" : L"help.shake.ps.off";
+    }
 }

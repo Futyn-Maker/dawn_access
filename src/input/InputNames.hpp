@@ -57,6 +57,10 @@ namespace da::input
     // else the pad connected).
     bool PlayStationPrompts();
 
+    // Whether the game's Motion Sensor Function is on (its controls settings), as the game's own
+    // shake and tilt readings ask it (UBatesGameUserSettings::GetUseSixAxis).
+    bool MotionSensorOn();
+
     void InvalidateCache();
 
     // Watches the keyboard, mouse and gamepad so speech can tell what the player asked for

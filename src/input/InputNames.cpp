@@ -506,6 +506,15 @@ namespace da::input
         return GameVendor() == Vendor::PlayStation;
     }
 
+    bool MotionSensorOn()
+    {
+        static UObject* settings = nullptr;
+        if (!settings || !obj::IsLive(settings)) settings = obj::FindFirstLive(L"BatesGameUserSettings");
+        bool on = false;
+        if (settings) obj::CallReturn(settings, L"GetUseSixAxis", [&](void* params, FProperty* returnValue) { obj::ReadBoolAt(params, returnValue, on); });
+        return on;
+    }
+
     std::wstring PointerName()
     {
         return locale::Mod(CurrentScheme() == Scheme::Gamepad ? L"input.rightstick" : L"input.mouse");

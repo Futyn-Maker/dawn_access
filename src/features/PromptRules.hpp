@@ -193,6 +193,13 @@ namespace da::prompt
     // towards a target, which slides back once no swipe came for a moment. The blips follow it,
     // rising as it fills and falling as it slides back, each kBlipStep of the way and kBlipApart
     // apart, and the unlock (state 3 after 2) is the challenge won.
+    // The help line that names the snow globe's hidden shake (IA_ControllerShake), by what takes it:
+    // the keyboard's W or S; another pad's left stick up or down; a PlayStation pad only shaken, and
+    // only while the game's Motion Sensor Function is on (UBatesInputRouter::DoControllerShakeWork asks
+    // GetUseSixAxis; BatesControllerVendorInputModifier's PSControllerMultiplier 0 gives such a pad's
+    // stick nothing), the keyboard taking it all the same.
+    const wchar_t* ShakeHelp(bool pad, bool playStation, bool motionSensor);
+
     constexpr double kBlipStep = 0.095;
     constexpr double kBlipApart = 0.08;
     class Swipe

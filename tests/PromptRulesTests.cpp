@@ -298,3 +298,18 @@ TEST_CASE("prompts: a staged climb's steps sound as a pitch that rises on and fa
     CHECK_FALSE(climb.Update(-1, 20));
     CHECK_FALSE(climb.Update(6, 0));
 }
+
+TEST_CASE("prompts: the snow globe's hidden shake is named by what takes it, chapter 7")
+{
+    // The keyboard: W or S.
+    CHECK(std::wstring(prompt::ShakeHelp(false, false, false)) == L"help.shake");
+    CHECK(std::wstring(prompt::ShakeHelp(false, true, true)) == L"help.shake");
+    // Another pad: its left stick up or down.
+    CHECK(std::wstring(prompt::ShakeHelp(true, false, false)) == L"help.shake.pad");
+    CHECK(std::wstring(prompt::ShakeHelp(true, false, true)) == L"help.shake.pad");
+    // A PlayStation pad: shaken, with the game's Motion Sensor Function on; with it off, its stick
+    // gives nothing, and the line says the keyboard's keys or the setting.
+    CHECK(std::wstring(prompt::ShakeHelp(true, true, true)) == L"help.shake.ps");
+    CHECK(std::wstring(prompt::ShakeHelp(true, true, false)) == L"help.shake.ps.off");
+}
+

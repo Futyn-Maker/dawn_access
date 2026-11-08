@@ -1114,9 +1114,10 @@ namespace da::features
         if (ShakeStageNow())
         {
             const bool pad = input::CurrentScheme() == input::Scheme::Gamepad;
-            out.push_back(locale::Mod(!pad                         ? L"help.shake"
-                                      : input::PlayStationPrompts() ? L"help.shake.ps"
-                                                                    : L"help.shake.pad"));
+            const bool playStation = pad && input::PlayStationPrompts();
+            // The game's own name for its setting, as its controls page shows it.
+            out.push_back(locale::Mod(prompt::ShakeHelp(pad, playStation, playStation && input::MotionSensorOn()),
+                                      gametext::ResolveWithFallback(L"BATES_SETTING_CONTROL_MOTIONSENSOR", L"Motion Sensor Function")));
         }
         if (FramingLed())
             out.push_back(locale::Mod(input::CurrentScheme() == input::Scheme::Gamepad ? L"help.nudge.pad" : L"help.nudge",
