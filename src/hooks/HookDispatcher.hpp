@@ -32,6 +32,11 @@ namespace da::hooks
     // Returns false (and logs) when the function does not exist in this build.
     bool OnNative(const std::wstring& fullName, ScriptHandler pre, ScriptHandler post);
 
+    // The same, the post handler given where the function's return value lies (null when the call
+    // gave it no place): what the game's own function answered.
+    using ResultHandler = std::function<void(UObject* self, FFrame& stack, void* result)>;
+    bool OnNativeResult(const std::wstring& fullName, ScriptHandler pre, ResultHandler post);
+
     // Object construction notifications, filtered by short class name (exact) or
     // by suffix when `suffix` is true. Delivered on the game thread.
     void OnConstructed(std::wstring className, bool suffix, ConstructedHandler handler);

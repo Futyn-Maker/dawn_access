@@ -303,6 +303,52 @@ namespace da::hooks
         }
     }
 
+    bool OnNativeResult(const std::wstring& fullName, ScriptHandler pre, ResultHandler post)
+    {
+        try
+        {
+            auto preCallable = [pre, fullName](RC::Unreal::UnrealScriptFunctionCallableContext& ctx, void*)
+            {
+                if (!pre) return;
+                g_lastHook = fullName + L" (pre)";
+                try
+                {
+                    pre(ctx.Context, ctx.TheStack);
+                }
+                catch (...)
+                {
+                    log::Error(L"native pre hook {} failed", fullName);
+                }
+            };
+            auto postCallable = [post, fullName](RC::Unreal::UnrealScriptFunctionCallableContext& ctx, void*)
+            {
+                if (!post) return;
+                g_lastHook = fullName;
+                try
+                {
+                    post(ctx.Context, ctx.TheStack, ctx.RESULT_DECL);
+                }
+                catch (...)
+                {
+                    log::Error(L"native post hook {} failed", fullName);
+                }
+            };
+            RC::Unreal::UObjectGlobals::RegisterHook(fullName, preCallable, postCallable, nullptr);
+            log::Info(L"native hook installed: {} (with its answer)", fullName);
+            return true;
+        }
+        catch (const std::exception& e)
+        {
+            log::Error(L"native hook failed for {}: {}", fullName, str::Utf8ToWide(e.what()));
+            return false;
+        }
+        catch (...)
+        {
+            log::Error(L"native hook failed for {}", fullName);
+            return false;
+        }
+    }
+
     void OnConstructed(std::wstring className, bool suffix, ConstructedHandler handler)
     {
         fault::Guard lock(g_mutex, L"hooks");

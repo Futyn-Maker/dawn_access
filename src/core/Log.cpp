@@ -21,7 +21,9 @@ namespace da::log
         FILE* g_file = nullptr;
         std::wstring g_path;
         size_t g_bytesWritten = 0;
-        constexpr size_t kRotateBytes = 5u * 1024u * 1024u;
+        // An hour's play writes some 10 MB at the verbose level; the file and its one .old keep a whole
+        // session (2026-11-08: at 5 MB the session's first eight minutes were gone by its end).
+        constexpr size_t kRotateBytes = 32u * 1024u * 1024u;
 
         std::wstring Timestamp()
         {
