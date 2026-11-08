@@ -11,8 +11,10 @@
 #include "core/GameThread.hpp"
 #include "core/Log.hpp"
 #include "core/ObjectUtil.hpp"
+#include "core/ParamReader.hpp"
 #include "core/Strings.hpp"
 #include "core/Symbols.hpp"
+#include "hooks/HookDispatcher.hpp"
 #include "hotkeys/Hotkeys.hpp"
 #include "input/InputNames.hpp"
 #include "locale/GameText.hpp"
@@ -1168,8 +1170,34 @@ namespace da::features
         }
     }
 
+    namespace
+    {
+        // The values an activity's stage conditions are judged by (BatesControlParameterStageCondition),
+        // which Blueprints write by name. Some activities of chapters 9 and 10 branch on the stick
+        // (act7_2's Wendigo sighting on LeftStickXAxis, Act7_3's on LeftStickYAxis and LocoMoveAny,
+        // Josh's visions on LocoMoveForward and the like) behind interaction stages that start no
+        // interaction and go on at once, and nothing in the game was found to write those values: the
+        // scenes go on by their triggers. Logged as they are written, each value's first and every
+        // change, so that a play shows it should anything write them.
+        std::map<std::wstring, double> g_controlParameters;
+
+        void OnControlParameter(UObject* self, RC::Unreal::FFrame& stack)
+        {
+            std::wstring name;
+            double value = 0.0;
+            if (!params::String(stack, L"ParameterName", name) || !params::Float(stack, L"Value", value)) return;
+            const std::wstring key = obj::ObjectName(self) + L"." + name;
+            const auto known = g_controlParameters.find(key);
+            if (known != g_controlParameters.end() && std::fabs(known->second - value) < 0.01) return;
+            g_controlParameters[key] = value;
+            if (g_controlParameters.size() > 512) g_controlParameters.clear();
+            log::Info(L"interactions: activity {} has its control parameter {} set to {:.2f}", obj::ObjectName(self), name, value);
+        }
+    }
+
     void InteractionsFeature::Install()
     {
+        hooks::OnNative(L"/Script/Bates.BatesActivityActor:SetLocalControlParameterValue", &OnControlParameter, nullptr);
         using hotkeys::Command;
         hotkeys::AddContext(&FramingLed);
         hotkeys::AddContext(&RevealLed);
