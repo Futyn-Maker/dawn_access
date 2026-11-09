@@ -35,7 +35,15 @@ namespace da::choice
         double selection = 0.0; // how far the player has held toward it
         double peak = 0.0;      // the most the ring has filled since this hold began
         bool emptying = false;  // the ring has run a good part of the way down since
+        // The share of players who took it, as the game shows it beside the option once the game is
+        // finished and its setting is on (UBatesDirectionalChoiceWidget::SetupGlobalStats, called as
+        // the choice starts); below 0 while none is shown.
+        double globalShare = -1.0;
     };
+
+    // An option's share of the players who took it, as said: a whole percent, from the game's own
+    // share (a fraction of one, UBatesDirectionalChoiceStage::OnShowGlobalStatsChanged's quotient).
+    std::wstring SharePercent(double share);
 
     // A choice: the options set up together.
     struct Choice

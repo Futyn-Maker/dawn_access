@@ -1,10 +1,19 @@
 #include "features/ChoiceRules.hpp"
 
 #include <algorithm>
+#include <cmath>
+#include <string>
 #include <utility>
 
 namespace da::choice
 {
+    std::wstring SharePercent(double share)
+    {
+        if (share < 0.0) return {};
+        const double percent = share <= 1.0 ? share * 100.0 : share;
+        return std::to_wstring(static_cast<long long>(std::lround(std::clamp(percent, 0.0, 100.0)))) + L"%";
+    }
+
     End EndOf(long long result)
     {
         switch (result)

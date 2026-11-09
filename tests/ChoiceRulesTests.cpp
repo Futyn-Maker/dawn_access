@@ -194,3 +194,13 @@ TEST_CASE("choice: the option taken is said once every key is released, or after
     CHECK(chosen.Due(6.9, true).empty());
     CHECK(chosen.Due(7.1, true) == L"Hide, chosen.");
 }
+
+TEST_CASE("choices: the players' share of an option is said as a whole percent, none while the game shows none")
+{
+    // UBatesDirectionalChoiceStage::OnShowGlobalStatsChanged hands each option its share as a quotient.
+    CHECK(choice::SharePercent(0.43).compare(L"43%") == 0);
+    CHECK(choice::SharePercent(0.0).compare(L"0%") == 0);
+    CHECK(choice::SharePercent(1.0).compare(L"100%") == 0);
+    CHECK(choice::SharePercent(0.576).compare(L"58%") == 0);
+    CHECK(choice::SharePercent(-1.0).empty());
+}

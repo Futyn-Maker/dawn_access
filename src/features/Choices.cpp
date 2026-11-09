@@ -79,6 +79,8 @@ namespace da::features
                 const auto words = OptionWords(option);
                 if (words.empty()) continue;
                 std::wstring line = locale::Mod(Side(option.direction)) + L": " + words;
+                // The share of players who took it, where the game shows it (choice::SharePercent).
+                if (const auto share = choice::SharePercent(option.globalShare); !share.empty()) line += L", " + share;
                 const auto key = KeyOf(option);
                 if (!key.empty()) line += L", " + key;
                 parts.push_back(line);
@@ -130,6 +132,21 @@ namespace da::features
                 log::Verbose(L"choices: holding toward \"{}\"", words);
                 if (!words.empty()) speech::Focus(words);
             }
+        }
+
+        // The game shows, as the choice starts, the share of players who took each option, once the
+        // game is finished and its setting "Глобальная статистика" is on (UBatesDirectionalChoiceStage::
+        // OnShowGlobalStatsChanged): said with the option.
+        void OnGlobalStats(UObject* self, FFrame& stack)
+        {
+            bool shown = false;
+            double share = -1.0;
+            params::Bool(stack, L"bInShowGlobalStats", shown);
+            params::Float(stack, L"InPercentage", share);
+            Option* option = nullptr;
+            g_book.Of(self, &option);
+            log::Info(L"choices: option {} shows the players' share {}: {:.3f}", obj::ObjectName(self), shown ? L"" : L"not", share);
+            if (option) option->globalShare = shown ? share : -1.0;
         }
 
         void OnTimeout(UObject* self, FFrame& stack)
@@ -229,6 +246,8 @@ namespace da::features
         hooks::OnNative(L"/Script/Bates.BatesDirectionalChoiceWidget:UpdateSelectionProgress", &OnSelection, nullptr);
         hooks::OnNative(L"/Script/Bates.BatesDirectionalChoiceWidget:UpdateTimeoutProgress", &OnTimeout, nullptr);
         hooks::OnNative(L"/Script/Bates.BatesDirectionalChoiceWidget:ChoiceEnded", &OnEnded, nullptr);
+        hooks::OnScript(L"BatesDirectionalChoiceWidget", L"SetupGlobalStats", &OnGlobalStats);
+        hooks::OnNative(L"/Script/Bates.BatesDirectionalChoiceWidget:SetupGlobalStats", &OnGlobalStats, nullptr);
         gamethread::AddPoller(L"choices", &Poll);
     }
 
