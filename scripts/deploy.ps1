@@ -44,3 +44,16 @@ foreach ($file in Get-DaInstallFiles) {
     $copied++
 }
 Write-Host "Deployed $copied files; UE4SS in $ue4ssDir"
+
+# The linker map of the mod's build just installed, kept by the build's timestamp: a crash dump of
+# this build names the mod's frames by it later, whatever was built since (tools\exe\crash.py).
+$map = Join-Path $DaRoot "build\src\main.map"
+if (Test-Path $map) {
+    $stamp = [regex]::Match(((Get-Content $map -TotalCount 8) -join "`n"), 'Timestamp is ([0-9a-f]{8})').Groups[1].Value
+    if ($stamp) {
+        $maps = Join-Path $DaRoot "build\maps"
+        New-Item -ItemType Directory -Force $maps | Out-Null
+        Copy-Item $map (Join-Path $maps "main-$stamp.map") -Force
+        Write-Host "Kept the build's map as build\maps\main-$stamp.map"
+    }
+}
