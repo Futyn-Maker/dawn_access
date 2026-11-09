@@ -212,6 +212,18 @@ namespace da::sym
             // record while it does.
             {L"ABatesSpecialLocoActivityActor.BoundCharacterData", 0x328}, // TMap
             {L"FStairActivityCharacterData.bIsInAutoLoco", 0x10b},         // bool, in the record
+            // A film of the epilogue's credits as the scene's script queues it (SF_QueueCreditMovie,
+            // UBatesGameScriptInterface::QueueCreditMovie): the film, and the character's name and
+            // time of death, keys of the game's string tables. The video's widget draws neither: its
+            // only text block shows the film's own name, and only where the film fails to open
+            // (UBatesCreditVideoWidget::StartVideo, 0x46bcd10).
+            {L"UBatesCreditQueueObjectBase.Identifier", 0x28},     // FString
+            {L"UBatesCreditMovieQueueObject.TimeOfDeath", 0x70},   // FString
+            {L"UBatesCreditMovieQueueObject.CharacterName", 0x80}, // FString
+            // A line of the credits' roll: how far it has rolled up the screen. It only grows while
+            // the line rolls, and its setting up puts it back to 0: the line widgets are pooled, and
+            // one set up again shows another line (UBatesCreditWidget::SpawnNextCredit).
+            {L"UBatesCreditLineWidget.CurrentOffset", 0x36c}, // float
         };
 
         struct CodeViewRecord

@@ -502,3 +502,100 @@ TEST_CASE("a title card fading its words in one after another holds the prompts 
     CHECK(fill.Update(50.0 + lines::kTitleFillMost - 0.1, laidOut, {L"Лечебница"}));
     CHECK_FALSE(fill.Update(50.0 + lines::kTitleFillMost, laidOut, {L"Лечебница"}));
 }
+
+TEST_CASE("lines: a clock is a line of two or three fields of digits and nothing else")
+{
+    std::vector<int> fields;
+    CHECK(lines::IsClock(L"0:21", &fields));
+    CHECK(fields == std::vector<int>{0, 21});
+    CHECK(lines::IsClock(L"09:32:24", &fields));
+    CHECK(fields == std::vector<int>{9, 32, 24});
+    CHECK(lines::IsClock(L"3:03"));
+    CHECK_FALSE(lines::IsClock(L"123:45"));
+    CHECK_FALSE(lines::IsClock(L"1:2"));
+    CHECK_FALSE(lines::IsClock(L"12:34:5"));
+    CHECK_FALSE(lines::IsClock(L"12:34:56:07"));
+    CHECK_FALSE(lines::IsClock(L"21"));
+    CHECK_FALSE(lines::IsClock(L":21"));
+    CHECK_FALSE(lines::IsClock(L"0:21 "));
+    CHECK_FALSE(lines::IsClock(L"REC 0:21"));
+    CHECK_FALSE(lines::IsClock(L"Комната 2"));
+    CHECK_FALSE(lines::IsClock(L""));
+}
+
+TEST_CASE("lines: a clock ticking on is said first as it is, then as its hours or minutes change, 2026-11-09")
+{
+    // The police station's tape over the interviews: said at each of its 87 ticks
+    // (research/sessions/s64-play.log, 11:37:54 to 11:39:30); Andrey asked for the hours and minutes.
+    lines::ClockTicks tape;
+    CHECK(tape.Filter({L"09:32:24"}, 0.0) == Lines{L"09:32:24"});
+    CHECK(tape.Filter({L"09:32:25"}, 1.0).empty());
+    CHECK(tape.Filter({L"09:32:59"}, 35.0).empty());
+    CHECK(tape.Filter({L"09:33:00"}, 36.0) == Lines{L"09:33:00"});
+    CHECK(tape.Filter({L"09:33:00"}, 36.5).empty());
+    CHECK(tape.Filter({L"10:00:00"}, 37.0) == Lines{L"10:00:00"});
+    // Hidden and shown again: said as it stands.
+    tape.Hidden();
+    CHECK(tape.Filter({L"10:47:16"}, 40.0) == Lines{L"10:47:16"});
+    // The prologue's camcorder, minutes and seconds ticking each second: its first value, then its
+    // minutes as they turn.
+    lines::ClockTicks camcorder;
+    CHECK(camcorder.Filter({L"0:21"}, 0.0) == Lines{L"0:21"});
+    for (int s = 22; s <= 59; ++s)
+        CHECK(camcorder.Filter({L"0:" + std::to_wstring(s)}, s - 21.0).empty());
+    CHECK(camcorder.Filter({L"1:00"}, 39.0) == Lines{L"1:00"});
+    // A clock of hours and minutes ticks once a minute: it stood still long before each change, so
+    // every change is said.
+    lines::ClockTicks watch;
+    CHECK(watch.Filter({L"4:10"}, 0.0) == Lines{L"4:10"});
+    CHECK(watch.Filter({L"4:11"}, 60.0) == Lines{L"4:11"});
+    CHECK(watch.Filter({L"4:12"}, 120.0) == Lines{L"4:12"});
+    // A clock that stopped a while is said as it goes on.
+    CHECK(camcorder.Filter({L"1:01"}, 40.0).empty());
+    CHECK(camcorder.Filter({L"1:02"}, 75.0) == Lines{L"1:02"});
+    // Lines that are no clock pass, whatever the clock does.
+    lines::ClockTicks card;
+    CHECK(card.Filter({L"МАЙК", L"Лечебница", L"3:03"}, 0.0) == Lines{L"МАЙК", L"Лечебница", L"3:03"});
+    CHECK(card.Filter({L"REC 0:22"}, 1.0) == Lines{L"REC 0:22"});
+}
+
+TEST_CASE("lines: the HUD says the camcorder's clock once as it comes up, not at every tick, 2026-11-09")
+{
+    // The prologue's prank film: the clock was said at every tick (the camcorder ticks once a second).
+    lines::Element element;
+    lines::ClockTicks clock;
+    double now = 0.0;
+    std::vector<Lines> said;
+    for (const auto* tick : {L"0:21", L"0:21", L"0:21", L"0:22", L"0:22", L"0:22", L"0:23", L"0:23", L"0:23", L"0:24", L"0:24", L"0:24"})
+    {
+        const auto fresh = clock.Filter(element.Shown({tick}, now), now);
+        if (!fresh.empty()) said.push_back(fresh);
+        now += 0.34;
+    }
+    CHECK(said == std::vector<Lines>{{L"0:21"}});
+    // Put away and raised again: said again as it stands.
+    element.Hidden();
+    clock.Hidden();
+    said.clear();
+    for (const auto* tick : {L"0:31", L"0:31", L"0:31"})
+    {
+        const auto fresh = clock.Filter(element.Shown({tick}, now), now);
+        if (!fresh.empty()) said.push_back(fresh);
+        now += 0.34;
+    }
+    CHECK(said == std::vector<Lines>{{L"0:31"}});
+}
+
+TEST_CASE("lines: words over a film that are no one's speech are told from its subtitles, 2026-11-09")
+{
+    // The epilogue's last scene opens on epilogue_ost_001; the subtitle widget shows its line break as
+    // a space (research/sessions/s64-play.log, 11:47:51.893).
+    const Lines onScreen{L"ЛОС-АНДЖЕЛЕС\rНЕСКОЛЬКО ЛЕТ СПУСТЯ", L"Инструменты"};
+    CHECK(lines::OnScreenText(L"ЛОС-АНДЖЕЛЕС НЕСКОЛЬКО ЛЕТ СПУСТЯ", onScreen));
+    CHECK(lines::OnScreenText(L" Инструменты", onScreen));
+    CHECK_FALSE(lines::OnScreenText(L"Чёрт…", onScreen));
+    CHECK_FALSE(lines::OnScreenText(L"(Полицейский 1): Тут что-то есть.", onScreen));
+    CHECK_FALSE(lines::OnScreenText(L"", onScreen));
+    CHECK_FALSE(lines::OnScreenText(L"ЛОС-АНДЖЕЛЕС", onScreen));
+    CHECK(std::size(lines::kOnScreenTextKeys) == 5);
+}

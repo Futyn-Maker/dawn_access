@@ -46,7 +46,13 @@ namespace da::features
                                                   L"BatesShootingStageReticuleWidget",
                                                   L"BatesTTSIconWidget",
                                                   L"BMUIHUDContainer",
-                                                  L"BatesHUDContainer"};
+                                                  L"BatesHUDContainer",
+                                                  // The epilogue's credits, its interviews' overlay and
+                                                  // its videos of the dead (features/Credits).
+                                                  L"BatesCreditWidget",
+                                                  L"BatesCreditLineWidget",
+                                                  L"BatesCreditEntryWidget",
+                                                  L"BatesCreditOverlayWidget"};
 
         bool OwnedElsewhere(UObject* widget)
         {
@@ -64,6 +70,7 @@ namespace da::features
             lines::Element lines;
             lines::Card card;      // for an update card, which waits for its body (Text_Body)
             lines::TitleFill fill; // for a title card, which fades its words in one after another
+            lines::ClockTicks clock; // a clock it shows, said as its hours and minutes change
         };
 
         std::vector<Tracked> g_tracked;
@@ -220,6 +227,7 @@ namespace da::features
                     t.lines.Hidden();
                     t.card.Hidden();
                     t.fill.Hidden();
+                    t.clock.Hidden();
                     if (IsPage(t.instance) && lines::PageComing(g_reading.Open(), false, now - drawnBefore, false)) pageComing = true;
                     continue;
                 }
@@ -241,7 +249,11 @@ namespace da::features
                     pageDrawn = true;
                 }
                 const auto lines = Lines(t.instance);
-                const auto fresh = t.lines.Shown(lines, now, drawn);
+                // A clock ticking on is said as its hours and minutes change (lines::ClockTicks); a
+                // document's page and a card are held and given back whole (lines::CardFirst), and tick
+                // no clock.
+                const auto shown = t.lines.Shown(lines, now, drawn);
+                const auto fresh = IsPage(t.instance) || IsCard(t.instance) ? shown : t.clock.Filter(shown, now);
                 const bool unsaid = drawn && !lines.empty() && t.lines.Unsaid(lines, now);
                 if (fresh.empty())
                 {

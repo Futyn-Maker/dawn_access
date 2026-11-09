@@ -10,6 +10,7 @@
 #include "hooks/HookDispatcher.hpp"
 #include "hotkeys/Hotkeys.hpp"
 #include "input/InputNames.hpp"
+#include "locale/GameText.hpp"
 #include "locale/Locale.hpp"
 #include "speech/Speech.hpp"
 #include "watch/Watchers.hpp"
@@ -29,6 +30,27 @@ namespace da::features
         lines::Subtitles g_lines;        // the lines on screen at the last polls (lines::Subtitles)
         std::wstring g_lastLine;         // the last line that appeared
         bool g_read = true;              // whether lines are spoken as they appear
+
+        // The words the game lays over its films through the subtitles (lines::kOnScreenTextKeys), as
+        // it words them in the language of the moment.
+        std::vector<std::wstring> g_onScreen;
+        std::wstring g_onScreenLocale;
+
+        const std::vector<std::wstring>& OnScreenTexts()
+        {
+            const auto locale = gametext::CurrentLocale();
+            if (g_onScreen.empty() || locale != g_onScreenLocale)
+            {
+                g_onScreenLocale = locale;
+                g_onScreen.clear();
+                for (const wchar_t* key : lines::kOnScreenTextKeys)
+                {
+                    const auto text = gametext::Resolve(key);
+                    if (!text.empty()) g_onScreen.push_back(text);
+                }
+            }
+            return g_onScreen;
+        }
 
         // One subtitle line as displayed: the speaker's name when the game shows it, then the
         // words, each read from the text block the game draws it in.
@@ -76,7 +98,18 @@ namespace da::features
             if (fresh.empty()) return;
             g_lastLine = str::Join(fresh, L" ");
             log::Info(L"subtitles: line \"{}\"", g_lastLine);
-            if (g_read) speech::Announce(g_lastLine);
+            // Words over a film that are no one's speech are read like any text on the screen, whatever
+            // the reading's switch (lines::OnScreenText); the speech, as the switch says.
+            std::vector<std::wstring> onScreen;
+            std::vector<std::wstring> spoken;
+            for (const auto& line : fresh)
+                (lines::OnScreenText(line, OnScreenTexts()) ? onScreen : spoken).push_back(line);
+            if (!onScreen.empty())
+            {
+                log::Info(L"subtitles: \"{}\" is words over the film, no one's speech: said whatever the reading's switch", str::Join(onScreen, L" "));
+                speech::Announce(str::Join(onScreen, L" "));
+            }
+            if (g_read && !spoken.empty()) speech::Announce(str::Join(spoken, L" "));
         }
 
         void Poll(float)

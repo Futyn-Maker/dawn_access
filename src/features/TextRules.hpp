@@ -34,6 +34,18 @@ namespace da::lines
         std::vector<std::wstring> m_before; // and at the poll before that
     };
 
+    // Words the game lays over a film through its subtitles that are no one's speech: the epilogue's
+    // last scene opens on "ЛОС-АНДЖЕЛЕС / НЕСКОЛЬКО ЛЕТ СПУСТЯ" (epilogue_ost_001), the bonus films on
+    // their titles (bts_video_title_001 to 004); the films' subtitle assets name no others
+    // (research/extract/json/Bates/Content/UI/Data/VideoSubs). A sighted player reads them whatever
+    // they do with subtitles; with subtitle reading off, Andrey never heard where the last scene takes
+    // place (research/sessions/s64-play.log, 11:47:51.893). They are said whatever the reading's switch.
+    constexpr const wchar_t* kOnScreenTextKeys[] = {L"epilogue_ost_001", L"bts_video_title_001", L"bts_video_title_002", L"bts_video_title_003",
+                                                     L"bts_video_title_004"};
+    // Whether a subtitle line is one of those texts as the game words them now (`onScreen`), white
+    // space and line breaks aside.
+    bool OnScreenText(const std::wstring& line, const std::vector<std::wstring>& onScreen);
+
     // A HUD element is read once its lines have stood for kStablePolls polls: a caption is filled
     // in a moment after the element appears, and the same element can show several messages in a
     // row. Only the lines that are new are said: a line that stays while others come and go (a
@@ -67,6 +79,32 @@ namespace da::lines
         std::vector<std::wstring> m_seen;
         std::map<std::wstring, double> m_spoken; // the lines said, by the time each was last on it
         int m_stablePolls = 0;
+    };
+
+    // A clock the game ticks on was said at every tick: the police station's tape over the
+    // survivors' interviews 87 times ("09:32:24", "09:32:25", ..., research/sessions/s64-play.log,
+    // 11:37:54 to 11:39:30), each in among the credits and the interviews' voices, and the
+    // prologue's camcorder ("0:21", "0:22", ...). Andrey asked for the hours and minutes as they
+    // change, the seconds left as first found. So a line that is nothing but a clock ("H:MM:SS",
+    // "H:MM", "M:SS") is said the first time an element shows it; after that a clock of three
+    // fields is said only where its hours or minutes change, one of two fields where its first
+    // field changes, or where it stood still kClockStill before it changed (a clock of hours and
+    // minutes ticks once a minute, one of minutes and seconds once a second; the text alone does
+    // not tell them apart, their pace does). Hidden and shown again, the element says it again.
+    constexpr double kClockStill = 30.0;
+    // A line that is nothing but a clock: two or three fields of digits, colon-separated, the first
+    // of one or two digits and the others of two; its fields in `fields`.
+    bool IsClock(const std::wstring& line, std::vector<int>* fields = nullptr);
+    class ClockTicks
+    {
+    public:
+        // An element's new lines at a poll: those of them to say.
+        std::vector<std::wstring> Filter(const std::vector<std::wstring>& fresh, double now);
+        void Hidden();
+
+    private:
+        std::vector<int> m_last;  // the clock as last shown; empty before the first
+        double m_changedAt = -1.0; // when it last changed
     };
 
     // An update card (the butterfly effect's, a totem's, a clue's: a title, a body and a key)

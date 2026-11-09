@@ -1,5 +1,7 @@
 #include "features/TextRules.hpp"
 
+#include "core/Strings.hpp"
+
 #include <algorithm>
 #include <set>
 
@@ -23,6 +25,13 @@ namespace da::lines
         m_before = std::move(m_shown);
         m_shown = shown;
         return fresh;
+    }
+
+    bool OnScreenText(const std::wstring& line, const std::vector<std::wstring>& onScreen)
+    {
+        const std::wstring words = str::CollapseWhitespace(line);
+        if (words.empty()) return false;
+        return std::any_of(onScreen.begin(), onScreen.end(), [&](const std::wstring& text) { return str::CollapseWhitespace(text) == words; });
     }
 
     std::vector<std::wstring> Element::Shown(const std::vector<std::wstring>& drawnLines, double now, bool drawn)
@@ -70,6 +79,63 @@ namespace da::lines
     {
         for (const auto& line : lines)
             m_spoken.erase(line);
+    }
+
+    bool IsClock(const std::wstring& line, std::vector<int>* fields)
+    {
+        std::vector<int> parts;
+        size_t i = 0;
+        while (true)
+        {
+            const size_t start = i;
+            int value = 0;
+            while (i < line.size() && line[i] >= L'0' && line[i] <= L'9')
+            {
+                value = value * 10 + (line[i] - L'0');
+                ++i;
+            }
+            const size_t digits = i - start;
+            // The first field of one or two digits, the others of two.
+            if (digits == 0 || digits > 2 || (!parts.empty() && digits != 2)) return false;
+            parts.push_back(value);
+            if (i == line.size()) break;
+            if (line[i] != L':') return false;
+            ++i;
+        }
+        if (parts.size() < 2 || parts.size() > 3) return false;
+        if (fields) *fields = std::move(parts);
+        return true;
+    }
+
+    std::vector<std::wstring> ClockTicks::Filter(const std::vector<std::wstring>& fresh, double now)
+    {
+        std::vector<std::wstring> out;
+        for (const auto& line : fresh)
+        {
+            std::vector<int> fields;
+            if (!IsClock(line, &fields))
+            {
+                out.push_back(line);
+                continue;
+            }
+            bool say = false;
+            if (m_last.empty() || m_last.size() != fields.size())
+                say = true;
+            else if (fields.size() == 3)
+                say = fields[0] != m_last[0] || fields[1] != m_last[1];
+            else
+                say = fields[0] != m_last[0] || (fields != m_last && now - m_changedAt >= kClockStill);
+            if (fields != m_last) m_changedAt = now;
+            m_last = std::move(fields);
+            if (say) out.push_back(line);
+        }
+        return out;
+    }
+
+    void ClockTicks::Hidden()
+    {
+        m_last.clear();
+        m_changedAt = -1.0;
     }
 
     namespace

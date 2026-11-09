@@ -29,6 +29,12 @@ namespace da::diag
         const wchar_t* const kLeftAlone[] = {
             L"BatesSubtitlesWidget", // its feature logs every line; the player may have its reading off
             L"BatesVersionWidget",   // the build number in the corner
+            // The epilogue's credits, read on the player's key, and the overlays over its
+            // interviews and videos, read by their own rules (features/Credits).
+            L"BatesCreditWidget",
+            L"BatesCreditLineWidget",
+            L"BatesCreditEntryWidget",
+            L"BatesCreditOverlayWidget",
         };
 
         struct Drawn
