@@ -60,6 +60,12 @@ namespace da::hotkeys
         return keys;
     }
 
+    KeyTake TakeOf(bool down, bool takenDown, bool gameWaitsForKey)
+    {
+        if (!down) return takenDown ? KeyTake::Release : KeyTake::Leave;
+        return gameWaitsForKey ? KeyTake::Leave : KeyTake::Press;
+    }
+
     std::span<const StopKey> PadStopKeys()
     {
         static constexpr StopKey keys[] = {

@@ -6,6 +6,7 @@
 #include "core/Log.hpp"
 #include "core/ObjectUtil.hpp"
 #include "core/Strings.hpp"
+#include "core/Symbols.hpp"
 #include "diag/Diagnostics.hpp"
 #include "hotkeys/KeyHook.hpp"
 #include "hotkeys/KeySpec.hpp"
@@ -23,6 +24,8 @@
 
 namespace da::hotkeys
 {
+    using RC::Unreal::UObject;
+
     namespace
     {
         struct KeyBinding
@@ -155,9 +158,39 @@ namespace da::hotkeys
             }
         }
 
+        // The row of the game's controls that waits for a key to bind (the flag its click sets:
+        // UBatesKeyRebindSettingWidget.bInSelectingKeyState), found where the focus stands and
+        // kept while it waits. Every key is the game's meanwhile (hotkeys::TakeOf): the mod took
+        // F1 to F9 before the game could see them, so that none of them could be bound.
+        obj::ObjectKey g_waitingRow;
+
+        bool WaitingForKey(UObject* row)
+        {
+            const auto* waits = static_cast<const uint8_t*>(sym::MemberOf(row, L"UBatesKeyRebindSettingWidget.bInSelectingKeyState"));
+            return waits && *waits != 0;
+        }
+
+        bool GameWaitsForKey()
+        {
+            if (g_waitingRow.object)
+            {
+                if (obj::IsSame(g_waitingRow) && WaitingForKey(g_waitingRow.object)) return true;
+                log::Info(L"hotkeys: the game's controls have their key; the mod's keys are the mod's again");
+                g_waitingRow = {};
+                return false;
+            }
+            UObject* focused = watch::CurrentFocused();
+            UObject* row = focused ? obj::NearestAncestorOfClass(focused, L"BatesKeyRebindSettingWidget", 8) : nullptr;
+            if (!row || !WaitingForKey(row)) return false;
+            g_waitingRow = obj::KeyOf(row);
+            log::Info(L"hotkeys: {} waits for a key to bind: every key is the game's until it has one", obj::ObjectName(row));
+            return true;
+        }
+
         void PollKeyboard()
         {
             if (g_keys.empty()) return;
+            const bool gameWaits = GameWaitsForKey();
             // The hook hands over the presses it took; the poll below is for when it could
             // not be set.
             if (keyhook::Active())
@@ -167,6 +200,7 @@ namespace da::hotkeys
                 // the mod is off the hook takes nothing but the switch.
                 keyhook::SetOn(gate::IsOn());
                 keyhook::SetContext(gate::IsOn() && InContext());
+                keyhook::SetGameWaitsForKey(gameWaits);
                 for (const int id : keyhook::TakePresses())
                 {
                     if (id >= 0 && static_cast<size_t>(id) < g_keys.size()) Run(g_keys[static_cast<size_t>(id)].command, Source::Keyboard);
@@ -186,7 +220,7 @@ namespace da::hotkeys
             for (auto& k : g_keys)
             {
                 const bool down = Down(k.key.vk);
-                if (down && !k.wasDown && ctrl == k.key.ctrl && alt == k.key.alt && shift == k.key.shift && Answers(k.command) &&
+                if (down && !k.wasDown && !gameWaits && ctrl == k.key.ctrl && alt == k.key.alt && shift == k.key.shift && Answers(k.command) &&
                     (Of(k.command).scope != Scope::Context || context))
                 {
                     Run(k.command, Source::Keyboard);

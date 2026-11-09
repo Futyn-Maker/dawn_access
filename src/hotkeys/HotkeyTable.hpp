@@ -74,4 +74,17 @@ namespace da::hotkeys
     };
     std::span<const StopKey> KeyboardStopKeys();
     std::span<const StopKey> PadStopKeys();
+
+    // What the mod does with a key event of one of its own keys. While the game waits for a key
+    // to bind to a row of its controls, every key is the game's, the mod's own as well (F5 can be
+    // bound there: the game bans only Escape, Tab and the pad's menu buttons, WBP_SettingKeybinding's
+    // PlatformBannedKeys); a key the mod took down before the wait still has its release taken,
+    // so that the game never sees a release without its press.
+    enum class KeyTake
+    {
+        Leave,   // the game's: given on, nothing run
+        Press,   // the mod's: taken, its command run
+        Release, // the release of a key the mod took down: taken
+    };
+    KeyTake TakeOf(bool down, bool takenDown, bool gameWaitsForKey);
 }

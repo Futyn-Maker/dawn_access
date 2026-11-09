@@ -2,6 +2,7 @@
 
 #include "core/Fault.hpp"
 #include "core/Log.hpp"
+#include "hotkeys/HotkeyTable.hpp"
 #include "input/InputNames.hpp"
 
 #include <windows.h>
@@ -26,6 +27,7 @@ namespace da::keyhook
         std::atomic<bool> g_active{false};
         std::atomic<bool> g_context{false};
         std::atomic<bool> g_on{true};
+        std::atomic<bool> g_gameWaitsForKey{false};
         // Presses waiting for the game thread, a few at most: ones that piled up while the
         // game stood still are stale, and replaying them would act on a screen that has
         // since changed.
@@ -81,6 +83,7 @@ namespace da::keyhook
                     const bool ctrl = ModifierDown(VK_CONTROL);
                     const bool alt = ModifierDown(VK_MENU);
                     const bool shift = ModifierDown(VK_SHIFT);
+                    const bool waits = g_gameWaitsForKey.load(std::memory_order_relaxed);
                     for (const auto& binding : g_bindings)
                     {
                         if (binding.vk != vk) continue;
@@ -89,6 +92,15 @@ namespace da::keyhook
                             if (ctrl != binding.ctrl || alt != binding.alt || shift != binding.shift) continue;
                             if (binding.contextual && !g_context.load(std::memory_order_relaxed)) continue;
                             if (!binding.switchKey && !g_on.load(std::memory_order_relaxed)) continue;
+                        }
+                        const auto take = hotkeys::TakeOf(down, g_down[static_cast<size_t>(vk)], waits);
+                        if (take == hotkeys::KeyTake::Leave)
+                        {
+                            if (down) break;
+                            continue;
+                        }
+                        if (take == hotkeys::KeyTake::Press)
+                        {
                             // The key repeats while held; only the press counts.
                             if (!g_down[static_cast<size_t>(vk)])
                             {
@@ -100,11 +112,8 @@ namespace da::keyhook
                             input::NoteKeyboardActivity();
                             return 1;
                         }
-                        if (g_down[static_cast<size_t>(vk)])
-                        {
-                            g_down[static_cast<size_t>(vk)] = false;
-                            return 1;
-                        }
+                        g_down[static_cast<size_t>(vk)] = false;
+                        return 1;
                     }
                 }
             }
@@ -194,6 +203,11 @@ namespace da::keyhook
     void SetOn(bool on)
     {
         g_on.store(on, std::memory_order_relaxed);
+    }
+
+    void SetGameWaitsForKey(bool waits)
+    {
+        g_gameWaitsForKey.store(waits, std::memory_order_relaxed);
     }
 
     std::vector<int> TakePresses()

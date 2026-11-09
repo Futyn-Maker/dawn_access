@@ -40,6 +40,9 @@ namespace da::keyhook
     // Whether the mod is on; off, the hook takes nothing but the switch. Set from the game
     // thread as the mod is switched.
     void SetOn(bool on);
+    // Whether the game waits for a key to bind to a row of its controls: meanwhile the hook takes
+    // no key at all (hotkeys::TakeOf). Set from the game thread.
+    void SetGameWaitsForKey(bool waits);
 
     // The ids of the bindings pressed since the last call, in order.
     std::vector<int> TakePresses();

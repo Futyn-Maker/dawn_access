@@ -201,3 +201,17 @@ TEST_CASE("The README's key tables, once the file exists, have a row for every k
         CHECK(std::regex_search(readme, row));
     }
 }
+
+TEST_CASE("While the game waits for a key to bind, the mod's keys are the game's: F5 bound in the controls, 2026-11-09")
+{
+    // The mod's keys as ever.
+    CHECK(TakeOf(true, false, false) == KeyTake::Press);
+    CHECK(TakeOf(false, true, false) == KeyTake::Release);
+    CHECK(TakeOf(false, false, false) == KeyTake::Leave);
+    // The row of the controls waits for its key: F5 goes to the game, its release too.
+    CHECK(TakeOf(true, false, true) == KeyTake::Leave);
+    CHECK(TakeOf(false, false, true) == KeyTake::Leave);
+    // A key the mod took down before the wait began keeps its release with the mod: the game is
+    // never given a release without its press.
+    CHECK(TakeOf(false, true, true) == KeyTake::Release);
+}
