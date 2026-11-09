@@ -246,8 +246,9 @@ namespace da::features
         hooks::OnNative(L"/Script/Bates.BatesDirectionalChoiceWidget:UpdateSelectionProgress", &OnSelection, nullptr);
         hooks::OnNative(L"/Script/Bates.BatesDirectionalChoiceWidget:UpdateTimeoutProgress", &OnTimeout, nullptr);
         hooks::OnNative(L"/Script/Bates.BatesDirectionalChoiceWidget:ChoiceEnded", &OnEnded, nullptr);
+        // A Blueprint event with no native body (no exec thunk in the PDB): the native class's stub calls
+        // the widget Blueprint's own SetupGlobalStats, which only the script hook sees.
         hooks::OnScript(L"BatesDirectionalChoiceWidget", L"SetupGlobalStats", &OnGlobalStats);
-        hooks::OnNative(L"/Script/Bates.BatesDirectionalChoiceWidget:SetupGlobalStats", &OnGlobalStats, nullptr);
         gamethread::AddPoller(L"choices", &Poll);
     }
 
