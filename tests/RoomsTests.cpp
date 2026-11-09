@@ -283,7 +283,25 @@ TEST_CASE("a reverb volume's name gives its room's key, the parts of one room on
     CHECK(rooms::Key(L"").empty());
 }
 
-TEST_CASE("every reverb volume the game ships gives a room, and every room of chapters 1 and 2 has a name")
+TEST_CASE("a numbered part of a room is looked up with its number first: the old hotel's kitchen, 2026-11-09")
+{
+    const auto keys = [](const wchar_t* name)
+    {
+        std::vector<std::string> out;
+        for (const auto& key : rooms::NameKeys(name))
+            out.push_back(U8(key));
+        return out;
+    };
+    CHECK(keys(L"T_Reverb_Kitchen4") == std::vector<std::string>{"kitchen_4", "kitchen"});
+    CHECK(keys(L"T_Reverb_Kitchen_1") == std::vector<std::string>{"kitchen_1", "kitchen"});
+    CHECK(keys(L"T_Reverb_TowerToSanatoriumview_A") == std::vector<std::string>{"tower_to_sanatoriumview_a", "tower_to_sanatoriumview"});
+    CHECK(keys(L"T_Reverb_Hall") == std::vector<std::string>{"hall"});
+    CHECK(keys(L"T_GlobalReverb_LodgeInterior") == std::vector<std::string>{"lodge_interior"});
+    CHECK(keys(L"T_Cam_bridge_to_mine_08").empty());
+    CHECK(keys(L"").empty());
+}
+
+TEST_CASE("every reverb volume the game ships gives a room, and every room has a name")
 {
     std::set<std::string> keys;
     for (const wchar_t* name : kEveryVolume)
@@ -298,23 +316,40 @@ TEST_CASE("every reverb volume the game ships gives a room, and every room of ch
     // 150 volumes, 109 rooms: the parts of a room are one.
     CHECK(keys.size() < std::size(kEveryVolume));
 
-    // The table of room names, as the mod ships it, in English and in Russian.
+    // The table of room names, as the mod ships it, in English and in Russian (scripts\check-lang.ps1
+    // holds the other languages to the English keys): every room of every chapter is named, by the
+    // first of its keys the table names, as the mod looks it up.
     const auto lang = (std::filesystem::path(DA_REPO_ROOT) / "mod" / "lang").wstring();
+    const auto nameOf = [](const wchar_t* volume)
+    {
+        for (const auto& key : rooms::NameKeys(volume))
+        {
+            if (locale::Has(L"room." + key)) return U8(locale::Mod(L"room." + key));
+        }
+        return std::string();
+    };
     for (const wchar_t* code : {L"en_US", L"ru_RU"})
     {
         REQUIRE(locale::LoadTables(lang, code));
+        for (const wchar_t* name : kEveryVolume)
+        {
+            CAPTURE(U8(name));
+            CHECK_FALSE(nameOf(name).empty());
+        }
         for (const wchar_t* name : kChapters12)
         {
             CAPTURE(U8(name));
             CHECK(locale::Has(L"room." + rooms::Key(name)));
         }
     }
-    CHECK(U8(locale::Mod(L"room.kitchen")) == "Кухня");
-    CHECK(U8(locale::Mod(L"room.hall_airlock")) == "Тамбур");
-    // The rooms of the chapters not played yet have no name: nothing is said of them.
-    CHECK_FALSE(locale::Has(L"room." + rooms::Key(L"T_Reverb_PsychoRoom1")));
-    CHECK_FALSE(locale::Has(L"room." + rooms::Key(L"T_Reverb_Deathroom4")));
+    CHECK(nameOf(L"T_Reverb_Kitchen2") == "Кухня");
+    CHECK(nameOf(L"T_Reverb_Hall_Airlock") == "Тамбур");
+    // The old hotel's kitchen under the lodge, whatever the part laid over it is called.
+    CHECK(nameOf(L"T_Reverb_Kitchen4") == "Кухня старого отеля");
+    CHECK(nameOf(L"T_Reverb_OldHotel_Kitchen") == "Кухня старого отеля");
+    CHECK(nameOf(L"T_Reverb_PsychoRoom1") == "Мастерская");
     REQUIRE(locale::LoadTables(lang, L"en_US"));
+    CHECK(nameOf(L"T_Reverb_Kitchen4") == "Old hotel kitchen");
 }
 
 TEST_CASE("a point lies in the narrowest zone that holds it")

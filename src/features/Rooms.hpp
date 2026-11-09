@@ -9,8 +9,7 @@
 // reach map finds it; the rooms do not decide what is listed, so that the list stays as it is while
 // she walks from one open room into the next and changes as she passes a door (Andrey's rule,
 // 2026-11-04). The character crossing from one room into another is told the room's name
-// (Crossing), from the table of room names (lang/rooms), which names only the rooms of the
-// chapters played so far.
+// (Crossing), from the table of room names (lang/rooms), which names every room of the game.
 //
 // At the lodge on 2026-11-02 the list held 24 things, most of them inside the lodge while Chris
 // stood in its yard with the front door frozen shut; the reach map had proven every one of them
@@ -35,6 +34,14 @@ namespace da::rooms
     // says whether it is one of the broad volumes laid under the rooms (T_GlobalReverb_*,
     // T_ReverbGlobal_*, T_Reverb_Global_*).
     std::wstring Key(std::wstring_view name, bool* broad = nullptr);
+
+    // The keys a reverb volume's room is looked up by in the table of room names, the first one the
+    // table names taken: its key with the number at its end kept, where it has one, then its key
+    // (Key). A numbered part laid over another place is named apart so: T_Reverb_Kitchen4 of act5_1
+    // lies over the old hotel's kitchen, 13 m under the lodge's kitchen whose parts are
+    // T_Reverb_Kitchen2 and 3, and was said as the lodge's kitchen (research/triggers/audio,
+    // 2026-11-09). Empty for a volume that is no reverb volume.
+    std::vector<std::wstring> NameKeys(std::wstring_view name);
 
     // One reverb volume: its name, its room's key, the room's name in the player's language
     // (empty where the table names none), and its collision.

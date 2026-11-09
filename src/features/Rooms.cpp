@@ -63,6 +63,64 @@ namespace da::rooms
         }
     }
 
+    namespace
+    {
+        // The words of a reverb volume's name after its prefix; empty for a volume that is no reverb
+        // volume. `wide` says whether it is a broad one.
+        std::vector<std::wstring> VolumeWords(std::wstring_view name, bool& wide);
+
+        std::wstring Joined(const std::vector<std::wstring>& words)
+        {
+            std::wstring key;
+            for (const auto& w : words)
+            {
+                if (!key.empty()) key += L'_';
+                key += w;
+            }
+            return key;
+        }
+    }
+
+    std::vector<std::wstring> NameKeys(std::wstring_view name)
+    {
+        bool wide = false;
+        const auto words = VolumeWords(name, wide);
+        if (words.empty()) return {};
+        const auto key = Key(name);
+        const auto exact = Joined(words);
+        if (exact == key || key.empty()) return {key};
+        return {exact, key};
+    }
+
+    namespace
+    {
+        std::vector<std::wstring> VolumeWords(std::wstring_view name, bool& wide)
+        {
+            wide = false;
+            std::wstring_view rest = name;
+            if (StartsNoCase(rest, L"T_")) rest.remove_prefix(2);
+            if (StartsNoCase(rest, L"GlobalReverb_") || StartsNoCase(rest, L"ReverbGlobal_"))
+            {
+                wide = true;
+                rest.remove_prefix(13);
+            }
+            else if (StartsNoCase(rest, L"Reverb_Global_"))
+            {
+                wide = true;
+                rest.remove_prefix(14);
+            }
+            else if (StartsNoCase(rest, L"Reverb_"))
+            {
+                rest.remove_prefix(7);
+            }
+            else
+            {
+                return {};
+            }
+            return Words(rest);
+        }
+    }
+
     std::wstring Key(std::wstring_view name, bool* broad)
     {
         if (broad) *broad = false;

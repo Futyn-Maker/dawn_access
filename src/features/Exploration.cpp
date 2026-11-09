@@ -1835,12 +1835,16 @@ namespace da::features
             ScanOthers(pawn);
         }
 
-        // A room's name in the player's language, from the table of room names; empty where it names
-        // none (the rooms of the chapters not played yet).
-        std::wstring RoomName(const std::wstring& key)
+        // A room's name in the player's language, from the table of room names, by the first of the
+        // volume's keys it names (rooms::NameKeys); empty where it names none.
+        std::wstring RoomName(const rooms::Zone& zone)
         {
-            const std::wstring id = L"room." + key;
-            return locale::Has(id) ? locale::Mod(id) : std::wstring();
+            for (const auto& key : rooms::NameKeys(zone.name))
+            {
+                const std::wstring id = L"room." + key;
+                if (locale::Has(id)) return locale::Mod(id);
+            }
+            return {};
         }
 
         // The level's rooms: its reverb volumes whose collision is read (VolumeShape), counted anew
@@ -1873,7 +1877,7 @@ namespace da::features
                 std::vector<std::wstring> named, unnamed;
                 for (const auto& z : g_zones)
                 {
-                    auto& into = RoomName(z.key).empty() ? unnamed : named;
+                    auto& into = RoomName(z).empty() ? unnamed : named;
                     const auto word = z.key + (z.broad ? L" (broad)" : L"");
                     if (std::find(into.begin(), into.end(), word) == into.end()) into.push_back(word);
                 }
@@ -1883,7 +1887,7 @@ namespace da::features
             }
             // The names follow the player's language.
             for (auto& z : g_zones)
-                z.spoken = RoomName(z.key);
+                z.spoken = RoomName(z);
         }
 
         // Whether an actor is a living creature the scenes bind (recheck::LivingCreature, by its mesh's
