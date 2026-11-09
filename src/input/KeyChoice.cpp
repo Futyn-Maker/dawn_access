@@ -36,3 +36,38 @@ namespace da::input
         return own;
     }
 }
+
+namespace da::input
+{
+    uint16_t ChordGrace::HeldBack(uint16_t buttons, bool holdDown, uint16_t graced, bool kept)
+    {
+        uint16_t back = 0;
+        for (int bit = 0; bit < 16; ++bit)
+        {
+            const uint16_t b = static_cast<uint16_t>(1u << bit);
+            if (!(graced & b)) continue;
+            if (!(buttons & b))
+            {
+                m_given = static_cast<uint16_t>(m_given & ~b);
+                m_held[bit] = 0;
+                continue;
+            }
+            // Under the hold the chord has it (HideChord's latch), until it is let go of.
+            if (holdDown)
+            {
+                m_given = static_cast<uint16_t>(m_given | b);
+                m_held[bit] = 0;
+                continue;
+            }
+            if (m_given & b) continue;
+            if (m_held[bit] < kChordGraceReadings)
+            {
+                back = static_cast<uint16_t>(back | b);
+                if (kept) ++m_held[bit];
+                continue;
+            }
+            m_given = static_cast<uint16_t>(m_given | b);
+        }
+        return back;
+    }
+}

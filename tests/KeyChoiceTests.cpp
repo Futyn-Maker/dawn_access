@@ -71,3 +71,47 @@ TEST_CASE("keys: the pad's buttons and the keyboard's keys as before")
     CHECK(Desk({L"Gamepad_FaceButton_Bottom"}) == std::vector<std::wstring>{L"Gamepad_FaceButton_Bottom"});
     CHECK(Pad({}).empty());
 }
+
+TEST_CASE("a shoulder button waits a reading or two for the chord's hold before the game has it: the last subtitle, 2026-11-09")
+{
+    const uint16_t rb = 0x0200, lb = 0x0100, back = 0x0020, a = 0x1000;
+    const uint16_t graced = lb | rb;
+    // R1 a frame before the touch pad: kept back, then the chord's (HideChord's latch hides it after).
+    input::ChordGrace grace;
+    CHECK(grace.HeldBack(rb, false, graced) == rb);
+    CHECK(grace.HeldBack(rb | back, true, graced) == 0);
+    // Let go of the hold with R1 still down: never kept back again while it stays down.
+    CHECK(grace.HeldBack(rb, false, graced) == 0);
+    CHECK(grace.HeldBack(rb, false, graced) == 0);
+    // R1 alone: the game has it at its third reading, and for as long as it stays down.
+    input::ChordGrace alone;
+    CHECK(alone.HeldBack(rb, false, graced) == rb);
+    CHECK(alone.HeldBack(rb, false, graced) == rb);
+    CHECK(alone.HeldBack(rb, false, graced) == 0);
+    CHECK(alone.HeldBack(rb, false, graced) == 0);
+    // Reports the game does not keep count for nothing.
+    input::ChordGrace queued;
+    CHECK(queued.HeldBack(rb, false, graced, false) == rb);
+    CHECK(queued.HeldBack(rb, false, graced, false) == rb);
+    CHECK(queued.HeldBack(rb, false, graced, true) == rb);
+    CHECK(queued.HeldBack(rb, false, graced, true) == rb);
+    CHECK(queued.HeldBack(rb, false, graced, true) == 0);
+    // Let go, and pressed again: it waits again.
+    CHECK(alone.HeldBack(0, false, graced) == 0);
+    CHECK(alone.HeldBack(rb, false, graced) == rb);
+    // The other buttons never wait: a face button is on a quick-time event's clock.
+    CHECK(alone.HeldBack(a, false, graced) == 0);
+    input::ChordGrace both;
+    CHECK(both.HeldBack(rb | lb | a, false, graced) == (rb | lb));
+    // Two pads read each frame, one idle: each pad's wait is its own (the mod keeps one per pad), and
+    // the idle pad's readings never make the other's R1 wait for ever.
+    input::ChordGraces pads;
+    int given = 0;
+    for (int frame = 0; frame < 6; ++frame)
+    {
+        if (pads.HeldBack(4, rb, false, graced) == 0) ++given;
+        CHECK(pads.HeldBack(0, 0, false, graced) == 0);
+    }
+    CHECK(given == 4);
+    CHECK(pads.HeldBack(input::ChordGraces::kPads, rb, false, graced) == 0);
+}

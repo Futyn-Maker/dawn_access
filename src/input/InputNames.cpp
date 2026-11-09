@@ -893,10 +893,20 @@ namespace da::input
             return g.thumbRX > kStickDeadZone || g.thumbRX < -kStickDeadZone || g.thumbRY > kStickDeadZone || g.thumbRY < -kStickDeadZone;
         }
 
-        void HideChord(XInputGamepad& g)
+        // The shoulder buttons wait a reading or two for the chord's hold (input::ChordGrace), one wait
+        // for each pad the game reads: four of XInput's, four PlayStation handles.
+        constexpr uint16_t kGracedButtons = 0x0100 | 0x0200; // LB, RB
+        ChordGraces g_chordGraces;
+
+        // `pad` is the pad's slot (XInput's index, 4 and on the PlayStation handles); `kept` whether the
+        // game keeps this reading as the pad's state.
+        void HideChord(XInputGamepad& g, uint32_t pad, bool kept)
         {
             if (g_holdButtons.load(std::memory_order_relaxed) == 0 && g_holdTrigger.load(std::memory_order_relaxed) == 0) return;
-            if (HoldDown(g))
+            const bool hold = HoldDown(g);
+            const uint16_t graced = static_cast<uint16_t>(kGracedButtons & ~g_holdButtons.load(std::memory_order_relaxed));
+            const uint16_t back = g_chordGraces.HeldBack(pad, g.buttons, hold, graced, kept);
+            if (hold)
             {
                 g_latchedButtons.store(g.buttons, std::memory_order_relaxed);
                 g_latchedLeftTrigger.store(g.leftTrigger > kTriggerThreshold, std::memory_order_relaxed);
@@ -911,7 +921,7 @@ namespace da::input
             }
             const uint16_t latched = static_cast<uint16_t>(g_latchedButtons.load(std::memory_order_relaxed) & g.buttons);
             g_latchedButtons.store(latched, std::memory_order_relaxed);
-            g.buttons = static_cast<uint16_t>(g.buttons & ~latched);
+            g.buttons = static_cast<uint16_t>(g.buttons & ~latched & ~back);
             if (g_latchedLeftTrigger.load(std::memory_order_relaxed))
             {
                 if (g.leftTrigger > kTriggerThreshold)
@@ -981,7 +991,7 @@ namespace da::input
             }
             if (result == 0 && state)
             {
-                HideChord(state->gamepad);
+                HideChord(state->gamepad, index, true);
                 WatchButtons(index, state->gamepad.buttons);
             }
             return result;
@@ -1054,7 +1064,7 @@ namespace da::input
                 shown.thumbLX = static_cast<int16_t>(g_injectX.load(std::memory_order_relaxed));
                 shown.thumbLY = static_cast<int16_t>(g_injectY.load(std::memory_order_relaxed));
             }
-            HideChord(shown);
+            HideChord(shown, 4 + static_cast<uint32_t>(slot), last);
             if (last) WatchButtons(4 + static_cast<uint32_t>(slot), shown.buttons);
             if (shown.buttons != real.buttons)
             {
