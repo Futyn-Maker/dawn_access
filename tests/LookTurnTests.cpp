@@ -1050,3 +1050,62 @@ TEST_CASE("a press is taken from her as the game asks it of her, whoever its tic
     CHECK_FALSE(look::PressTaken(true, true, true, true, 4, true, false));
     CHECK_FALSE(look::PressTaken(true, true, true, true, 1, false, true));
 }
+
+TEST_CASE("look: a glint the game has not put up for her is a step to make, not a look: Sam's drop-down, 2026-11-09")
+{
+    // research/sessions/s65-play.log, 14:57:20 to 15:01:54: inside the drop-down's volume, facing it,
+    // the glint's widget not on the screen because the game had not spawned it (she stood outside
+    // the glint's own volume); she was told to look at it, said reached, and the walk key's walks
+    // ended at once.
+    look::Parts p;
+    p.measured = true;
+    p.atHand = true;
+    p.byGlint = true;
+    p.explorationView = true;
+    p.onScreen = false;
+    p.cameraOk = false;
+    p.characterOk = true;
+    p.glintAway = true;
+    CHECK_FALSE(look::CanBeLed(p));
+    CHECK(look::Missing(p) == look::Lead::None);
+    CHECK_FALSE(look::Arrived(p, false, true, false));
+    CHECK_FALSE(look::GlintMissing(p, true));
+    // The glint put up: the camera's look is what is missing, as before.
+    p.glintAway = false;
+    CHECK(look::CanBeLed(p));
+    CHECK(look::Missing(p) == look::Lead::Camera);
+    CHECK(look::Arrived(p, false, true, false));
+    // Put up but not on the screen while the camera looks at it: missing.
+    CHECK(look::GlintMissing(p, true));
+}
+
+TEST_CASE("look: into the glint's volume she steps toward where its box meets the use location's")
+{
+    const look::Vec useLow{5580.0, 7236.0, 4581.0}, useHigh{5780.0, 7382.0, 4720.0};
+    const look::Vec glintLow{5600.0, 7300.0, 4600.0}, glintHigh{5760.0, 7500.0, 4660.0};
+    const look::Vec step = look::GlintStepPoint(useLow, useHigh, glintLow, glintHigh, 4675.0);
+    CHECK(step.x == doctest::Approx(5680.0));
+    CHECK(step.y == doctest::Approx(7341.0));
+    CHECK(step.z == doctest::Approx(4675.0));
+    // Boxes that do not meet: the glint's own middle.
+    const look::Vec apart = look::GlintStepPoint(useLow, useHigh, look::Vec{5600.0, 7600.0, 4600.0}, look::Vec{5700.0, 7800.0, 4660.0}, 4675.0);
+    CHECK(apart.x == doctest::Approx(5650.0));
+    CHECK(apart.y == doctest::Approx(7700.0));
+}
+
+TEST_CASE("look: the walk key at a thing reached says it, asks for the camera's look, or walks: Sam's drop-down, 2026-11-09")
+{
+    using look::Lead;
+    using look::WalkKey;
+    // The press would be taken, or she stands in the way on: there.
+    CHECK(look::WalkKeyAt(true, false, true, Lead::None) == WalkKey::Reached);
+    CHECK(look::WalkKeyAt(true, true, false, Lead::None) == WalkKey::Reached);
+    // Only the camera's look is missing: the look is asked for, no walk begun.
+    CHECK(look::WalkKeyAt(true, false, false, Lead::Camera) == WalkKey::Look);
+    // Her own turn, or a step into the glint's volume (no turn completes it): the walk does it.
+    CHECK(look::WalkKeyAt(true, false, false, Lead::Character) == WalkKey::Walk);
+    CHECK(look::WalkKeyAt(true, false, false, Lead::None) == WalkKey::Walk);
+    // Not reached: walked to, whatever the look.
+    CHECK(look::WalkKeyAt(false, false, false, Lead::Camera) == WalkKey::Walk);
+    CHECK(look::WalkKeyAt(false, true, true, Lead::None) == WalkKey::Walk);
+}

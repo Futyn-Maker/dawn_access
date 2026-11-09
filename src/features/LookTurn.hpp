@@ -33,6 +33,14 @@ namespace da::look
         // with bCameraMovementEndsFramingCamera): the right stick turned brings the exploration
         // camera back, so the camera's look is the player's to give there too.
         bool framingEndsOnLook = false;
+        // The use location takes its glint's verdict, and the game has not put the glint up for her:
+        // it does so only while she stands in the glint's own volume (ABatesGlint is a character
+        // trigger volume; OnCharacterVolumeStateChanged adds it as she walks in and takes it away as
+        // she walks out), which need not be where the press's own volume is. No turn brings it: she
+        // must step into it. Sam's drop-down in act8_6 stood at the glint volume's edge: in the first
+        // playthrough she stopped inside it, in the second a few centimetres off, told to look at a glint
+        // the game never drew (research/sessions/s65-play.log, 14:57:20 to 15:01:54).
+        bool glintAway = false;
     };
 
     // Whether the game takes a press at a use location from the player's character, as its
@@ -86,6 +94,20 @@ namespace da::look
     // player's completes it.
     Lead Missing(const Parts& p);
 
+    // What the walk key does at a thing: one reached whose press the game takes, or a way on she
+    // stands in, is said reached; one reached where only the camera's look is missing has that
+    // look asked for, as a walk would end at once saying so; anything else is walked to, a way on
+    // not reached yet or a press that wants a step (into the glint's volume). At Sam's drop-down on
+    // 2026-11-09 the key said "Иду" every time while she stood at it, and nothing came of it
+    // (research/sessions/s65-play.log).
+    enum class WalkKey
+    {
+        Reached,
+        Look,
+        Walk,
+    };
+    WalkKey WalkKeyAt(bool reached, bool way, bool pressTaken, Lead missing);
+
     // Whether a thing to use counts as reached, "arrived" in the list: the game would take the press
     // now, or the thing starts by itself (`autoStart`), or everything but a look is in place and a
     // turn of the player's completes it (CanBeLed). Anything else is not reached however near, and
@@ -94,6 +116,11 @@ namespace da::look
     // and the list said "arrived" while no press was taken and no turn brought it. Becoming reached
     // waits for her to stand still (`still`: a walk past is no arrival); staying so (`before`) does not.
     bool Arrived(const Parts& p, bool autoStart, bool still, bool before);
+
+    // Where the last stretch steps her while the glint the press needs is away (Parts::glintAway): the
+    // middle of where the boxes of the use location's volume and of the glint's overlap, at her own
+    // height; the glint box's middle where they do not overlap.
+    Vec GlintStepPoint(const Vec& useLow, const Vec& useHigh, const Vec& glintLow, const Vec& glintHigh, double atZ);
 
     // ---- the words ---------------------------------------------------------------------------
 

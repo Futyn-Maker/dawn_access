@@ -20,6 +20,8 @@ namespace da::look
 
     bool CanBeLed(const Parts& p)
     {
+        // A glint the game has not put up for her comes with no turn: she must step into its volume.
+        if (p.byGlint && p.glintAway) return false;
         return !(p.byGlint && !p.explorationView && !p.framingEndsOnLook && !p.onScreen);
     }
 
@@ -32,7 +34,15 @@ namespace da::look
 
     bool GlintMissing(const Parts& p, bool insideEllipse)
     {
-        return p.byGlint && p.explorationView && p.measured && p.atHand && !p.verdict && insideEllipse && !p.onScreen;
+        // Away because she stands outside the glint's own volume, it is hers to step into, not missing.
+        return p.byGlint && !p.glintAway && p.explorationView && p.measured && p.atHand && !p.verdict && insideEllipse && !p.onScreen;
+    }
+
+    WalkKey WalkKeyAt(bool reached, bool way, bool pressTaken, Lead missing)
+    {
+        if (!reached) return WalkKey::Walk;
+        if (way || pressTaken) return WalkKey::Reached;
+        return missing == Lead::Camera ? WalkKey::Look : WalkKey::Walk;
     }
 
     Lead Missing(const Parts& p)
@@ -48,6 +58,14 @@ namespace da::look
         if (p.verdict || autoStart) return true;
         if (!p.atHand || !CanBeLed(p)) return false;
         return still || before;
+    }
+
+    Vec GlintStepPoint(const Vec& useLow, const Vec& useHigh, const Vec& glintLow, const Vec& glintHigh, double atZ)
+    {
+        const double lowX = std::max(useLow.x, glintLow.x), highX = std::min(useHigh.x, glintHigh.x);
+        const double lowY = std::max(useLow.y, glintLow.y), highY = std::min(useHigh.y, glintHigh.y);
+        if (lowX <= highX && lowY <= highY) return Vec{(lowX + highX) / 2.0, (lowY + highY) / 2.0, atZ};
+        return Vec{(glintLow.x + glintHigh.x) / 2.0, (glintLow.y + glintHigh.y) / 2.0, atZ};
     }
 
     void Words::Reset()

@@ -6249,6 +6249,7 @@ namespace da::features
             bool facing = false;          // the character faces the billboard
             bool sightBlocked = false;    // the line from the camera to the billboard is blocked
             bool tickedOther = false;     // the tick's verdict is of another character it cached (look::PressTaken)
+            bool glintAway = false;       // the game has not put the glint up for her: she stands outside its volume (look::Parts)
             bool LookOk() const
             {
                 return byGlint ? glintVerdict : cameraOk && characterOk;
@@ -6275,6 +6276,7 @@ namespace da::features
             parts.characterOk = p.characterOk;
             parts.needCamera = p.needCamera;
             parts.framingEndsOnLook = p.framingEndsOnLook;
+            parts.glintAway = p.glintAway;
             return parts;
         }
 
@@ -6437,6 +6439,9 @@ namespace da::features
             if (!obj::ReadBool(useLocation, L"bGlintAuthorizesInteraction", verdict)) return false;
             p.byGlint = true;
             p.glintVerdict = verdict;
+            // The game puts the glint up for her only while she stands in its own volume, and keeps
+            // that as bIsSpawned (ABatesGlint::OnCharacterVolumeStateChanged).
+            if (const auto* spawned = static_cast<const uint8_t*>(sym::MemberOf(glint, L"ABatesGlint.bIsSpawned"))) p.glintAway = *spawned == 0;
             UObject* view = ViewTarget();
             p.explorationView = view && view == ExplorationCameraActor();
             bool endsOnMovement = false;
@@ -6635,9 +6640,10 @@ namespace da::features
             if (p.byGlint)
             {
                 const auto yes = [](bool b) { return b ? L"yes" : L"no"; };
-                text += std::format(L"; the glint's verdict {} on layer {}: {} camera, overlapping {}, on the screen {}, within the ellipse {}, facing {}{}",
+                text += std::format(L"; the glint's verdict {} on layer {}: {} camera, overlapping {}, on the screen {}, within the ellipse {}, facing {}{}{}",
                                     yes(p.glintVerdict), p.layer, p.explorationView ? L"the exploration" : L"another", yes(p.overlap), yes(p.onScreen),
-                                    yes(p.insideEllipse), yes(p.facing), p.sightBlocked ? L", the line of sight blocked" : L"");
+                                    yes(p.insideEllipse), yes(p.facing), p.sightBlocked ? L", the line of sight blocked" : L"",
+                                    p.glintAway ? L", the glint not put up for her (she stands outside its volume)" : L"");
                 if (angles)
                     text +=
                         std::format(L"; camera turn {:+.0f} deg, tilt {:+.0f} deg, character turn {:+.0f} deg", p.cameraTurn, p.cameraRise, p.characterTurn);
@@ -6868,6 +6874,21 @@ namespace da::features
 
         bool LookCanBeLed(const PressTest& p);
 
+        // Where she steps to get into the volume of the glint the press needs (look::GlintStepPoint),
+        // by the boxes the game keeps for the use location's volume and the glint's.
+        Vec GlintStepOf(const Target& t, const Vec& here)
+        {
+            Vec useLow, useHigh, glintLow, glintHigh;
+            UObject* glint = GlintOf(t.actor);
+            if (!glint || !TriggerBox(glint, glintLow, glintHigh)) return LookAtPoint(t);
+            if (!TriggerBox(t.actor, useLow, useHigh))
+            {
+                useLow = glintLow;
+                useHigh = glintHigh;
+            }
+            return look::GlintStepPoint(useLow, useHigh, glintLow, glintHigh, here.z);
+        }
+
         // The way left from where she stands along the way the walk follows, as FollowGrid measures
         // it, every frame (the route's own figure is refreshed only now and then: up to 70 cm late at
         // her speed), and whether what is left is one straight leg. The route's figure where the walk
@@ -7003,10 +7024,11 @@ namespace da::features
             {
                 log::Info(L"explore: the walk to \"{}\" ends without the press taken: {}", t.label, PressTestText(p));
                 // Inside, a look of the player's is what is missing, and the guidance says so once she
-                // stands still, again for each walk; outside, or where no look of the player's brings
-                // it, she could not get to where it is used.
-                if (p.inside && !offShot) g_lookAgain = true;
-                StopWalk(p.inside && !offShot ? nullptr : L"explore.walk.blocked", false);
+                // stands still, again for each walk; outside, where no look of the player's brings it,
+                // or where the glint's volume was not got into, she could not get to where it is used.
+                const bool lookMissing = p.inside && !offShot && !p.glintAway;
+                if (lookMissing) g_lookAgain = true;
+                StopWalk(lookMissing ? nullptr : L"explore.walk.blocked", false);
                 return true;
             }
             // Something of the game's own keeps the press off (the activity, a binding still
@@ -7034,7 +7056,7 @@ namespace da::features
             // Only the camera's look is missing: that turn is the player's, once she has come to
             // rest in the place (look::Rest); a stopping step that takes her out of it hands her
             // back to the steps below.
-            if (p.inside && p.characterOk && !offShot)
+            if (p.inside && p.characterOk && !offShot && !p.glintAway)
             {
                 g_flicker.Hold(now, facing);
                 input::ReleaseWalkKeys();
@@ -7065,7 +7087,9 @@ namespace da::features
                 input::ReleaseWalkKeys();
                 return true;
             }
-            const Vec toward = offShot ? Aim(t) : p.inside ? LookAtPoint(t) : spot;
+            // The glint the press needs is away: she steps into its volume (look::GlintStepPoint).
+            const bool intoGlint = p.inside && !offShot && p.glintAway;
+            const Vec toward = offShot ? Aim(t) : intoGlint ? GlintStepOf(t, here) : p.inside ? LookAtPoint(t) : spot;
             const double bearing = BearingDegrees(here, toward, yaw);
             const auto push = g_flicker.Update(now, bearing, facing, g_motion.Speed(now), here);
             // A flick of the mod's own moves her: that slide says nothing of the walk's.
@@ -7074,9 +7098,10 @@ namespace da::features
                 log::Info(L"explore: the walk's last stretch to \"{}\": {} {} toward {:+.0f} deg, to {} (she faces {:+.0f} deg off the glint; at ({:.0f}, {:.0f}), "
                           L"{:.0f} cm from her spot at ({:.0f}, {:.0f}){})",
                           t.label, push && push->hold > 0.0 ? L"held push" : L"flick", g_flicker.Count(), bearing,
-                          offShot    ? L"step her toward the spot it is used from"
-                          : p.inside ? L"turn her to the glint"
-                                     : L"step her toward her spot",
+                          offShot     ? L"step her toward the spot it is used from"
+                          : intoGlint ? L"step her into the glint's volume, which the game puts it up in"
+                          : p.inside  ? L"turn her to the glint"
+                                      : L"step her toward her spot",
                           p.characterTurn, here.x, here.y, fromSpot, spot.x, spot.y,
                           g_flicker.Dead() > 0 ? std::format(L"; {} flick(s) before it did nothing", g_flicker.Dead()) : std::wstring());
             if (push)
@@ -7620,12 +7645,27 @@ namespace da::features
             UObject* pawn = Pawn();
             Vec here;
             if (!pawn || !ActorLocation(pawn, here)) return;
-            // There already: a way on she stands in, a use location whose press would be taken.
-            // Offered but not yet taking the press, the walk nudges her the rest of the way.
-            if (target->reached && (target->way || ReadPressTest(pawn, target->actor).verdict))
+            // There already: a way on she stands in, a use location whose press would be taken; there
+            // with only the camera's look missing, that turn is the player's and is said, with no walk
+            // begun (look::WalkKeyAt). Offered but not yet taking the press, the walk nudges her the
+            // rest of the way.
+            if (target->reached)
             {
-                speech::Now(locale::Mod(L"explore.reached", target->label));
-                return;
+                const bool way = target->way;
+                PressTest p;
+                if (!way) p = ReadPressTest(pawn, target->actor);
+                switch (look::WalkKeyAt(true, way, !way && p.verdict, way ? look::Lead::None : look::Missing(PartsOf(p))))
+                {
+                case look::WalkKey::Reached:
+                    speech::Now(locale::Mod(L"explore.reached", target->label));
+                    return;
+                case look::WalkKey::Look:
+                    log::Info(L"explore: the walk key at \"{}\", reached: only the camera's look is missing, and that is said", target->label);
+                    speech::Now(locale::Mod(L"explore.look"));
+                    return;
+                case look::WalkKey::Walk:
+                    break;
+                }
             }
             g_walking = true;
             g_walkFor = target->actor;
