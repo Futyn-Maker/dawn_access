@@ -40,6 +40,7 @@ namespace da::narration
             menu::Utterance label;
             double labelAt = -1.0;
             std::wstring pageName;
+            double pageNameAt = -1.0;
         };
         std::mutex g_queuedMutex;
         std::map<UObject*, Queued> g_queued;
@@ -60,6 +61,7 @@ namespace da::narration
             else if (priority == L"UI.TTS.Page" && format == L"UI.TTSFormat.Menu")
             {
                 queued.pageName = line;
+                queued.pageNameAt = gamethread::NowSeconds();
             }
         }
 
@@ -154,7 +156,20 @@ namespace da::narration
         if (!page) return {};
         fault::Guard lock(g_queuedMutex, L"narration");
         const auto it = g_queued.find(page);
-        return it == g_queued.end() ? std::wstring() : it->second.pageName;
+        if (it != g_queued.end() && !it->second.pageName.empty()) return it->second.pageName;
+        // A page whose title a widget of its own draws and narrates (the chapter select's and the
+        // bonus content's WBP_CentreTitle: "Измените свою судьбу", "Дополнительные материалы"): the
+        // name that widget gave last.
+        std::wstring name;
+        double at = -1.0;
+        for (const auto& [owner, queued] : g_queued)
+        {
+            if (queued.pageName.empty() || queued.pageNameAt <= at || owner == page) continue;
+            if (!obj::IsLive(owner) || !obj::IsDescendantOf(owner, page)) continue;
+            name = queued.pageName;
+            at = queued.pageNameAt;
+        }
+        return name;
     }
 
     void Install()

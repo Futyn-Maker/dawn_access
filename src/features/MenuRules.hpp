@@ -3,6 +3,7 @@
 // arrives at is read, how a value that moves under a held key is paced, when a change of the
 // prompts is said, and a text's shape, which tells a count that ticks from new words.
 
+#include <set>
 #include <string>
 #include <vector>
 
@@ -99,6 +100,14 @@ namespace da::menu
 
     // A text with its digits taken out, so that a count that ticks is one text.
     std::wstring Shape(const std::wstring& text);
+
+    // The page's texts said with a control the focus moved to: where it came from another group of
+    // controls (`newGroup`), the page's texts not said on it yet (`said`, by Shape), in their order,
+    // go before the control; moving within a group says the control alone. The chapter select opens a
+    // question of its own with its two buttons, "Начать?" over "Да" and "Нет", and only "Да" was said
+    // (research/sessions/s65-play.log, 14:30:53.489): the page's texts were taken for said as the focus
+    // moved, the question with them.
+    std::vector<std::wstring> TextsWithFocus(bool newGroup, const std::vector<std::wstring>& body, const std::set<std::wstring>& said);
 
     // The game's own narration of a control is one utterance queued as lines: the first clears
     // what its priority had queued (bInClearPrio), the others join it in the same frame. A totem

@@ -38,6 +38,7 @@ namespace da::features
         std::vector<ui::Prompt> g_prompts;              // the prompts last seen
         std::set<std::wstring> g_promptsSaid;           // the prompts said on this screen, as label and key
         std::set<std::wstring> g_bodySaid;              // the body texts said on this screen, digits aside
+        std::wstring g_pageName;                        // the page's name as its arrival said it
         std::map<obj::ObjectKey, double> g_opacitySeen; // the highest opacity seen of each text of the screen
         menu::Steady g_promptsSteady;                   // a change of the prompts standing (menu::Steady)
         menu::Arrival g_arrival;                        // an arrival waiting for the page to settle (menu::Arrival)
@@ -64,11 +65,14 @@ namespace da::features
                                 });
         }
 
+        // A text's opacity as the page's texts are walked, the highest seen kept (SampleOpacity's
+        // record): the walk that reads the page samples it too, and needs no walk of its own.
         double OpacitySeen(UObject* text)
         {
             const double now = obj::WidgetOpacity(text);
-            const auto it = g_opacitySeen.find(obj::KeyOf(text));
-            return it == g_opacitySeen.end() ? now : std::max(now, it->second);
+            auto& seen = g_opacitySeen[obj::KeyOf(text)];
+            seen = std::max(seen, now);
+            return seen;
         }
 
         std::wstring TabLine(UObject* page)
@@ -78,8 +82,9 @@ namespace da::features
             return ui::SpeakTab(tab.name, tab.index, tab.count, cfg::Detailed());
         }
 
-        // Everything a screen says on arrival, in reading order.
-        std::wstring ScreenText(UObject* page, UObject* control, bool withPrompts)
+        // Everything a screen says on arrival, in reading order; the page's texts as walked are
+        // handed back in `walked`, for the record of what was said.
+        std::wstring ScreenText(UObject* page, UObject* control, bool withPrompts, std::vector<std::wstring>* walked = nullptr)
         {
             std::vector<std::wstring> parts;
             const auto tab = TabLine(page);
@@ -88,8 +93,16 @@ namespace da::features
             auto title = ui::ScreenTitle(page);
             if (title.empty()) title = narration::PageNameFor(page);
             if (!title.empty()) parts.push_back(title);
-            const auto body = ui::ScreenBody(page, &OpacitySeen);
-            if (!body.empty()) parts.push_back(body);
+            g_pageName = title;
+            // The body without the name, where a widget of the page draws it as a text.
+            std::vector<std::wstring> body;
+            const auto texts = ui::ScreenBodyTexts(page, &OpacitySeen);
+            for (const auto& text : texts)
+            {
+                if (title.empty() || menu::Shape(text) != menu::Shape(title)) body.push_back(text);
+            }
+            if (walked) *walked = texts;
+            if (!body.empty()) parts.push_back(str::JoinSentences(body));
             if (control)
             {
                 const auto spoken = ui::Speak(ui::Describe(control), cfg::Detailed(), true);
@@ -117,11 +130,18 @@ namespace da::features
             g_promptsSteady.Reset();
         }
 
-        void RememberBody(UObject* page)
+        void RememberBodyTexts(const std::vector<std::wstring>& body)
         {
             g_bodySaid.clear();
-            for (const auto& text : ui::ScreenBodyTexts(page, &OpacitySeen))
+            for (const auto& text : body)
                 g_bodySaid.insert(menu::Shape(text));
+            // The page's name, as said on arrival, is not news when its widget draws it later.
+            if (!g_pageName.empty()) g_bodySaid.insert(menu::Shape(g_pageName));
+        }
+
+        void RememberBody(UObject* page)
+        {
+            RememberBodyTexts(ui::ScreenBodyTexts(page, &OpacitySeen));
         }
 
         void RememberControl(UObject* control, const ui::Description* d)
@@ -137,7 +157,8 @@ namespace da::features
             UObject* control = FocusedControl();
             ui::Description d;
             if (control) d = ui::Describe(control);
-            const auto text = ScreenText(page, control, true);
+            std::vector<std::wstring> body;
+            const auto text = ScreenText(page, control, true, &body);
             log::Verbose(L"menus: arrival on {} {} focus {} {}", obj::ClassName(page), obj::ObjectName(page), obj::ClassName(control),
                          obj::ObjectName(control));
             // The same page shown anew says nothing new when its words are the ones just said:
@@ -152,7 +173,7 @@ namespace da::features
             g_title = ui::ScreenTitle(page);
             RememberControl(control, control ? &d : nullptr);
             RememberPrompts(page);
-            RememberBody(page);
+            RememberBodyTexts(body);
         }
 
         // The prompts not said on this screen before, as a line; the ones already said are
@@ -169,12 +190,15 @@ namespace da::features
             return ui::SpeakPrompts(fresh);
         }
 
-        void SpeakControl(UObject* page, UObject* control)
+        void SpeakControl(UObject* page, UObject* control, const std::vector<std::wstring>& before = {})
         {
             const auto d = ui::Describe(control);
             const std::wstring lastGroup = g_group;
             RememberControl(control, &d);
-            const auto spoken = ui::Speak(d, cfg::Detailed(), d.group != lastGroup);
+            std::vector<std::wstring> parts = before;
+            const auto said = ui::Speak(d, cfg::Detailed(), d.group != lastGroup);
+            if (!said.empty()) parts.push_back(said);
+            const auto spoken = str::JoinSentences(parts);
             if (spoken.empty()) return;
             speech::Focus(spoken);
             // The prompts a control brings with it are said after it when they are new here.
@@ -195,6 +219,7 @@ namespace da::features
             g_prompts.clear();
             g_promptsSaid.clear();
             g_bodySaid.clear();
+            g_pageName.clear();
             g_opacitySeen.clear();
             g_promptsSteady.Reset();
             g_arrival.Clear();
@@ -222,7 +247,10 @@ namespace da::features
                     g_screen = {};
                     log::Verbose(L"menus: new screen {} {}", obj::ClassName(page), obj::ObjectName(page));
                 }
-                SampleOpacity(page);
+                // A text that pulses while the page settles is sampled every fourth frame: a walk of
+                // the whole page each frame cost up to 60 ms on the collectibles' pages
+                // (research/sessions/s65-play.log, 14:28 to 14:30).
+                if (gamethread::FrameCount() % 4 == 0) SampleOpacity(page);
                 // The page is read once its focus has landed and its stack displays it, or after
                 // the longest wait (menu::Arrival).
                 bool anew = false;
@@ -235,8 +263,23 @@ namespace da::features
             const obj::ObjectKey controlKey = obj::KeyOf(control);
             if (control && controlKey != g_control)
             {
-                SpeakControl(page, control);
-                RememberBody(page);
+                // Come from another group of controls, the focus brings the page's texts that came
+                // with it, a question over its buttons, before the control (menu::TextsWithFocus).
+                const bool newGroup = !obj::IsSame(g_control) || !ui::SameGroup(control, g_control.object);
+                std::vector<std::wstring> before;
+                if (newGroup)
+                {
+                    // One walk of the page's texts serves both: what came with the control, and what
+                    // is remembered as said. A move within the group walks nothing: the periodic
+                    // check says what the page gained, as it always did.
+                    const auto body = ui::ScreenBodyTexts(page, &OpacitySeen);
+                    before = menu::TextsWithFocus(newGroup, body, g_bodySaid);
+                    RememberBodyTexts(body);
+                }
+                if (!before.empty())
+                    log::Info(L"menus: the focus came to {} {} from another group, with the page's new text \"{}\": said first", obj::ClassName(control),
+                              obj::ObjectName(control), str::JoinSentences(before));
+                SpeakControl(page, control, before);
                 return;
             }
 
@@ -261,9 +304,9 @@ namespace da::features
                         return;
                     }
                 }
-                SampleOpacity(page);
                 // A text the page gained since it was read is said once, as the game's own
-                // message; a count that goes on ticking is one text.
+                // message; a count that goes on ticking is one text. The walk samples the texts'
+                // opacity as it goes (OpacitySeen).
                 for (const auto& text : ui::ScreenBodyTexts(page, &OpacitySeen))
                 {
                     if (g_bodySaid.insert(menu::Shape(text)).second) speech::Announce(text);

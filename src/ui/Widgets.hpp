@@ -75,6 +75,8 @@ namespace da::ui
     // The drawn texts outside the pages of the menus (the pages have their own rules): what
     // the unread-text audit checks against what was said.
     std::vector<std::wstring> AuditTexts(UObject* root);
+    // Whether two controls sit among the same controls (one census of the widgets beside them).
+    bool SameGroup(UObject* control, UObject* other);
     // The text of the named text block under a widget, drawn or not; empty when there is none.
     std::wstring TextNamed(UObject* root, std::wstring_view name);
     // True for a widget shown inside a page of the menus: the pages belong to the menus,

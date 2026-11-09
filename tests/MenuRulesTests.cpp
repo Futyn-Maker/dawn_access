@@ -208,3 +208,19 @@ TEST_CASE("menu: a control the game's narration leaves nameless is named by its 
     CHECK(U8(menu::NamedByHeading(L"", L"1, НОВОЕ")) == "1, НОВОЕ");
     CHECK(U8(menu::NamedByHeading(L"Голод", L"")) == "Голод");
 }
+
+TEST_CASE("menus: a question shown with its buttons is said with the button the focus comes to: the chapter select, 2026-11-09")
+{
+    // research/sessions/s65-play.log, 14:30:53.489: "10. ИТОГ" chosen, the page opens "Начать?" over
+    // "Да" and "Нет" and puts the focus on "Да"; only "Да" was said.
+    const std::set<std::wstring> said{menu::Shape(L"Измените свою судьбу")};
+    const std::vector<std::wstring> body{L"Измените свою судьбу", L"Начать?"};
+    CHECK(menu::TextsWithFocus(true, body, said) == std::vector<std::wstring>{L"Начать?"});
+    // Within the group ("Да" to "Нет") the control alone.
+    CHECK(menu::TextsWithFocus(false, body, said).empty());
+    // Nothing new on the page: the control alone.
+    CHECK(menu::TextsWithFocus(true, {L"Измените свою судьбу"}, said).empty());
+    // A count that ticks is one text, digits aside.
+    const std::set<std::wstring> ticking{menu::Shape(L"Осталось: 10")};
+    CHECK(menu::TextsWithFocus(true, {L"Осталось: 9"}, ticking).empty());
+}

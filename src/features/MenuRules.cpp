@@ -43,6 +43,17 @@ namespace da::menu
         return true;
     }
 
+    std::vector<std::wstring> TextsWithFocus(bool newGroup, const std::vector<std::wstring>& body, const std::set<std::wstring>& said)
+    {
+        std::vector<std::wstring> out;
+        if (!newGroup) return out;
+        for (const auto& text : body)
+        {
+            if (!said.count(Shape(text))) out.push_back(text);
+        }
+        return out;
+    }
+
     std::wstring Shape(const std::wstring& text)
     {
         std::wstring shape;

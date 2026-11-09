@@ -1033,6 +1033,15 @@ namespace da::ui
         return Texts(root, walk);
     }
 
+    bool SameGroup(UObject* control, UObject* other)
+    {
+        if (!control || !other || !obj::IsLive(control) || !obj::IsLive(other)) return false;
+        if (control == other) return true;
+        const obj::ObjectKey key = obj::KeyOf(other);
+        const Census& census = CensusOf(control);
+        return std::any_of(census.entries.begin(), census.entries.end(), [&](const CensusEntry& entry) { return entry.key == key; });
+    }
+
     std::wstring TextNamed(UObject* root, std::wstring_view name)
     {
         return root ? NamedText(root, name) : std::wstring();
