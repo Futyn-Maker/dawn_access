@@ -2510,3 +2510,109 @@ TEST_CASE("the reach map's measure of the way on foot is its own, from her cell:
     // Never below nothing.
     CHECK(*ways::MapMeasure(true, true, 5.0, true, false, frontier, 20.0) == doctest::Approx(0.0));
 }
+
+TEST_CASE("the scene's goal is never left out on the road to a thing beyond it: the lodge's basement, 2026-11-09")
+{
+    // research/sessions/s64-play.log, 11:22:20.209: T_arriveinbasement, where Scene03_find_our_friends 3
+    // waits for Sam to turn "Разыщите остальных" off, 976 cm off (1494 on foot), on the road to the beach
+    // photo in the basement beyond it, 2032 cm off. Left out, it left Andrey no way on for seven minutes.
+    std::vector<ways::Entry> e(2);
+    e[0].way = true;
+    e[0].hasBox = true;
+    e[0].distance = 1494.0;
+    e[1].hasBox = true;
+    e[1].distance = 2032.0;
+    const auto enters = [](size_t way, size_t other) { return way == 0 && other == 1; };
+    CHECK(ways::RowRule(e, enters)[0] == 1);
+    e[0].goal = true;
+    CHECK(ways::RowRule(e, enters)[0] == -1);
+    // A verdict kept from before the scene waited there is no verdict for the goal.
+    e[0].kept = true;
+    e[0].onRoadOf = 1;
+    CHECK(ways::RowRule(e, enters)[0] == -1);
+}
+
+TEST_CASE("a way of no goal on the goal's road stays left out: the goal counts as a listed way")
+{
+    // A relay of the scene (a scare, a companion's lead) on the road to the trigger the objective leads
+    // to: walking to the goal sets it off, as ever.
+    std::vector<ways::Entry> e(3);
+    e[0].way = true; // the relay
+    e[0].hasBox = true;
+    e[0].distance = 500.0;
+    e[1].way = true; // the goal
+    e[1].goal = true;
+    e[1].hasBox = true;
+    e[1].distance = 1494.0;
+    e[2].hasBox = true; // the thing beyond the goal
+    e[2].distance = 2032.0;
+    // The roads are weighed from the farthest in: the thing's runs through both.
+    const auto enters = [](size_t way, size_t other) { return (way == 0 && (other == 1 || other == 2)) || (way == 1 && other == 2); };
+    auto onRoadOf = ways::RowRule(e, enters);
+    CHECK(onRoadOf[1] == -1);
+    CHECK(onRoadOf[0] == 2);
+    // Where only the goal's own road runs through the relay, the goal leaves it out: it counts as a
+    // listed way.
+    const auto goalOnly = [](size_t way, size_t other) { return (way == 0 && other == 1) || (way == 1 && other == 2); };
+    onRoadOf = ways::RowRule(e, goalOnly);
+    CHECK(onRoadOf[1] == -1);
+    CHECK(onRoadOf[0] == 1);
+}
+
+TEST_CASE("a road not known proves nothing: the way keeps its verdict on it, 2026-11-09")
+{
+    // research/sessions/s64-play.log, 11:29:35.741: Sam walked off toward the police card, the beach
+    // photo's road came back empty (her way back to where it parts from hers over 6 m), and the way
+    // whose road it was taken to be a way on no road.
+    std::vector<ways::Entry> e(2);
+    e[0].way = true;
+    e[0].hasBox = true;
+    e[0].distance = 454.0;
+    e[0].onRoadOf = 1;
+    e[0].passed = true;
+    e[1].hasBox = true;
+    e[1].distance = 1000.0;
+    const auto unknown = [](size_t, size_t) -> std::optional<bool> { return std::nullopt; };
+    CHECK(ways::RowRule(e, unknown)[0] == 1);
+    // Known now to run through nothing: offered.
+    CHECK(ways::RowRule(e, [](size_t, size_t) -> std::optional<bool> { return false; })[0] == -1);
+    // Never found on it, a road not known leaves it listed.
+    e[0].onRoadOf = -1;
+    CHECK(ways::RowRule(e, unknown)[0] == -1);
+}
+
+TEST_CASE("the path the game holds her to is a road at her feet: the climb out of the stream, 2026-11-09")
+{
+    // act8_6's stream (LV_Game_entities, BP_BatesSplineActor_C_0, its points in the world) runs at the
+    // water's surface, z 4199; Sam's middle stood at z 4091, half her capsule 88 cm high, her radius 42.
+    // The climb out's box (BP_BatesUseLocation_C_8, research/sessions/s64-play.log, its ground record's V
+    // line) spans z 3991.5 to 4191.5: the path at the spline's height passes over it, and the climb out
+    // was left out until she stood in it (11:15:59.326 to 11:17:28.981).
+    const std::vector<Vec> spline{Vec{7469.0, 11071.0, 4199.0}, Vec{7237.0, 10893.0, 4199.0}, Vec{6564.0, 10280.0, 4199.0}};
+    const auto box = ways::TurnedBox(Vec{6472.6, 10204.3, 4091.5}, Vec{200.0, 200.0, 200.0}, 235.5);
+    CHECK_FALSE(ways::RoadEntersBox(box, spline, 42.0, 88.0));
+    const auto road = ways::PathAtFeet(spline, 4199.0, 4091.0 - 88.0);
+    CHECK(road.size() == spline.size());
+    CHECK(road.front().z == doctest::Approx(4003.0));
+    CHECK(road.back().x == doctest::Approx(6564.0));
+    CHECK(ways::RoadEntersBox(box, road, 42.0, 88.0));
+    // The path's own rise is kept: a path climbing a metre climbs a metre from her feet.
+    const auto rising = ways::PathAtFeet({Vec{0.0, 0.0, 500.0}, Vec{100.0, 0.0, 600.0}}, 500.0, 0.0);
+    CHECK(rising[1].z == doctest::Approx(100.0));
+}
+
+TEST_CASE("a map begun for the change the list's verdicts are given anew for counts: the prom photo, 2026-11-09")
+{
+    // research/sessions/s64-play.log, 11:29:20.552: the game moved the prom photo, a new map began at
+    // 20.570, and the verdicts were given anew at 20.631 for the change at 20.552; that map could not let
+    // them stand, and the list waited 25 s for the map after it.
+    CHECK(ways::FreezeAfter(7, 20.570, 20.552) == 6);
+    // A map begun before the change judged the ground as it was: the next one counts.
+    CHECK(ways::FreezeAfter(7, 10.0, 20.552) == 7);
+    // The world changed and the map dropped for it begun again in the same frame, at the frame's own
+    // time: that map is the one begun for the change (research/sessions/s60-live.log, 15:58:09.562 to
+    // .568, one frame; the list froze only 28 s later).
+    CHECK(ways::FreezeAfter(7, 20.552, 20.552) == 6);
+    // No map yet.
+    CHECK(ways::FreezeAfter(0, -1000.0, 20.552) == 0);
+}

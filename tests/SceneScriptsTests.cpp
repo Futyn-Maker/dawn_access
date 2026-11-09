@@ -2181,3 +2181,21 @@ TEST_CASE("scripts: a scene's wait stands only while its machine stands in it, w
     const Machines first{{L"Scene03_not_alone", 35}, {L"Scene03_not_alone", 42}};
     CHECK(waits.Judge(10.3, L"T_wendigo_sighting", L"Mike", &first).kind == Waits::Kind::Waiting);
 }
+
+TEST_CASE("scripts: a scene's wait whose way on turns its objective off or sets the next is where the objective leads, 2026-11-09")
+{
+    // research/sessions/s64-play.log, 11:22:07.668: T_arriveinbasement, asked about by
+    // Scene03_find_our_friends 3 (SF_OrderForceIdle SF_StartActivity SF_TurnOffCurrentObjective
+    // SF_SetCallforward); research/sessions/s61-play.log, 18:47:57.671: T_exit_shed, by
+    // Scene03_leave_hanging_shed 4.
+    scripts::Poll basement;
+    basement.calls = {L"SF_OrderForceIdle", L"SF_StartActivity", L"SF_TurnOffCurrentObjective", L"SF_SetCallforward"};
+    CHECK(scripts::EndsObjective(basement));
+    scripts::Poll next;
+    next.calls = {L"SF_SetCurrentObjective"};
+    CHECK(scripts::EndsObjective(next));
+    scripts::Poll scare;
+    scare.calls = {L"SF_SendSoundEvent", L"SF_StartActivity"};
+    CHECK_FALSE(scripts::EndsObjective(scare));
+    CHECK_FALSE(scripts::EndsObjective(scripts::Poll{}));
+}

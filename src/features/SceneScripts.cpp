@@ -677,6 +677,12 @@ namespace da::scripts
         return off;
     }
 
+    bool EndsObjective(const Poll& poll)
+    {
+        return std::any_of(poll.calls.begin(), poll.calls.end(),
+                           [](const std::wstring& call) { return call == L"SF_TurnOffCurrentObjective" || call == L"SF_SetCurrentObjective"; });
+    }
+
     std::vector<Poll> ParsePolls(const std::wstring& script, const std::wstring& source)
     {
         std::vector<Poll> polls;

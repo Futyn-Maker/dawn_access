@@ -183,6 +183,7 @@ namespace da::features
             std::wstring streams;
             UObject* beam = nullptr;
             bool superseded = false; // such a trigger, with a way of the story listed (ways::StreamsSuperseded)
+            bool goal = false;       // the way the scene's objective leads to (scripts::EndsObjective, ways::Entry::goal)
             std::wstring kind;       // the class of the interaction behind a use location
             // A thing to use by the room rule (rooms::Judge): in the character's area, outside it,
             // or waiting for the reach map, kept from look to look.
@@ -733,8 +734,8 @@ namespace da::features
         // A thing within this along the path counts as level with the character: neither
         // behind her nor a step to walk.
         constexpr double kLevelOnPath = 50.0;
-        std::vector<Vec> PathRoad(const Vec& here, const Vec& point);
-        std::vector<Vec> PathRoadToEnd(const Vec& here);
+        std::vector<Vec> PathRoad(const Vec& here, const Vec& point, double halfHeight);
+        std::vector<Vec> PathRoadToEnd(const Vec& here, double halfHeight);
         UObject* PathSplineComponent();
         bool SplineLength(UObject* component, double& length);
         bool SplineLocation(UObject* component, double distance, Vec& out);
@@ -2533,6 +2534,9 @@ namespace da::features
                     continue;
                 }
                 t.label = locale::Mod(L"explore.wayon");
+                // Where the scene's objective leads: the scene waits for her there to turn its objective
+                // off or set the next (scripts::EndsObjective), never left out on another's road.
+                t.goal = waited.poll && scripts::EndsObjective(*waited.poll) && (waited.kind == Kind::Waiting || held);
                 // Inside by the engine's own overlap, which is what sets the volume off; the
                 // box only says whether it lies a storey up or down.
                 if (t.hasBox) InsideVolume(pawn, volume, t.boxLow, t.boxHigh, t.storey);
@@ -2988,8 +2992,10 @@ namespace da::features
                     g_lister.NewHold();
                 else
                     g_lister.StoryMoved();
-                g_freezeAfter = static_cast<int64_t>(g_reach.generation);
-                log::Verbose(L"explore: {}: the list's verdicts are given anew", world ? L"the world or the ground under her has changed" : L"the story moved on");
+                // A map begun for this very change counts (ways::FreezeAfter).
+                g_freezeAfter = ways::FreezeAfter(g_reach.generation, g_reach.startedAt, g_listerStoryAt);
+                log::Verbose(L"explore: {}: the list's verdicts are given anew{}", world ? L"the world or the ground under her has changed" : L"the story moved on",
+                             g_freezeAfter < static_cast<int64_t>(g_reach.generation) ? L", by the map begun for it" : L"");
             }
             // Between a hand-over and its first map nothing judges the roads: the list stands.
             const bool due = (meshRoads || g_reach.flood) && g_lister.Due(g_settle, settlesNow, now);
@@ -3018,7 +3024,7 @@ namespace da::features
                 pathRuledFor = g_path.spline;
                 pathRuledTargets = g_targets.size();
                 // The path ahead to its end, once, for every way it may run into.
-                const std::vector<Vec> pathAhead = PathRoadToEnd(here);
+                const std::vector<Vec> pathAhead = PathRoadToEnd(here, halfHeight);
                 // A thing beside the path is reached on it only within her width and the stray the
                 // stick's cone allows over what is left of the path (ways::PathStray).
                 double pathLeft = 0.0;
@@ -3103,6 +3109,7 @@ namespace da::features
                 // while `hidden` was not carried from look to look (to 2026-11-08).
                 e.shown = !t.way || (!t.hidden && t.passed);
                 e.streams = t.way && !t.streams.empty();
+                e.goal = t.way && t.goal;
                 e.superseded = t.superseded;
                 e.passed = t.passed;
                 e.epoch = t.rowEpoch;
@@ -3135,11 +3142,13 @@ namespace da::features
             // A trigger that only streams the world in gives way to a way of the story
             // (ways::StreamsSuperseded), weighed by the judgement below, by the ways as it judges them.
             g_lister.Judge(entries, g_settle, due, meshRoads || g_reach.flood, meshRoads || (g_reach.flood && !ReachRunning()), now,
-                           [&](size_t way, size_t other)
+                           [&](size_t way, size_t other) -> std::optional<bool>
                            {
                                const auto& road = roadOf(g_targets[other]);
                                const Target& w = g_targets[way];
-                               return road.size() >= 2 && RoadEnters(w.actor, w.boxLow, w.boxHigh, road, radius, halfHeight);
+                               // A road not known proves nothing (ways::RowRule).
+                               if (road.size() < 2) return std::nullopt;
+                               return RoadEnters(w.actor, w.boxLow, w.boxHigh, road, radius, halfHeight);
                            });
             for (size_t i = 0; i < g_targets.size(); ++i)
             {
@@ -3165,7 +3174,8 @@ namespace da::features
                 }
                 else
                 {
-                    log::Info(L"explore: the way {} ({}) {:.0f} cm off is offered: no listed road runs through it", obj::ObjectName(t.actor), t.coreName, t.distance);
+                    log::Info(L"explore: the way {} ({}) {:.0f} cm off is offered: {}", obj::ObjectName(t.actor), t.coreName, t.distance,
+                              t.goal ? L"the scene's objective leads there" : L"no listed road runs through it");
                 }
             }
             for (auto& t : g_targets)
@@ -5963,7 +5973,7 @@ namespace da::features
             std::vector<Vec> road;
             if (g_path.set)
             {
-                if (AheadOnPath(here, Aim(t))) road = PathRoad(here, Aim(t));
+                if (AheadOnPath(here, Aim(t))) road = PathRoad(here, Aim(t), halfHeight);
                 return road;
             }
             if (NavigationAvailable())
@@ -8162,8 +8172,9 @@ namespace da::features
         }
 
         // The path from the character up to a point ahead on it, or to where the path ends,
-        // sampled along the spline every half metre: the road a walk on the path takes.
-        std::vector<Vec> PathRoad(const Vec& here, const Vec& point)
+        // sampled along the spline every half metre, at her feet (ways::PathAtFeet): the road a walk
+        // on the path takes. `here` is her middle, `halfHeight` half her capsule's height.
+        std::vector<Vec> PathRoad(const Vec& here, const Vec& point, double halfHeight)
         {
             std::vector<Vec> road;
             UObject* component = PathSplineComponent();
@@ -8173,24 +8184,26 @@ namespace da::features
                 return road;
             const double end = std::clamp(atPoint, 0.0, length);
             if ((end - atHere) * g_pathSign <= 0.0) return road;
+            Vec atHer;
+            if (!SplineLocation(component, atHere, atHer)) return road;
             const int steps = std::clamp(static_cast<int>(std::fabs(end - atHere) / 50.0), 1, 200);
             for (int i = 0; i <= steps; ++i)
             {
                 Vec p;
                 if (SplineLocation(component, atHere + (end - atHere) * i / steps, p)) road.push_back(p);
             }
-            return road;
+            return ways::PathAtFeet(std::move(road), atHer.z, here.z - halfHeight);
         }
 
         // The path from the character to its end in the direction she may walk.
-        std::vector<Vec> PathRoadToEnd(const Vec& here)
+        std::vector<Vec> PathRoadToEnd(const Vec& here, double halfHeight)
         {
             UObject* component = PathSplineComponent();
             double length = 0.0;
             if (!component || g_pathSign == 0 || !SplineLength(component, length)) return {};
             Vec end;
             if (!SplineLocation(component, g_pathSign > 0 ? length : 0.0, end)) return {};
-            return PathRoad(here, end);
+            return PathRoad(here, end, halfHeight);
         }
 
         void PollLimitedPath(UObject* pawn, double now)

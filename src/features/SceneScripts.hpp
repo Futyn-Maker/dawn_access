@@ -199,6 +199,12 @@ namespace da::scripts
     // Every question of the state machines in a script, judged. `source` names the script.
     std::vector<Poll> ParsePolls(const std::wstring& script, const std::wstring& source);
 
+    // A poll whose way on turns the scene's objective off or sets the next (SF_TurnOffCurrentObjective,
+    // SF_SetCurrentObjective): its trigger is where the objective leads (ways::Entry::goal). The lodge's
+    // basement in act8_6 (Scene03_find_our_friends 3) and the hanging shed's door in act6_4
+    // (Scene03_leave_hanging_shed 4) are such ways.
+    bool EndsObjective(const Poll& poll);
+
     // A companion sent on ahead moves the scene on only where a scene of the level waits for that
     // companion to come into a volume, and that wait moves the scene on by itself: Act2_2's story
     // waits for Jessica in T_EnterMineChoice to start the mine's choice, and its companion's machine

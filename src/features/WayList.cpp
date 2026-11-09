@@ -67,14 +67,15 @@ namespace da::ways
             // A verdict kept on the road of a trigger given way to the story's is no verdict.
             const bool roadGone =
                 way.onRoadOf >= 0 && static_cast<size_t>(way.onRoadOf) < entries.size() && entries[static_cast<size_t>(way.onRoadOf)].superseded;
-            if (way.kept && !roadGone)
+            // The scene's goal is never left out, whatever it was found on before.
+            if (way.kept && !roadGone && !way.goal)
             {
                 onRoadOf[i] = way.onRoadOf;
                 if (way.way && way.onRoadOf < 0 && !way.behind && !way.unreachable && !way.unjudged && !way.superseded) listedWays.insert(i);
                 continue;
             }
-            const bool judged =
-                way.way && way.hasBox && !way.behind && !way.unreachable && !way.unjudged && !way.superseded && !way.reached && !way.chosen;
+            const bool judged = way.way && way.hasBox && !way.behind && !way.unreachable && !way.unjudged && !way.superseded && !way.reached &&
+                                !way.chosen && !way.goal;
             if (judged)
             {
                 for (const size_t j : order)
@@ -83,7 +84,10 @@ namespace da::ways
                     const Entry& other = entries[j];
                     const bool counts = !other.closedOff && !other.superseded &&
                                         (other.chosen || (!other.behind && !other.unreachable && !other.unjudged && (!other.way || listedWays.count(j) > 0)));
-                    if (!counts || !enters(i, j)) continue;
+                    if (!counts) continue;
+                    // A road not known proves nothing: the verdict on it stands as it was.
+                    const auto through = enters(i, j);
+                    if (!(through ? *through : way.onRoadOf == static_cast<int>(j))) continue;
                     onRoadOf[i] = static_cast<int>(j);
                     break;
                 }
@@ -91,6 +95,19 @@ namespace da::ways
             if (way.way && onRoadOf[i] < 0 && !way.behind && !way.unreachable && !way.unjudged && !way.superseded) listedWays.insert(i);
         }
         return onRoadOf;
+    }
+
+    std::vector<Vec> PathAtFeet(std::vector<Vec> samples, double atHer, double feet)
+    {
+        for (auto& p : samples)
+            p.z = feet + (p.z - atHer);
+        return samples;
+    }
+
+    int64_t FreezeAfter(uint64_t generation, double startedAt, double changedAt)
+    {
+        const auto running = static_cast<int64_t>(generation);
+        return startedAt >= changedAt ? running - 1 : running;
     }
 
     std::vector<bool> StreamsSuperseded(const std::vector<Entry>& entries)

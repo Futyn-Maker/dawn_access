@@ -51,6 +51,9 @@ namespace da::ways
         // verdict (one still waiting for the map may yet give a way its road).
         bool shown = false;
         bool streams = false;     // a way of no story that streams in more of the world (StreamsMore)
+        // The way the scene's objective leads to: the scene waits for her there to turn its objective
+        // off or set the next (scripts::EndsObjective). It is never left out on another's road.
+        bool goal = false;
         // Such a trigger given way to a way of the story (StreamsSuperseded), as Lister::Judge finds
         // it at each look: no road of the row rule, and not listed.
         bool superseded = false;
@@ -67,8 +70,8 @@ namespace da::ways
     };
 
     // Whether the road the walk to target `other` takes runs through the volume of way `way`
-    // (indices into the entries).
-    using Enters = std::function<bool(size_t way, size_t other)>;
+    // (indices into the entries); nothing where that road is not known.
+    using Enters = std::function<std::optional<bool>(size_t way, size_t other)>;
 
     // The row rule: a way on the road the walk to another listed target takes is left out, since
     // that walk sets it off anyway. Ways are judged from the farthest in, each against the roads of
@@ -83,6 +86,16 @@ namespace da::ways
     // `kept` keeps it, and counts as a road as it stands, unless the road it lies on is a trigger
     // given way to a way of the story (`superseded`): such a trigger is no road, judged or kept, and
     // is not judged itself.
+    //
+    // The way the scene's objective leads to (`goal`) is never left out, nor keeps a verdict that left
+    // it out, and counts as a listed way: in the lodge on 2026-11-09 the basement's trigger, where
+    // "Разыщите остальных" waited for Sam (Scene03_find_our_friends 3: SF_TurnOffCurrentObjective),
+    // lay on the road to the beach photo in the basement beyond it, and Andrey looked for a way on for
+    // seven minutes (research/sessions/s64-play.log, 11:22:20.209 to 11:29:35.741).
+    //
+    // A road not known (`enters` gives nothing) proves nothing: the way keeps the verdict it had on that
+    // target. The basement's way came at last only because the photo's road had gone unknown as Sam
+    // walked off, and was taken for a road that runs through nothing.
     // Returns, for each entry, the index of the target whose road it lies on, or -1.
     std::vector<int> RowRule(const std::vector<Entry>& entries, const Enters& enters);
 
@@ -119,6 +132,23 @@ namespace da::ways
     // the walk there sets the volume off. Exploration asks the engine for the distance to the
     // volume itself (GetClosestPointOnCollision), which comes out the same for a box.
     bool RoadEntersBox(const Box& box, const std::vector<Vec>& road, double radius, double halfHeight, double step = 25.0);
+
+    // The path the game holds her to, as points sampled along its spline from where she stands, put at
+    // her feet: a spline lies where its designer drew it, and a road is walked at her feet
+    // (RoadEntersBox). The stream's path in act8_6 runs along the water's surface, 196 cm over Sam's
+    // feet, and the climb out, whose box ends 7.5 cm under the path, was left out as beside the path
+    // until she stood in it (research/sessions/s64-play.log, 11:15:59.326 to 11:17:28.981). The points
+    // keep their rise along the path from `atHer`, the spline's height where she stands.
+    std::vector<Vec> PathAtFeet(std::vector<Vec> samples, double atHer, double feet);
+
+    // After the list's verdicts are given anew for a change of the world or the story at `changedAt`, the
+    // first map whose verdicts may stand (Lister::Freeze) is the next one begun, or the one running now
+    // where it was begun for that change: at it or after it. A change of the world or the ground drops
+    // the map, and the next is begun later in the same frame at the frame's own time, the change's;
+    // a change of the story is stamped later in its frame than a map begun in it. Returns the
+    // generation after which a map counts. A prop the game moved in the lodge on 2026-11-09 began a map
+    // 18 ms before the verdicts were given anew, and the list waited 25 s for the map after it.
+    int64_t FreezeAfter(uint64_t generation, double startedAt, double changedAt);
 
     // Whether the character standing at `feet` sets a volume off, over the ground: the game sets a
     // volume off once her capsule, `radius` around her, overlaps it. The cable car's doorway at
