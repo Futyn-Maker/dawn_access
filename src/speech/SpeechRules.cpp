@@ -38,7 +38,7 @@ namespace da::speech::rules
         return out;
     }
 
-    TurnPlan Turn(const std::vector<Said>& said, const std::wstring& page, double now)
+    TurnPlan Turn(const std::vector<Said>& said, const std::wstring& page, double now, const std::map<std::wstring, double>* withdrawn)
     {
         TurnPlan plan;
         // The page as last said, with nothing cutting in after it.
@@ -59,9 +59,24 @@ namespace da::speech::rules
             plan.cut = false;
             return plan;
         }
-        // Still on it: every line behind it is yet to be begun.
+        // Still on it: every line behind it is yet to be begun; each once, at its last place, and
+        // none taken down since it was said.
         for (size_t i = from + 1; i < said.size(); ++i)
-            plan.kept.push_back(said[i].text);
+        {
+            const auto& line = said[i];
+            if (withdrawn)
+            {
+                if (const auto it = withdrawn->find(line.text); it != withdrawn->end() && it->second >= line.at)
+                {
+                    plan.dropped.push_back(line.text);
+                    continue;
+                }
+            }
+            bool later = false;
+            for (size_t j = i + 1; j < said.size() && !later; ++j)
+                later = said[j].text == line.text;
+            if (!later) plan.kept.push_back(line.text);
+        }
         return plan;
     }
 }

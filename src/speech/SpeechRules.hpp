@@ -1,6 +1,7 @@
 #pragma once
 // What the speech policies decide, worked out without the reader so that it can be tested.
 
+#include <map>
 #include <string>
 #include <vector>
 
@@ -40,12 +41,18 @@ namespace da::speech::rules
     // 2026-11-07 was turned 13 s after its front was read, as the clue's card was being said: cut in
     // and said again whole, the card was heard twice, the second cutting the first
     // (research/sessions/s56-full.log, 23:52:59).
+    // Each line is kept once, at its last place, and a line withdrawn since it was said (`withdrawn`:
+    // when each text was last withdrawn, Withdraw: a prompt the game has taken down) is not kept: at
+    // the office desk of act7_2 every quick turn kept every line behind the page before it, the copies
+    // kept by the turn before among them, and the stick's prompts of pages turned past: 17 lines after
+    // the sixth page (research/sessions/s63-play.log, 00:24:38 to 00:24:56).
     struct TurnPlan
     {
         bool cut = true;
         std::vector<std::wstring> kept;
+        std::vector<std::wstring> dropped; // queued, never begun, and withdrawn: dropped unheard
     };
-    TurnPlan Turn(const std::vector<Said>& said, const std::wstring& page, double now);
+    TurnPlan Turn(const std::vector<Said>& said, const std::wstring& page, double now, const std::map<std::wstring, double>* withdrawn = nullptr);
 
     // The lines a page turned gives the reader, in order, and whether each cuts in: the new page,
     // cutting the old one short where the plan cuts it, then what was kept, queued behind it.

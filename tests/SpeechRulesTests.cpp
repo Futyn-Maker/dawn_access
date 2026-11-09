@@ -185,3 +185,35 @@ TEST_CASE("a page shown again unchanged as it is being read is left to be read o
     // Never said: nothing to read on.
     CHECK_FALSE(speech::rules::StillOn(said, std::wstring(10, L'x'), 50.511));
 }
+
+TEST_CASE("the lines a turned page keeps are each kept once, and none that no longer stands: the office desk, 2026-11-09")
+{
+    // research/sessions/s63-play.log 00:24:41.322 to 45.627: page 0 cut in with five lines kept behind
+    // it, the next page's prompts queued behind those, the stick's prompts taken down as the page
+    // turned on; the reader still on page 0 when it turned again.
+    using speech::rules::Said;
+    const std::wstring page = std::wstring(600, L'a');
+    const std::vector<Said> said{
+        {L"replace", page, 41.322},
+        {L"replace-kept", L"Скрыть расшифровку: квадрат", 41.322},
+        {L"replace-kept", L"Назад: круг", 41.322},
+        {L"replace-kept", L"Скрыть расшифровку: квадрат", 41.322},
+        {L"replace-kept", L"левый стик вправо", 41.322},
+        {L"replace-kept", L"Назад: круг", 41.322},
+        {L"announce", L"Скрыть расшифровку: квадрат", 41.323},
+        {L"announce", L"левый стик влево и вправо", 41.427},
+        {L"announce", L"Назад: круг", 45.296},
+    };
+    const std::map<std::wstring, double> withdrawn{{L"левый стик вправо", 43.900}, {L"левый стик влево и вправо", 43.900}};
+    const auto plan = speech::rules::Turn(said, page, 45.627, &withdrawn);
+    REQUIRE(plan.cut);
+    CHECK(plan.kept == std::vector<std::wstring>{L"Скрыть расшифровку: квадрат", L"Назад: круг"});
+    // The prompts taken down are dropped unheard, to be said again should they stand again.
+    CHECK(plan.dropped == std::vector<std::wstring>{L"левый стик вправо", L"левый стик влево и вправо"});
+    // Without the prompts taken down, each line once still.
+    const auto plain = speech::rules::Turn(said, page, 45.627);
+    CHECK(plain.kept == std::vector<std::wstring>{L"левый стик вправо", L"Скрыть расшифровку: квадрат", L"левый стик влево и вправо", L"Назад: круг"});
+    // A prompt taken down before it was said again stands again.
+    const std::map<std::wstring, double> earlier{{L"Назад: круг", 40.0}};
+    CHECK(speech::rules::Turn(said, page, 45.627, &earlier).kept.back() == L"Назад: круг");
+}

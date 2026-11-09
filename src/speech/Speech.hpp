@@ -44,6 +44,12 @@ namespace da::speech
     void Replace(std::wstring_view previous, std::wstring_view text);
     // Whether the reader may still be on a page given to it (rules::StillOn).
     bool StillOn(std::wstring_view page);
+    // A line given to the reader no longer stands (a prompt the game has taken down): a page turned
+    // before the reader got to it does not keep it (rules::Turn).
+    void Withdraw(std::wstring_view text);
+    // Whether a line was dropped unheard from behind a turned page (withdrawn, rules::TurnPlan) and
+    // not given to the reader since: a prompt that stands again is then to be said again.
+    bool DroppedUnheard(std::wstring_view text);
     void Hold();
     void Release();
     void Exclusive(std::wstring_view text);
