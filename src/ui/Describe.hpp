@@ -29,6 +29,7 @@ namespace da::ui
         int count = 0;
         std::wstring tip;      // the description line the game shows for it
         bool narrated = false; // the label is the game's own narration of the control
+        bool nameless = false; // which left the control's name out (menu::Utterance::Nameless)
     };
 
     struct Prompt

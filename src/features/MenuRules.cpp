@@ -55,10 +55,23 @@ namespace da::menu
 
     void Utterance::Queued(const std::wstring& line, bool clears, unsigned long long frame)
     {
-        if (line.empty()) return;
-        if (clears || frame != m_frame) m_lines.clear();
+        // An empty line adds nothing, but one that clears begins the utterance all the same, its
+        // name left out.
+        if (line.empty() && !clears) return;
+        if (clears || frame != m_frame)
+        {
+            m_lines.clear();
+            m_nameless = clears && line.empty();
+        }
         m_frame = frame;
-        m_lines.push_back(line);
+        if (!line.empty()) m_lines.push_back(line);
+    }
+
+    std::wstring NamedByHeading(const std::wstring& heading, const std::wstring& label)
+    {
+        if (heading.empty()) return label;
+        if (label.empty()) return heading;
+        return heading + L", " + label;
     }
 
     std::wstring Utterance::Line() const

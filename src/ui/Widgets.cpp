@@ -443,7 +443,7 @@ namespace da::ui
         // words of their own, and the headings among the rest. A long settings page has rows
         // thirty layouts deep, and walking every row's words costs more than a frame, so the
         // census of a panel is kept for a second and shared by its rows.
-        std::wstring Label(UObject* control, bool* narrated = nullptr);
+        std::wstring Label(UObject* control, bool* narrated = nullptr, bool* nameless = nullptr);
 
         struct CensusEntry
         {
@@ -505,6 +505,39 @@ namespace da::ui
             return census;
         }
 
+        std::wstring HeadingAbove(UObject* node);
+
+        // The heading a control sits under: the last text before it among the widgets beside it
+        // that are no controls, else, for a control with no words of its own, the text that names
+        // its row (HeadingAbove).
+        std::wstring GroupOf(UObject* control)
+        {
+            const Census& census = CensusOf(control);
+            const obj::ObjectKey key = obj::KeyOf(control);
+            std::wstring heading;
+            for (const CensusEntry& entry : census.entries)
+            {
+                if (entry.key == key) break;
+                if (!entry.shown || entry.control) continue;
+                if (!entry.heading.empty()) heading = entry.heading;
+            }
+            if (heading.empty() && !HasName(control) && census.panel) heading = HeadingAbove(census.grid ? census.grid : census.panel);
+            return heading;
+        }
+
+        // A control's words as they are said (Describe): one the game's narration leaves nameless
+        // is named by its group's heading (menu::NamedByHeading).
+        std::wstring SaidLabel(UObject* control, bool* narrated, bool* nameless, const std::wstring& group)
+        {
+            bool spoken = false;
+            bool left = false;
+            auto label = Label(control, &spoken, &left);
+            if (narrated) *narrated = spoken;
+            if (nameless) *nameless = left;
+            if (spoken && left && !group.empty()) label = menu::NamedByHeading(group, label);
+            return label;
+        }
+
         // The text that names a row of pictures, which sits one level above them: the last text
         // before the row among the children of the panel above it, else the first text after
         // it, a caption under the row.
@@ -544,9 +577,10 @@ namespace da::ui
         // what the game attached for its narration; else what the mod's picture table says of
         // the picture it shows; else what the game's narration said of it once it was focused
         // (`narrated` tells). The badge of an item not looked at yet follows the name.
-        std::wstring Label(UObject* control, bool* narrated)
+        std::wstring Label(UObject* control, bool* narrated, bool* nameless)
         {
             if (narrated) *narrated = false;
+            if (nameless) *nameless = false;
             std::wstring label;
             if (obj::IsA(control, L"BMUISettingButton") && obj::ReadString(control, L"SettingName", label) && !str::Trim(label).empty())
                 return str::StripMarkup(label);
@@ -591,8 +625,10 @@ namespace da::ui
             // What the game's own narration says of the control once it is focused: the
             // game's evaluation of its data, such as the locked word for a butterfly not yet
             // earned, which it draws as a dimmed picture, or a totem slot's kind and place.
-            label = narration::LabelFor(control, 30.0);
+            bool left = false;
+            label = narration::LabelFor(control, 30.0, &left);
             if (narrated) *narrated = !label.empty();
+            if (nameless) *nameless = !label.empty() && left;
             return menu::Named(shown, label);
         }
 
@@ -720,7 +756,8 @@ namespace da::ui
 
     std::wstring LabelOf(UObject* control)
     {
-        return control ? Label(control) : std::wstring();
+        // As it is said, so that a control named by its heading is not taken for one refilled.
+        return control ? SaidLabel(control, nullptr, nullptr, GroupOf(control)) : std::wstring();
     }
 
     std::wstring ValueOf(UObject* control)
@@ -760,15 +797,13 @@ namespace da::ui
         Description d;
         if (!control) return d;
         d.kind = KindOf(control);
-        d.label = Label(control, &d.narrated);
         d.value = ValueOf(control);
         if (!Enabled(control)) d.state = locale::Mod(L"ui.state.disabled");
 
-        // The place among the controls beside it, and the heading last seen above it. Wordless
-        // controls, such as a row of pictures, count whether or not the mod has a name for them.
+        // The place among the controls beside it. Wordless controls, such as a row of pictures,
+        // count whether or not the mod has a name for them.
         int index = 0;
         int count = 0;
-        std::wstring heading;
         const bool wordless = !HasName(control);
         const obj::ObjectKey controlKey = obj::KeyOf(control);
         std::vector<std::wstring> counted;
@@ -782,19 +817,16 @@ namespace da::ui
                 if (!self && !wordless && !entry.labelled) continue;
                 ++count;
                 if (log::IsVerbose()) counted.push_back(entry.name);
-                if (self)
-                {
-                    index = count;
-                    d.group = heading;
-                }
-                continue;
+                if (self) index = count;
             }
-            // A sibling with text that is no control is the heading of what follows.
-            if (!entry.heading.empty()) heading = entry.heading;
         }
-        UObject* panel = census.panel;
-        UObject* grid = census.grid;
-        if (d.group.empty() && wordless && panel) d.group = HeadingAbove(grid ? grid : panel);
+        // The heading it sits under (GroupOf), and its words, named by that heading where the game's
+        // narration leaves the name out, as its neighbours' narration names theirs.
+        d.group = GroupOf(control);
+        d.label = SaidLabel(control, &d.narrated, &d.nameless, d.group);
+        if (d.narrated && d.nameless && !d.group.empty())
+            log::Verbose(L"menus: {} {}: the game's narration names it not; its heading \"{}\" does", obj::ClassName(control), obj::ObjectName(control),
+                         d.group);
         d.index = index;
         d.count = count;
         log::Verbose(L"menus: {} {} is {} of {} [{}]", obj::ClassName(control), obj::ObjectName(control), index, count, str::Join(counted, L", "));

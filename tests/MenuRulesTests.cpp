@@ -180,3 +180,31 @@ TEST_CASE("menu: a panel of pictures heads them with its caption, a found one am
     // A panel with no controls anywhere lays out none.
     CHECK_FALSE(menu::LaysOutControls(none, {none, none}));
 }
+
+TEST_CASE("menu: a control the game's narration leaves nameless is named by its group's heading: the hunger totems, 2026-11-08")
+{
+    // research/sessions/s62-play.log, 21:39:07 to 21:39:09: the fortune column's slot queued its
+    // kind and its place, the hunger column's slot an empty line in the kind's place.
+    menu::Utterance slot;
+    slot.Queued(L"Тотем удачи", true, 21912);
+    slot.Queued(L"1", false, 21912);
+    CHECK(U8(slot.Line()) == "Тотем удачи, 1");
+    CHECK_FALSE(slot.Nameless());
+    slot.Queued(L"", true, 22032);
+    slot.Queued(L"1", false, 22032);
+    CHECK(U8(slot.Line()) == "1");
+    CHECK(slot.Nameless());
+    // The next named slot is named again.
+    slot.Queued(L"Тотем смерти", true, 22300);
+    slot.Queued(L"5", false, 22300);
+    CHECK_FALSE(slot.Nameless());
+    CHECK(U8(slot.Line()) == "Тотем смерти, 5");
+    // An empty line that does not clear adds nothing and names nothing away.
+    slot.Queued(L"", false, 22300);
+    CHECK_FALSE(slot.Nameless());
+    CHECK(U8(slot.Line()) == "Тотем смерти, 5");
+    // The column's caption, drawn over it, names the slot, its badge after as ever.
+    CHECK(U8(menu::NamedByHeading(L"Голод", L"1, НОВОЕ")) == "Голод, 1, НОВОЕ");
+    CHECK(U8(menu::NamedByHeading(L"", L"1, НОВОЕ")) == "1, НОВОЕ");
+    CHECK(U8(menu::NamedByHeading(L"Голод", L"")) == "Голод");
+}

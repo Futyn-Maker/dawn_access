@@ -46,7 +46,9 @@ namespace da::narration
 
         void Remember(UObject* owner, const std::wstring& line, const std::wstring& priority, const std::wstring& format, bool clears)
         {
-            if (!owner || line.empty()) return;
+            // An empty line that clears begins the control's utterance, its name left out
+            // (menu::Utterance::Nameless).
+            if (!owner || (line.empty() && !clears)) return;
             fault::Guard lock(g_queuedMutex, L"narration");
             if (g_queued.size() > 512) g_queued.clear();
             Queued& queued = g_queued[owner];
@@ -136,12 +138,14 @@ namespace da::narration
         }
     }
 
-    std::wstring LabelFor(UObject* owner, double maxAgeSeconds)
+    std::wstring LabelFor(UObject* owner, double maxAgeSeconds, bool* nameless)
     {
+        if (nameless) *nameless = false;
         if (!owner) return {};
         fault::Guard lock(g_queuedMutex, L"narration");
         const auto it = g_queued.find(owner);
         if (it == g_queued.end() || it->second.labelAt < 0.0 || gamethread::NowSeconds() - it->second.labelAt > maxAgeSeconds) return {};
+        if (nameless) *nameless = it->second.label.Nameless();
         return it->second.label.Line();
     }
 

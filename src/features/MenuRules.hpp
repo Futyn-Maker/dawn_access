@@ -111,11 +111,24 @@ namespace da::menu
     public:
         void Queued(const std::wstring& line, bool clears, unsigned long long frame);
         std::wstring Line() const;
+        // The line that clears, the one that names the control, was empty: the game left the name
+        // out. A slot of the hunger totems queues "" and its place where the other columns' slots
+        // queue "Тотем удачи" and theirs: the game has a name for no hunger totem's kind but its
+        // column's caption, "Голод" (research/sessions/s62-play.log, 21:39:09).
+        bool Nameless() const
+        {
+            return m_nameless;
+        }
 
     private:
         std::vector<std::wstring> m_lines;
         unsigned long long m_frame = 0;
+        bool m_nameless = false;
     };
+
+    // The words of a control the game's narration left nameless (Utterance::Nameless): the heading
+    // drawn over the control's group names it, as the narration of its neighbours names theirs.
+    std::wstring NamedByHeading(const std::wstring& heading, const std::wstring& label);
 
     // A text a control shows, and whether it sits in the badge the game sets on an item the
     // player has not looked at yet (BatesUnseenItemWidget: "НОВОЕ" on a butterfly, a clue, a

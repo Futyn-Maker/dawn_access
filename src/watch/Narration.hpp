@@ -16,7 +16,9 @@ namespace da::narration
     // What the game's own narration last said of a control (at its button priority), every line
     // of the utterance, when it queued one within the given seconds: its evaluation of the
     // control's data, such as the locked word for a collectible not yet earned. Empty otherwise.
-    std::wstring LabelFor(RC::Unreal::UObject* owner, double maxAgeSeconds);
+    // `nameless`, when asked, tells whether the game left the control's name out of it
+    // (menu::Utterance::Nameless).
+    std::wstring LabelFor(RC::Unreal::UObject* owner, double maxAgeSeconds, bool* nameless = nullptr);
 
     // The name the game's narration gave a page it announced as a menu, for a page that draws
     // no title of its own. Empty when it gave none.
