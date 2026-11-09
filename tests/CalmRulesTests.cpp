@@ -306,3 +306,20 @@ TEST_CASE("calm: before the version is known, the marker is followed as in the p
     CHECK(step.sounds[0].kind == Sound::Kind::Blip);
     CHECK_FALSE(step.steered);
 }
+
+TEST_CASE("calm: the active version's start is told by the mod's word, the passive one's by the game's: Jessica's run, 2026-11-09")
+{
+    using calm::StartWords;
+    // The active version draws no words: once it is known, the mod's word, and only once.
+    CHECK(calm::StartWordsOf(false, false, true, false) == StartWords::Mod);
+    CHECK(calm::StartWordsOf(false, true, true, false) == StartWords::Wait);
+    // Before the version is known nothing is said: the passive one's label may yet come.
+    CHECK(calm::StartWordsOf(false, false, false, false) == StartWords::Wait);
+    // The passive version waits for the game's label ("Не двигаться!"), and says it as it comes.
+    CHECK(calm::StartWordsOf(false, false, true, true) == StartWords::Wait);
+    CHECK(calm::StartWordsOf(true, false, true, true) == StartWords::Game);
+    // Words the game draws are its own, whatever the version.
+    CHECK(calm::StartWordsOf(true, false, true, false) == StartWords::Game);
+    CHECK(calm::StartWordsOf(true, false, false, false) == StartWords::Game);
+    CHECK(calm::StartWordsOf(true, true, true, true) == StartWords::Wait);
+}

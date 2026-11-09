@@ -5,6 +5,13 @@
 
 namespace da::calm
 {
+    StartWords StartWordsOf(bool drawn, bool said, bool modeKnown, bool passive)
+    {
+        if (said) return StartWords::Wait;
+        if (drawn) return StartWords::Game;
+        return modeKnown && !passive ? StartWords::Mod : StartWords::Wait;
+    }
+
     bool Beyond(const Marker& m)
     {
         return std::max(std::fabs(m.x), std::fabs(m.y)) >= m.edge;

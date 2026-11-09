@@ -36,6 +36,20 @@ namespace da::calm
     // Whether the game counts the marker past the edge (its own test for its clock).
     bool Beyond(const Marker& m);
 
+    // The words an encounter's start is told by: the game's own where it draws them (the passive
+    // version's "Не двигаться!", drawn as the widget is set up, sometimes a while after it shows),
+    // else, once the version is known to be the active one, the mod's short word ("Спокойно!", both
+    // levels), as the active version draws none and its signals came with no word of what they were
+    // (Andrey, 2026-11-09: Jessica's run in act8_5, research/sessions/s65-play.log, 14:51:07). Wait:
+    // nothing yet, or nothing more once words were said.
+    enum class StartWords
+    {
+        Wait,
+        Game,
+        Mod,
+    };
+    StartWords StartWordsOf(bool drawn, bool said, bool modeKnown, bool passive);
+
     // The marker's share of the way to the edge within which it counts as in the middle; the
     // pace of its blip from the middle to the edge; the pace of the double ping inside; the pace
     // of the steering signal and of the thudded blip past the edge; how long nothing else sounds

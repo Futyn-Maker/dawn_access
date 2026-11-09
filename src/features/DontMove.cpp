@@ -10,6 +10,7 @@
 #include "core/Strings.hpp"
 #include "hooks/HookDispatcher.hpp"
 #include "input/InputNames.hpp"
+#include "locale/GameText.hpp"
 #include "locale/Locale.hpp"
 #include "speech/Sounds.hpp"
 #include "speech/Speech.hpp"
@@ -25,6 +26,7 @@
 namespace da::features
 {
     using RC::Unreal::FFrame;
+    using RC::Unreal::FProperty;
     using RC::Unreal::UObject;
 
     namespace
@@ -50,6 +52,9 @@ namespace da::features
             calm::Follower follower; // the live marker's sounds
             double lastTraceAt = -10.0;
             bool positionLogged = false;
+            // The version the game takes the player's input by now (IsUsingPassiveVersion, asked anew at
+            // every input: UBatesDontMoveWidget::OnAction), 1 passive, 0 active, -1 not asked yet.
+            int liveMode = -1;
         };
         std::vector<Encounter> g_encounters;
 
@@ -116,6 +121,42 @@ namespace da::features
                       recorded ? L"of the controller moving" : L"past the edge", grace, recorded ? L"at its start" : L"each time");
         }
 
+        // The game's Don't Move mode setting (UBatesGameUserSettings::GetDontMoveType: 0 passive, 1 active,
+        // 2 dynamic, its default); -1 when it cannot be read.
+        int ModeSetting()
+        {
+            static UObject* settings = nullptr;
+            if (!settings || !obj::IsLive(settings)) settings = obj::FindFirstLive(L"BatesGameUserSettings");
+            int64_t mode = -1;
+            if (settings)
+                obj::CallReturn(settings, L"GetDontMoveType",
+                                [&](void* params, FProperty* returnValue)
+                                {
+                                    if (returnValue) obj::ReadIntAt(params, returnValue, mode);
+                                });
+            return static_cast<int>(mode);
+        }
+
+        // Which version the game takes the player's input by, as it asks at every input
+        // (UBatesDontMoveWidget::OnAction calls IsUsingPassiveVersion each time): with the mode setting
+        // on Dynamic it follows the device used last (UBatesGameUserSettings::GetActiveDontMoveType: a
+        // PlayStation pad passive, anything else active), and an active run whose input is then taken as
+        // the passive version's keeps the marker where it is pulled: the stick and the keys do nothing.
+        // Jessica's run in act8_5 began active after a key of the keyboard and failed with the stick, and
+        // two of Sam's with the keys failed with the marker never moving
+        // (research/sessions/s65-play.log, 14:51:07, 15:05:34, 15:06:45). Logged as it changes.
+        void TraceLiveMode(Encounter& e)
+        {
+            const int live = obj::CallForBool(e.widget, L"IsUsingPassiveVersion") ? 1 : 0;
+            if (live == e.liveMode) return;
+            const bool first = e.liveMode < 0;
+            e.liveMode = live;
+            if (first && live == (e.passive ? 1 : 0)) return;
+            log::Info(L"dontmove: {} the game now takes the player's input as the {} version would (the device it last saw: {}){}", obj::ObjectName(e.widget),
+                      live ? L"passive" : L"active", input::SchemeName(input::CurrentScheme()),
+                      !e.passive && live ? L": the stick and the keys move the marker no more" : L"");
+        }
+
         // The mod's own words for the version are kept for the help key alone: during the
         // encounter the game's own prompt and the sounds are all there is to hear (the
         // player's decision, 2026-10-21).
@@ -124,6 +165,19 @@ namespace da::features
             if (e.instructed || !e.modeKnown || !e.started) return;
             e.instructed = true;
             log::Info(L"dontmove: {} version known while running: {} (said in the help only)", obj::ObjectName(e.widget), e.passive ? L"passive" : L"active");
+        }
+
+        // The active version draws no words of its own, where the passive one says "Не двигаться!": a
+        // word of the mod's, short, at either level, so that the signals that follow are known for what
+        // they are (Andrey's request after Jessica's run in act8_5, research/sessions/s65-play.log,
+        // 14:51:07). Said once the version is known, the game's own words absent.
+        void SayActiveStart(Encounter& e)
+        {
+            if (calm::StartWordsOf(false, e.labelSaid, e.modeKnown, e.passive) != calm::StartWords::Mod) return;
+            e.labelSaid = true;
+            e.words = locale::Mod(L"dontmove.active.start");
+            log::Info(L"dontmove: {} the active version draws no words: \"{}\" said", obj::ObjectName(e.widget), e.words);
+            speech::Urgent(e.words);
         }
 
         // The start: the tone of the danger and the game's own words on the widget.
@@ -135,10 +189,14 @@ namespace da::features
             e.words = str::JoinSentences(ui::DrawnTexts(e.widget));
             log::Info(L"dontmove: {} started: \"{}\"", obj::ObjectName(e.widget), e.words);
             sounds::Play(sounds::Cue::Down);
-            if (!e.words.empty())
+            if (calm::StartWordsOf(!e.words.empty(), e.labelSaid, e.modeKnown, e.passive) == calm::StartWords::Game)
             {
                 e.labelSaid = true;
                 speech::Announce(e.words);
+            }
+            else
+            {
+                SayActiveStart(e);
             }
             Instruct(e);
         }
@@ -149,7 +207,11 @@ namespace da::features
         {
             if (e.labelSaid) return;
             const auto label = str::JoinSentences(ui::DrawnTexts(e.widget));
-            if (label.empty()) return;
+            if (label.empty())
+            {
+                SayActiveStart(e);
+                return;
+            }
             e.labelSaid = true;
             e.words = str::JoinSentences({label, e.words});
             log::Info(L"dontmove: {} label \"{}\"", obj::ObjectName(e.widget), label);
@@ -336,6 +398,7 @@ namespace da::features
                 {
                     SayLabel(e);
                     FollowMarker(e, now);
+                    TraceLiveMode(e);
                 }
                 ++it;
             }
@@ -449,6 +512,14 @@ namespace da::features
         {
             if (!obj::IsLive(e.widget) || !e.started || e.finished) continue;
             out.push_back(e.modeKnown && e.passive ? locale::Mod(L"help.dontmove.passive") : locale::Mod(L"help.dontmove.active", Steering()));
+            // With the game's mode on Dynamic the version follows the device used last, and switching
+            // devices during a run makes the game ignore the steering (TraceLiveMode).
+            if (ModeSetting() == 2)
+                out.push_back(locale::Mod(L"help.dontmove.dynamic",
+                                          std::vector<std::wstring>{gametext::ResolveWithFallback(L"BATES_SETTING_DM_TYPE", L"Don't Move Type"),
+                                                                    gametext::ResolveWithFallback(L"BATES_SETTING_DM_TYPE_OPTION_DYNAMIC", L"Dynamic"),
+                                                                    gametext::ResolveWithFallback(L"BATES_SETTING_DM_TYPE_OPTION_ACTIVE", L"Active"),
+                                                                    gametext::ResolveWithFallback(L"BATES_SETTING_DM_TYPE_OPTION_PASSIVE", L"Passive")}));
             return;
         }
     }
