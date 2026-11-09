@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cwctype>
+#include <string>
 
 namespace da::recheck
 {
@@ -116,6 +118,22 @@ namespace da::recheck
     bool LeafOfDoor(bool heldItem)
     {
         return !heldItem;
+    }
+
+    bool LivingCreature(std::wstring_view meshPath)
+    {
+        std::wstring path(meshPath);
+        for (auto& c : path)
+            c = static_cast<wchar_t>(std::towlower(c));
+        static constexpr std::wstring_view kRigs = L"/game/rigs/creatures/";
+        const auto at = path.find(kRigs);
+        if (at == std::wstring::npos) return false;
+        const auto kindAt = at + kRigs.size();
+        const auto end = path.find(L'/', kindAt);
+        if (end == std::wstring::npos || end == kindAt) return false;
+        const std::wstring_view kind = std::wstring_view(path).substr(kindAt, end - kindAt);
+        const auto endsWith = [&](std::wstring_view tail) { return kind.size() > tail.size() && kind.substr(kind.size() - tail.size()) == tail; };
+        return !endsWith(L"_dead") && !endsWith(L"_cut");
     }
 
     bool LeafTouches(const Leaf& leaf, const Vec& from, const Vec& to, double radius, double halfHeight)

@@ -69,7 +69,7 @@ namespace da::ground
         std::string line = "S " + std::to_string(s.from.x) + " " + std::to_string(s.from.y) + " " + std::to_string(s.from.level) + " " + std::to_string(s.bx) +
                            " " + std::to_string(s.by) + " ";
         if (s.free)
-            line += std::to_string(s.land) + (s.why == 'M' ? " M " : " - ") + Num(s.clear);
+            line += std::to_string(s.land) + (s.why == 'M' ? " M " : s.why == 'R' ? " R " : " - ") + Num(s.clear);
         else
             line += "X " + std::string(1, s.why ? s.why : '?') + " " + Num(s.clear) + (s.on.empty() ? std::string() : " " + s.on);
         return line;

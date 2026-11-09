@@ -179,6 +179,10 @@ namespace da::sym
             // location keeps its verdict for the glint's prompt (set by its tick).
             {L"UBatesBindableCharacterComponent.bIsBlending", 0x220},       // bool
             {L"ABatesUseLocation.bOverlappingCharacterCanInteract", 0x505}, // bool
+            // The character the tick judged for that verdict: the last to walk into the volume who
+            // may use the location (ABatesUseLocation::OnCharacterVolumeStateChanged, 0x44e6bb0), a
+            // companion as well as the player's.
+            {L"ABatesUseLocation.CachedCharacter", 0x508}, // TWeakObjectPtr<ABatesCharacter>
             // A glint is spawned while the player's character stands in its own volume
             // (ABatesGlint::OnCharacterVolumeStateChanged): only then does the game draw it.
             {L"ABatesGlint.bIsSpawned", 0x47a}, // bool

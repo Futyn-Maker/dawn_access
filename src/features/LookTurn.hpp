@@ -35,6 +35,20 @@ namespace da::look
         bool framingEndsOnLook = false;
     };
 
+    // Whether the game takes a press at a use location from the player's character, as its
+    // ABatesUseLocation::CanCharacterInteract (0x44d9a30) asks it of the pressing character: everything
+    // but a look in place (`atHand`: the linked activity on, no interaction in progress, she not
+    // blending out of what she was bound to, inside the volume), and the look, where one is asked
+    // (`lookAsked`), as IsInLookAtAngle judges it: passed where no glint is needed (`needGlint`), never
+    // where one is and the use location has none (`glint`), passed on every camera layer but the
+    // navigation (1) and framing (4) ones, and judged there as the glint or the angles judge it
+    // (`lookOk`, once `measured`). The use location's own verdict (bOverlappingCharacterCanInteract)
+    // is its tick's of the character it cached, the last to walk into it who may use it: where that is
+    // a companion, it says nothing of hers. At the pool of Jessica's lair on 2026-11-09 Mike walked
+    // in after Sam, and the double ping waited 2.8 s while the game drew its prompt for her and took
+    // her press (research/sessions/s63-play.log, 01:12:34.829 to 37.943).
+    bool PressTaken(bool atHand, bool lookAsked, bool needGlint, bool glint, int64_t layer, bool measured, bool lookOk);
+
     enum class Lead
     {
         None,
@@ -168,7 +182,54 @@ namespace da::look
     // single steps, rather than at full stick: at the lodge's patio door on 2026-11-05 a walk began
     // 11 cm from the end of its way, pushed full stick toward it and ran Sam 125 cm past the door.
     constexpr double kStepWay = 60.0;
-    bool StretchKeeps(bool offered, bool begun, double fromSpot, double wayLeft = 1e9);
+    // `letGoAt`: the way left at which the walk lets go, a step's (kStepWay) or her slide's (Slide).
+    bool StretchKeeps(bool offered, bool begun, double fromSpot, double wayLeft = 1e9, double letGoAt = kStepWay);
+
+    // How far she slides on once the walk lets go at speed: the game's locomotion ends a walk with a
+    // stopping stride, about a second's walk on. At the damaged doors of act7_2 on 2026-11-08 the
+    // walk let go at 138 cm/s as the place took her, 62 cm short of the spot found well inside it;
+    // she came to rest 139 cm on, 77 cm past the spot and out of the place, and its flicks stepped her
+    // through it and out again until the walk gave up beside it (research/sessions/s62-play.log,
+    // 21:56:47 to 21:56:56); at Sam's sock and the bathroom door in s55, the family portrait and the
+    // patio door before, the same. The walk lets go that far before the end of its way, so that the
+    // stride ends there: the seconds of walk she slides on, measured from her own let-goes in the
+    // session (the median of the last kSlideKept), times her speed, at most kStretchReach; nothing
+    // until one is measured.
+    // Her slide goes on the way she is heading: the walk lets go early only on the way's last
+    // straight leg, heading along it within kSlideAlong (a corner within the slide, the way into a
+    // doorway, is walked round first, and let go a step before the end as ever).
+    constexpr double kSlideAlong = 20.0; // degrees
+    double LetGoAt(double slide, bool lastLeg, std::optional<double> headingOff);
+    constexpr double kSlideMinSpeed = 60.0; // cm/s: a slower let-go says nothing of the stride
+    constexpr double kSlideWithin = 3.0;    // s: at rest later than this after the let-go, no slide is measured
+    constexpr size_t kSlideKept = 5;
+    class Slide
+    {
+    public:
+        // The walk lets go at `here`, she moving at `speed` cm/s.
+        void LetGo(double now, const Vec& here, double speed);
+        // A push of the mod's own since (a flick): this slide is not measured.
+        void Spoiled()
+        {
+            m_open = false;
+        }
+        // A frame: `still` once she has come to rest, at `here`. True on the frame a slide is measured.
+        bool Update(double now, const Vec& here, bool still);
+        // How far she slides on from `speed`.
+        double Distance(double speed) const;
+        // The seconds of walk she slid on, as last measured; 0 before any.
+        double LastSeconds() const
+        {
+            return m_seconds.empty() ? 0.0 : m_seconds.back();
+        }
+
+    private:
+        bool m_open = false;
+        Vec m_from;
+        double m_speed = 0.0;
+        double m_at = -1.0;
+        std::deque<double> m_seconds;
+    };
 
     // Where the last stretch steps her while she is out of the place: a cell of the place the ground
     // was proven to carry her to (the reach map's, `mapped`, else the end of the way felt out to it,
@@ -233,6 +294,9 @@ namespace da::look
         {
             return MovedWithin(now, kMovingWindow) >= kMovingCm;
         }
+        // The way she goes, the world's yaw in degrees, over the last kMovingWindow: none while she
+        // is not moving.
+        std::optional<double> Heading(double now) const;
         // Still: watched for the whole window, and gone less than kStillCm in it.
         bool Still(double now) const;
         // Her speed over the ground, from the samples within the window a still is judged by, in cm/s.

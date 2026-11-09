@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <numbers>
+#include <vector>
 
 namespace da::look
 {
@@ -133,9 +134,56 @@ namespace da::look
         return m_push;
     }
 
-    bool StretchKeeps(bool offered, bool begun, double fromSpot, double wayLeft)
+    bool PressTaken(bool atHand, bool lookAsked, bool needGlint, bool glint, int64_t layer, bool measured, bool lookOk)
     {
-        return offered || ((begun || wayLeft < kStepWay) && fromSpot <= kStretchReach);
+        if (!atHand) return false;
+        if (!lookAsked || !needGlint) return true;
+        if (!glint) return false;
+        if (layer != 1 && layer != 4) return true;
+        return measured && lookOk;
+    }
+
+    bool StretchKeeps(bool offered, bool begun, double fromSpot, double wayLeft, double letGoAt)
+    {
+        return offered || ((begun || wayLeft < letGoAt) && fromSpot <= kStretchReach);
+    }
+
+    double LetGoAt(double slide, bool lastLeg, std::optional<double> headingOff)
+    {
+        if (!lastLeg || !headingOff || std::fabs(*headingOff) > kSlideAlong) return kStepWay;
+        return std::max(kStepWay, slide);
+    }
+
+    void Slide::LetGo(double now, const Vec& here, double speed)
+    {
+        m_open = speed >= kSlideMinSpeed;
+        m_from = here;
+        m_speed = speed;
+        m_at = now;
+    }
+
+    bool Slide::Update(double now, const Vec& here, bool still)
+    {
+        if (!m_open) return false;
+        if (now - m_at > kSlideWithin)
+        {
+            m_open = false;
+            return false;
+        }
+        if (!still) return false;
+        m_open = false;
+        m_seconds.push_back(std::hypot(here.x - m_from.x, here.y - m_from.y) / m_speed);
+        while (m_seconds.size() > kSlideKept)
+            m_seconds.pop_front();
+        return true;
+    }
+
+    double Slide::Distance(double speed) const
+    {
+        if (m_seconds.empty() || speed <= 0.0) return 0.0;
+        std::vector<double> sorted(m_seconds.begin(), m_seconds.end());
+        std::sort(sorted.begin(), sorted.end());
+        return std::min(sorted[sorted.size() / 2] * speed, kStretchReach);
     }
 
     Vec StepSpot(const std::optional<Vec>& mapped, const std::optional<Vec>& felt, const Vec& spot)
@@ -198,6 +246,23 @@ namespace da::look
         }
         if (!first || last.first - first->first < 0.05) return 0.0;
         return std::hypot(last.second.x - first->second.x, last.second.y - first->second.y) / (last.first - first->first);
+    }
+
+    std::optional<double> Motion::Heading(double now) const
+    {
+        if (m_samples.size() < 2) return std::nullopt;
+        const auto& last = m_samples.back();
+        const std::pair<double, Vec>* first = nullptr;
+        for (auto it = m_samples.rbegin(); it != m_samples.rend(); ++it)
+        {
+            if (now - it->first > kMovingWindow) break;
+            first = &*it;
+        }
+        if (!first) return std::nullopt;
+        const double dx = last.second.x - first->second.x;
+        const double dy = last.second.y - first->second.y;
+        if (std::hypot(dx, dy) < kMovingCm) return std::nullopt;
+        return std::atan2(dy, dx) * 180.0 / std::numbers::pi;
     }
 
     bool Motion::Still(double now) const

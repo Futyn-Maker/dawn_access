@@ -970,3 +970,83 @@ TEST_CASE("look: the thing just used is led to no more until it is chosen again 
     CHECK_FALSE(used.Waits(&photo));
     CHECK_FALSE(used.Waits(&door));
 }
+
+TEST_CASE("the walk lets go where her slide ends at the way's end: the damaged doors, 2026-11-08")
+{
+    // research/sessions/s62-play.log, 21:56:47 to 21:56:49.8: let go at 138 cm/s as the place took
+    // her, she came to rest 139 cm on, 77 cm past the spot found well inside the place, and out of it.
+    look::Slide slide;
+    CHECK(slide.Distance(138.0) == 0.0); // nothing measured yet: the walk lets go a step before the end
+    slide.LetGo(47.98, look::Vec{20119, 36232, 8398}, 138.0);
+    CHECK_FALSE(slide.Update(48.5, look::Vec{20090, 36163, 8398}, false));
+    CHECK(slide.Update(49.6, look::Vec{20065, 36104, 8398}, true));
+    CHECK(slide.LastSeconds() == doctest::Approx(139.0 / 138.0).epsilon(0.01));
+    CHECK(slide.Distance(138.0) == doctest::Approx(139.0).epsilon(0.01));
+    // The next walk there, 131 cm of way left at 138 cm/s and 131 cm from her spot: it lets go now,
+    // and the stride ends at the spot; a step's let-go would have run her past it again.
+    const double letGoAt = std::max(look::kStepWay, slide.Distance(138.0));
+    CHECK(look::StretchKeeps(false, false, 131.0, 131.0, letGoAt));
+    CHECK_FALSE(look::StretchKeeps(false, false, 131.0, 131.0));
+    // A slow let-go says nothing of the stride; nor one a flick of the mod's own moved on; nor a rest
+    // long after.
+    slide.LetGo(60.0, look::Vec{0, 0, 0}, 30.0);
+    CHECK_FALSE(slide.Update(61.0, look::Vec{20, 0, 0}, true));
+    slide.LetGo(70.0, look::Vec{0, 0, 0}, 140.0);
+    slide.Spoiled();
+    CHECK_FALSE(slide.Update(71.0, look::Vec{300, 0, 0}, true));
+    slide.LetGo(80.0, look::Vec{0, 0, 0}, 140.0);
+    CHECK_FALSE(slide.Update(80.0 + look::kSlideWithin + 0.1, look::Vec{140, 0, 0}, true));
+    CHECK(slide.Distance(100.0) == doctest::Approx(100.0 * 139.0 / 138.0).epsilon(0.01));
+    // The median of the last ones measured, and never past the stretch's reach.
+    for (const double seconds : {0.4, 1.1, 1.05, 3.0})
+    {
+        slide.LetGo(90.0, look::Vec{0, 0, 0}, 100.0);
+        CHECK(slide.Update(91.0, look::Vec{seconds * 100.0, 0, 0}, true));
+    }
+    CHECK(slide.Distance(100.0) == doctest::Approx(105.0)); // of 0.4, 1.007, 1.05, 1.1 and 3.0 s: 1.05
+    CHECK(slide.Distance(1000.0) == look::kStretchReach);
+}
+
+TEST_CASE("the walk lets go early only on the way's last straight leg, heading along it")
+{
+    // Her slide goes on the way she heads: a corner within it is walked round first.
+    CHECK(look::LetGoAt(139.0, true, 5.0) == doctest::Approx(139.0));
+    CHECK(look::LetGoAt(139.0, true, -look::kSlideAlong) == doctest::Approx(139.0));
+    CHECK(look::LetGoAt(139.0, false, 5.0) == look::kStepWay); // a corner still to turn
+    CHECK(look::LetGoAt(139.0, true, 40.0) == look::kStepWay); // turning onto the leg yet
+    CHECK(look::LetGoAt(139.0, true, std::nullopt) == look::kStepWay);
+    CHECK(look::LetGoAt(30.0, true, 0.0) == look::kStepWay); // never later than a step
+    // The way she goes, by where she stands.
+    look::Motion motion;
+    for (int i = 0; i <= 10; ++i)
+        motion.Update(i * 0.05, look::Vec{i * 7.0, 0.0, 0.0});
+    REQUIRE(motion.Heading(0.5).has_value());
+    CHECK(*motion.Heading(0.5) == doctest::Approx(0.0).epsilon(1e-6));
+    look::Motion north;
+    for (int i = 0; i <= 10; ++i)
+        north.Update(i * 0.05, look::Vec{0.0, i * 7.0, 0.0});
+    CHECK(*north.Heading(0.5) == doctest::Approx(90.0).epsilon(1e-6));
+    look::Motion still;
+    for (int i = 0; i <= 10; ++i)
+        still.Update(i * 0.05, look::Vec{0.0, 0.0, 0.0});
+    CHECK_FALSE(still.Heading(0.5).has_value());
+}
+
+TEST_CASE("a press is taken from her as the game asks it of her, whoever its tick judged: the lair's pool, 2026-11-09")
+{
+    // research/sessions/s63-play.log 01:12:34.829: Sam inside "wade into pool", the glint's verdict yes
+    // on the exploration camera; the tick had cached Mike, who walked in after her.
+    CHECK(look::PressTaken(true, true, true, true, 1, true, true));
+    // Not at hand: nothing is taken.
+    CHECK_FALSE(look::PressTaken(false, false, false, false, 1, false, false));
+    // No look asked, or a look with no glint needed: taken at hand.
+    CHECK(look::PressTaken(true, false, true, false, 1, false, false));
+    CHECK(look::PressTaken(true, true, false, false, 1, false, false));
+    // A glint needed and none: never.
+    CHECK_FALSE(look::PressTaken(true, true, true, false, 1, false, false));
+    // Off the navigation and framing layers the look is passed.
+    CHECK(look::PressTaken(true, true, true, true, 12, false, false));
+    // On them, as the look is measured.
+    CHECK_FALSE(look::PressTaken(true, true, true, true, 4, true, false));
+    CHECK_FALSE(look::PressTaken(true, true, true, true, 1, false, true));
+}

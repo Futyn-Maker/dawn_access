@@ -742,3 +742,19 @@ TEST_CASE("a step is free both ways: the map begun in the hall gets back into Sa
     CHECK(now->Expanded() == 467);
     CHECK(now->Reached(bath));
 }
+
+TEST_CASE("the way between two cells of one flood goes back to where their paths part and on")
+{
+    const grid::Cell r{0, 0, 0}, a1{1, 0, 0}, a2{2, 0, 0}, b1{0, 1, 0}, b2{0, 2, 0}, b3{1, 3, 0};
+    size_t shared = 0;
+    CHECK(grid::TreeWay({r, a1, a2}, {r, b1, b2, b3}, &shared) == std::vector<grid::Cell>{a2, a1, r, b1, b2, b3});
+    CHECK(shared == 1);
+    // Standing on the target's own path: on along it.
+    CHECK(grid::TreeWay({r, b1}, {r, b1, b2, b3}) == std::vector<grid::Cell>{b1, b2, b3});
+    // Standing at the target: the cell itself.
+    CHECK(grid::TreeWay({r, b1, b2}, {r, b1, b2}) == std::vector<grid::Cell>{b2});
+    // Beyond it on its path: back to it.
+    CHECK(grid::TreeWay({r, b1, b2, b3}, {r, b1}) == std::vector<grid::Cell>{b3, b2, b1});
+    // Paths of two floods share nothing.
+    CHECK(grid::TreeWay({a1, a2}, {b1, b2}).empty());
+}

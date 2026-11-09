@@ -64,27 +64,31 @@ namespace da::ways
         for (const size_t i : order)
         {
             const Entry& way = entries[i];
-            if (way.kept)
+            // A verdict kept on the road of a trigger given way to the story's is no verdict.
+            const bool roadGone =
+                way.onRoadOf >= 0 && static_cast<size_t>(way.onRoadOf) < entries.size() && entries[static_cast<size_t>(way.onRoadOf)].superseded;
+            if (way.kept && !roadGone)
             {
                 onRoadOf[i] = way.onRoadOf;
-                if (way.way && way.onRoadOf < 0 && !way.behind && !way.unreachable && !way.unjudged) listedWays.insert(i);
+                if (way.way && way.onRoadOf < 0 && !way.behind && !way.unreachable && !way.unjudged && !way.superseded) listedWays.insert(i);
                 continue;
             }
-            const bool judged = way.way && way.hasBox && !way.behind && !way.unreachable && !way.unjudged && !way.reached && !way.chosen;
+            const bool judged =
+                way.way && way.hasBox && !way.behind && !way.unreachable && !way.unjudged && !way.superseded && !way.reached && !way.chosen;
             if (judged)
             {
                 for (const size_t j : order)
                 {
                     if (j == i) continue;
                     const Entry& other = entries[j];
-                    const bool counts = !other.closedOff && (other.chosen || (!other.behind && !other.unreachable && !other.unjudged &&
-                                                                              (!other.way || listedWays.count(j) > 0)));
+                    const bool counts = !other.closedOff && !other.superseded &&
+                                        (other.chosen || (!other.behind && !other.unreachable && !other.unjudged && (!other.way || listedWays.count(j) > 0)));
                     if (!counts || !enters(i, j)) continue;
                     onRoadOf[i] = static_cast<int>(j);
                     break;
                 }
             }
-            if (way.way && onRoadOf[i] < 0 && !way.behind && !way.unreachable && !way.unjudged) listedWays.insert(i);
+            if (way.way && onRoadOf[i] < 0 && !way.behind && !way.unreachable && !way.unjudged && !way.superseded) listedWays.insert(i);
         }
         return onRoadOf;
     }
@@ -192,7 +196,19 @@ namespace da::ways
 
     void Lister::Judge(std::vector<Entry>& entries, const Settling& settle, bool due, bool roads, bool mapDone, double now, const Enters& enters)
     {
-        if (!roads && (settle.Settled() || settle.Keeping())) return;
+        // Between a hand-over and its first map nothing judges the roads: the list stands as it was,
+        // and a way it has never weighed waits for a judgement that weighs it. In Josh's cave on
+        // 2026-11-09 two ways the game turned on during a vision were listed unweighed at the
+        // hand-over, the settling kept from the hold before, and left out a quarter of a second later
+        // (research/sessions/s63-play.log, 01:08:15.647 to .904).
+        if (!roads && (settle.Settled() || settle.Keeping()))
+        {
+            for (auto& e : entries)
+            {
+                if (e.way && !e.passed && !e.shown) e.unjudged = true;
+            }
+            return;
+        }
         const bool anyShown = std::any_of(entries.begin(), entries.end(), [](const Entry& e) { return e.shown; });
         for (auto& e : entries)
         {
@@ -202,20 +218,72 @@ namespace da::ways
             const bool unweighed = !due && !Weighed(e);
             e.unjudged = e.way && (!settle.Settled() || waitsForMap || !(e.known || (settle.Kept() && e.earlier)) || unweighed);
         }
+        // Which triggers give way to the story's, by the ways as this look judges them.
+        const auto superseded = StreamsSuperseded(entries);
+        for (size_t i = 0; i < entries.size(); ++i)
+            entries[i].superseded = superseded[i];
         if (!due) return;
         m_judgedAt = now;
+        // A verdict on the road of a trigger given way to the story's is not kept (RowRule).
         for (auto& e : entries)
-            e.kept = Weighed(e) && (m_frozen || (e.way && e.shown));
+        {
+            const bool roadGone =
+                e.onRoadOf >= 0 && static_cast<size_t>(e.onRoadOf) < entries.size() && entries[static_cast<size_t>(e.onRoadOf)].superseded;
+            e.kept = Weighed(e) && (m_frozen || (e.way && e.shown)) && !roadGone;
+        }
         const auto onRoadOf = RowRule(entries, enters);
         for (size_t i = 0; i < entries.size(); ++i)
         {
+            // A way the rule could not weigh keeps no verdict of this judgement's, nor an older one
+            // it did not keep: it waits for a judgement that weighs it, the road it was last found on
+            // kept meanwhile (the rule gave it none, and the ways on the bolt door's road in act7_2
+            // were logged offered as they waited, research/sessions/s63-play.log 00:22:51.623).
+            if (entries[i].way && entries[i].unjudged)
+            {
+                if (!entries[i].kept) entries[i].passed = false;
+                continue;
+            }
             entries[i].onRoadOf = onRoadOf[i];
-            // A way the rule could not weigh keeps no verdict of this judgement's.
-            if (entries[i].way && entries[i].unjudged) continue;
             entries[i].passed = true;
             entries[i].epoch = m_epoch;
             entries[i].hold = m_hold;
         }
+    }
+
+    std::optional<double> LeftAlong(const std::vector<Vec>& corners, const Vec& here, bool& lastLeg)
+    {
+        lastLeg = false;
+        const int on = StretchOn(corners, corners.size(), here, 150.0, kStretchRise);
+        if (on < 0) return std::nullopt;
+        const auto flat = [](const Vec& a, const Vec& b) { return std::hypot(a.x - b.x, a.y - b.y); };
+        size_t next = static_cast<size_t>(on);
+        while (next + 1 < corners.size() && flat(here, corners[next]) < 60.0)
+            ++next;
+        double length = flat(here, corners[next]);
+        for (size_t i = next + 1; i < corners.size(); ++i)
+            length += flat(corners[i - 1], corners[i]);
+        lastLeg = next + 1 == corners.size();
+        return length;
+    }
+
+    double SpokenDistance(double straight, std::optional<double> road, std::optional<double> map)
+    {
+        if (road) return std::max(straight, *road);
+        if (map) return std::max(straight, *map);
+        return straight;
+    }
+
+    std::optional<double> MapMeasure(bool judged, bool reached, double targetCost, bool running, bool cutShort, double frontier,
+                                     std::optional<double> herCost)
+    {
+        if (!herCost) return std::nullopt;
+        if (judged)
+        {
+            if (!reached) return std::nullopt;
+            return std::max(0.0, targetCost - *herCost);
+        }
+        if (!running && !cutShort) return std::nullopt;
+        return std::max(0.0, frontier - *herCost);
     }
 
     bool IsNews(std::optional<double> turnedOnAt, double now, bool listedBefore)
@@ -518,6 +586,67 @@ namespace da::ways
             pos = Vec{pos.x + rx * g, pos.y + ry * g, pos.z};
         }
         return pos;
+    }
+
+    StepSweep SweepOut(const Sweep& sweep, const Vec& from, const Vec& to)
+    {
+        StepSweep out;
+        Vec f = from;
+        Vec t = to;
+        for (int attempt = 0; attempt < 2; ++attempt)
+        {
+            const double distance = std::sqrt((t.x - f.x) * (t.x - f.x) + (t.y - f.y) * (t.y - f.y) + (t.z - f.z) * (t.z - f.z));
+            const SweepHit hit = sweep(f, t);
+            if (!hit.hit)
+            {
+                out.clear = distance;
+                out.reached = t;
+                return out;
+            }
+            if (!hit.penetrating || attempt == 1)
+            {
+                out.hit = true;
+                out.clear = std::clamp(hit.distance, 0.0, distance);
+                const double share = distance > 0.0 ? out.clear / distance : 0.0;
+                out.reached = Vec{f.x + (t.x - f.x) * share, f.y + (t.y - f.y) * share, f.z + (t.z - f.z) * share};
+                out.stuck = attempt == 1 && (hit.penetrating || out.clear < kStuckClear);
+                return out;
+            }
+            const double push = hit.depth + 1.0;
+            f = Vec{f.x + hit.normal.x * push, f.y + hit.normal.y * push, f.z + hit.normal.z * push};
+            t = Vec{t.x + hit.normal.x * push, t.y + hit.normal.y * push, t.z + hit.normal.z * push};
+        }
+        return out;
+    }
+
+    std::optional<Vec> SweepFromFreeSpot(const Sweep& sweep, const Vec& from, const Vec& to, double reach)
+    {
+        const double dx = to.x - from.x;
+        const double dy = to.y - from.y;
+        const double length = std::hypot(dx, dy);
+        if (length < 1e-6 || reach <= 0.0) return std::nullopt;
+        const double ux = dx / length;
+        const double uy = dy / length;
+        // Across the way first, then back from it, then ahead, as degrees off the step's way.
+        static constexpr double kTurns[] = {90.0, -90.0, 135.0, -135.0, 180.0, 45.0, -45.0, 0.0};
+        for (const double ring : kFreeSpotRings)
+        {
+            for (const double turn : kTurns)
+            {
+                const double a = turn * std::numbers::pi / 180.0;
+                const double ox = (ux * std::cos(a) - uy * std::sin(a)) * ring * reach;
+                const double oy = (ux * std::sin(a) + uy * std::cos(a)) * ring * reach;
+                const Vec spot{from.x + ox, from.y + oy, from.z};
+                if (sweep(spot, Vec{spot.x + ux, spot.y + uy, spot.z}).hit) continue;
+                // She stands here: the step is walked from here, and from no other spot, as her
+                // movement walks her, along what she touches (SlideWalk).
+                int touches = 0;
+                const Vec reached = SlideWalk(sweep, spot, to, touches);
+                if (std::hypot(reached.x - to.x, reached.y - to.y) > reach) return std::nullopt;
+                return reached;
+            }
+        }
+        return std::nullopt;
     }
 
     PassageWay PassageWalk(const Sweep& sweep, const Vec& a, const Vec& b)

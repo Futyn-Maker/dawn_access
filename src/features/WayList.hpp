@@ -9,6 +9,7 @@
 #include "features/Vec.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <string>
@@ -46,8 +47,13 @@ namespace da::ways
         bool closedOff = false;   // the ground was proven closed off from it, no door between: its road ends short of it
         bool known = true;        // its road is known now: the navigation mesh, the map, the path she is held to
         bool earlier = false;     // an earlier map found it reachable, or beyond a door, and this one has not judged it yet
-        bool shown = false;       // listed at the last look (a way: judged and listed)
+        // In the list at the last look: a way listed (judged and kept in), a thing whatever its own
+        // verdict (one still waiting for the map may yet give a way its road).
+        bool shown = false;
         bool streams = false;     // a way of no story that streams in more of the world (StreamsMore)
+        // Such a trigger given way to a way of the story (StreamsSuperseded), as Lister::Judge finds
+        // it at each look: no road of the row rule, and not listed.
+        bool superseded = false;
         // The list's verdict, kept from look to look: whether the row rule has judged it since it
         // came, and the index of the target whose road it lies on, or -1.
         bool passed = false;
@@ -74,7 +80,9 @@ namespace da::ways
     // thing was not chosen offered the shed's way on in act6_4 and took it back the moment Andrey's
     // list came to the scarecrow he had looked at (research/sessions/s61-play.log, 18:48:44 to
     // 18:48:47), and he asked for the rule to go ("let it be what it is"). An entry whose verdict is
-    // `kept` keeps it, and counts as a road as it stands.
+    // `kept` keeps it, and counts as a road as it stands, unless the road it lies on is a trigger
+    // given way to a way of the story (`superseded`): such a trigger is no road, judged or kept, and
+    // is not judged itself.
     // Returns, for each entry, the index of the target whose road it lies on, or -1.
     std::vector<int> RowRule(const std::vector<Entry>& entries, const Enters& enters);
 
@@ -85,7 +93,13 @@ namespace da::ways
     // is reachable (the asylum's grounds, 2026-11-07). In the lodge on 2026-11-08 the candlelight's
     // way stood listed with four triggers into the kitchen, the cinema and the cellar beside it; one
     // walked to loaded the cinema and left the list, nothing of the story behind it ("decorative").
-    // Returns, for each entry, whether it is such a trigger with a way of the story listed.
+    // Returns, for each entry, whether it is such a trigger with a way of the story listed. Lister::Judge
+    // weighs it at each look by the ways as that look judges them, before the row rule: weighed
+    // apart, with the story's way still unjudged from the look before, the two rules each left the
+    // other's way out. After the dead wolf in act7_2 the scene's way on (T_leave_dead_wolf2) was
+    // judged to lie on the road to a trigger into another section, which was not given way to yet;
+    // a look later the trigger gave way to the scene's way, and neither was listed for the three
+    // minutes Andrey looked for one (research/sessions/s62-play.log, 21:54:42.773 to 21:57:17).
     std::vector<bool> StreamsSuperseded(const std::vector<Entry>& entries);
 
     // A way's volume as a box turned about the upright: its middle, its sides along its own axes,
@@ -235,7 +249,8 @@ namespace da::ways
     // (but what an earlier map found, under a map begun while its list stood), while a target the
     // rule judged before keeps its verdict as a later map settles.
     //
-    // A way not listed yet waits for the map to be done while anything is listed (`mapDone`): what
+    // A way not listed yet waits for the map to be done while anything is in the list (`mapDone`;
+    // a thing counts while it waits for the map, a way once listed): what
     // the map has not reached yet may lie beyond it, its road running through the way, and a way
     // listed meanwhile was left out a moment later. After the landing door on 2026-11-07 the map of
     // the lodge ran 18 s; the way on to the floating balloon was listed 3.4 s in and left out 1.6 s
@@ -272,10 +287,10 @@ namespace da::ways
     public:
         // Whether the row rule judges the list at this look.
         bool Due(const Settling& settle, bool settlesNow, double now) const;
-        // Each entry's `unjudged` at this look, and, when `due`, the row rule over the entries:
-        // `onRoadOf` and `passed` for every one it weighed. Without `roads` (neither a map nor the
-        // navigation mesh judges them: a hand-over before its first map, a search that laid the grid
-        // afresh) a list that stands stays as it is.
+        // Each entry's `unjudged` and `superseded` at this look, and, when `due`, the row rule over
+        // the entries: `onRoadOf` and `passed` for every one it weighed. Without `roads` (neither a
+        // map nor the navigation mesh judges them: a hand-over before its first map, a search that
+        // laid the grid afresh) a list that stands stays as it is.
         void Judge(std::vector<Entry>& entries, const Settling& settle, bool due, bool roads, bool mapDone, double now, const Enters& enters);
         // The next look judges the list: a target was judged, came or went.
         void Again()
@@ -557,6 +572,24 @@ namespace da::ways
     constexpr double kNewsWithin = 30.0;
     bool IsNews(std::optional<double> turnedOnAt, double now, bool listedBefore);
 
+    // The distance said of a target, in cm: on foot, as far as it is known. Its road's length once the
+    // way to it is felt out (`road`); before that, what the reach map tells of it (`map`: its cost to
+    // the target, or, while it runs and has not got there, how far it has got, which the target lies
+    // beyond); the straight line only where neither is known, and never less than it. At the start of
+    // a hold in act7_2 on 2026-11-09 the bolt door was said 25 m off, straight up the stairwell, and
+    // 11 s later 118 m, the way on foot, once the map got there (research/sessions/s63-play.log,
+    // 00:30:54.832 and 00:31:06.122): the map had got 117 m by the first.
+    double SpokenDistance(double straight, std::optional<double> road, std::optional<double> map);
+
+    // What the reach map tells of the way on foot to a target from her, in cells, at least (the map's
+    // costs from its start: hers, `herCost`, none when she stands off its ground, the target's at
+    // least as far less hers): its cost to the target where it judged it reached (`judged`,
+    // `reached`, `targetCost`); where it has not judged it, while it runs or once it ended short of
+    // every cell within reach (`running`, `cutShort`: its budget or its bound), how far it got
+    // (`frontier`); nothing of a target it found out of reach, nor with her off its ground.
+    std::optional<double> MapMeasure(bool judged, bool reached, double targetCost, bool running, bool cutShort, double frontier,
+                                     std::optional<double> herCost);
+
     // ---- a path the game holds her to ---------------------------------------------------------
 
     // How far off a path the game holds her to she can stray: the game takes the stick only within
@@ -595,6 +628,11 @@ namespace da::ways
     // up. The road's heights and hers are taken alike (the corners at the height of her middle).
     int StretchOn(const std::vector<Vec>& corners, size_t count, const Vec& here, double reach, double rise);
     constexpr double kStretchRise = 150.0;
+
+    // The way left from where she stands along a road the walk follows, as the walk heads for its
+    // corners (the one ending the stretch she is on, the next once she is within 60 cm of it), and
+    // whether what is left is one straight leg; none when she is on no stretch of it.
+    std::optional<double> LeftAlong(const std::vector<Vec>& corners, const Vec& here, bool& lastLeg);
 
     // ---- the game's passages ----------------------------------------------------------------
 
@@ -650,6 +688,35 @@ namespace da::ways
     PassageWay PassageWalk(const Sweep& sweep, const Vec& a, const Vec& b);
     // One walk along a line: where it got, and how many touches it took.
     Vec SlideWalk(const Sweep& sweep, const Vec& from, const Vec& to, int& touches);
+
+    // A step of the ground swept from one cell's middle toward the next's: a sweep begun with her
+    // capsule pressed into something is pushed out once along the contact, by the depth the engine
+    // gives, and swept again, as her own movement pulls her out of a touch before it moves her.
+    struct StepSweep
+    {
+        double clear = 0.0; // how far the capsule got
+        Vec reached;        // where its middle got to, after any pull-back
+        bool hit = false;   // it met something short of the end
+        bool stuck = false; // begun pressed in, and still pressed in after the push, or met something at once
+    };
+    constexpr double kStuckClear = 0.5; // cm: a sweep after the push that gets no farther met something at once
+    StepSweep SweepOut(const Sweep& sweep, const Vec& from, const Vec& to);
+
+    // A step stuck so is swept again from a spot of its cell where her capsule stands free: the push
+    // the engine gives does not always free her. In the mine of act8_5 on 2026-11-09 the way to the
+    // scene's trigger (T_scream) ran up a corridor of the level's hard collision (a spline's wall,
+    // BP_SplineCollisionActor_C_0) 96 cm wide for her capsule of 84: no cell's middle there let it
+    // stand free, the engine's push out of the wall freed it in no direction at all (every step out of
+    // such a cell refused 0 cm in), and the reach map stopped 6 m short of the trigger, which was left
+    // out as closed off while the game walked her up the corridor (research/sessions/s63-play.log,
+    // 01:30:08; dumps/ground-20261109-001825.tsv). The spots are tried nearest the middle first and
+    // across the step's way first, at each of kFreeSpotRings of `reach` from the middle, eight ways
+    // round; the first where a sweep of a centimetre toward the next cell meets nothing is where she
+    // stands, and the step is walked from there as her movement walks her, along what she touches
+    // (SlideWalk): free when she gets within `reach` of the next cell's middle, as every step must.
+    // None when no spot stands free or the one that does gets no nearer.
+    constexpr double kFreeSpotRings[] = {0.5, 1.0};
+    std::optional<Vec> SweepFromFreeSpot(const Sweep& sweep, const Vec& from, const Vec& to, double reach);
     // How near an entry point a cell's middle must lie, over the ground and in height, to take the
     // passage: within a cell and a half, on its floor or a step off it.
     constexpr double kPassageReach = 30.0;

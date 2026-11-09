@@ -257,9 +257,10 @@ TEST_CASE("recheck: a prop the game moves is said once it comes to rest, with wh
     // Seen first: no move.
     CHECK_FALSE(door.Update(0.0, open, before, after));
     CHECK_FALSE(door.Update(0.5, open, before, after));
-    // A breath of animation is no move.
+    // A breath of animation is no move: the film projector's 4 cm at a corner (s63, 00:22:55).
     recheck::Box breath = open;
     breath.high.x += 2.0;
+    breath.low.y -= 4.0;
     CHECK_FALSE(door.Update(1.0, breath, before, after));
     CHECK_FALSE(door.Update(1.5, open, before, after));
     // The slam: the leaf swings across, and stands.
@@ -543,4 +544,36 @@ TEST_CASE("recheck: a thing carried is no door's leaf: the shotgun in Chris's ha
     // A held item is no door's leaf; the door's own prop is.
     CHECK_FALSE(recheck::LeafOfDoor(true));
     CHECK(recheck::LeafOfDoor(false));
+}
+
+TEST_CASE("a living creature the scenes bind is no wall of the ground: Mike's wolf, 2026-11-09")
+{
+    // Mike's wolf in act7_2 (research/sessions/s63-play.log, 00:18:26): a bindable prop on a creature's rig.
+    CHECK(recheck::LivingCreature(L"SkeletalMesh /Game/rigs/creatures/wolf_01/SK_wolf_01.SK_wolf_01"));
+    CHECK(recheck::LivingCreature(L"/Game/rigs/creatures/Crow/SK_Crow.SK_Crow"));
+    CHECK(recheck::LivingCreature(L"/Game/rigs/creatures/deer_UP/SK_deer.SK_deer"));
+    // The dead and the cut-up lie where they are.
+    CHECK_FALSE(recheck::LivingCreature(L"/Game/rigs/creatures/crow_dead/SK_crow_dead.SK_crow_dead"));
+    CHECK_FALSE(recheck::LivingCreature(L"/Game/rigs/creatures/rat_cut/SK_rat_cut.SK_rat_cut"));
+    // A door, a character's rig, a mesh of no rig at all.
+    CHECK_FALSE(recheck::LivingCreature(L"/Game/models/props/doors/SK_door_01.SK_door_01"));
+    CHECK_FALSE(recheck::LivingCreature(L"/Game/rigs/characters/mike/SK_mike.SK_mike"));
+    CHECK_FALSE(recheck::LivingCreature(L"/Game/rigs/creatures/"));
+    CHECK_FALSE(recheck::LivingCreature(L""));
+}
+
+TEST_CASE("recheck: a prop's breath of animation held is no move: the film projector, 2026-11-09")
+{
+    // research/sessions/s63-play.log 00:22:55 to 00:24:38: act7_2's film projector, its reels turning,
+    // stood 2 to 4 cm off at a corner for seconds at a time.
+    recheck::PropWatch projector;
+    recheck::Box before, after;
+    const recheck::Box rest{{17148, 32713, 8295}, {17278, 32836, 8484}};
+    const recheck::Box breath{{17145, 32709, 8295}, {17280, 32840, 8488}};
+    CHECK_FALSE(projector.Update(0.0, rest, before, after));
+    CHECK_FALSE(projector.Update(1.0, breath, before, after));
+    CHECK_FALSE(projector.Update(3.0, breath, before, after));
+    CHECK_FALSE(projector.Update(5.0, breath, before, after));
+    CHECK_FALSE(projector.Update(7.0, rest, before, after));
+    CHECK_FALSE(projector.Update(9.0, rest, before, after));
 }

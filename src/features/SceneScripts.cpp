@@ -941,7 +941,8 @@ namespace da::scripts
         return false;
     }
 
-    Waits::Verdict Waits::Judge(double now, const std::wstring& trigger, const std::wstring& character) const
+    Waits::Verdict Waits::Judge(double now, const std::wstring& trigger, const std::wstring& character,
+                                const std::vector<std::pair<std::wstring, int>>* machines) const
     {
         Verdict verdict;
         std::vector<const Poll*> story;
@@ -969,7 +970,26 @@ namespace da::scripts
         if (!AskedNow(now, trigger, true)) return verdict;
         for (const Poll* p : story)
         {
-            if (ElsewhereNow(now, *p)) continue;
+            // The game's own record places a machine it holds: in another state, it does not wait here.
+            bool listed = false;
+            bool there = false;
+            if (machines)
+            {
+                for (const auto& [name, state] : *machines)
+                {
+                    if (name != p->machine) continue;
+                    listed = true;
+                    there = there || state == p->state;
+                }
+            }
+            if (listed)
+            {
+                if (!there) continue;
+            }
+            else if (ElsewhereNow(now, *p))
+            {
+                continue;
+            }
             verdict.kind = Kind::Waiting;
             verdict.poll = p;
             return verdict;

@@ -2142,3 +2142,42 @@ TEST_CASE("scripts: a wait the game answers yes is met, though no look saw her i
     fresh.Asked(10.0, L"T_door_ghost_scare", true);
     CHECK(fresh.Judge(10.2, L"T_door_ghost_scare", L"Ashley").kind == Kind::Waiting);
 }
+
+TEST_CASE("scripts: a scene's wait stands only while its machine stands in it, whoever else asks: act7_2, 2026-11-09")
+{
+    // research/sessions/s63-play.log 00:19:20: the dialogue's machine asked at every update whether
+    // Mike stood in T_wendigo_sighting, to play a line; the scene's own wait for it was states away.
+    Poll story;
+    story.source = L"scene03_not_alone";
+    story.machine = L"Scene03_not_alone";
+    story.state = 35;
+    story.trigger = L"T_wendigo_sighting";
+    story.who = L"Player";
+    story.waits = true;
+    story.leaves = true;
+    story.story = true;
+    Poll line = story;
+    line.source = L"dialogue_control";
+    line.machine = L"Dialogue_control";
+    line.state = 3;
+    line.story = false;
+    Waits waits;
+    waits.SetPolls({story, line});
+    waits.Asked(10.0, L"T_wendigo_sighting", true);
+    using Machines = std::vector<std::pair<std::wstring, int>>;
+    // The scene stands in another state: the asks are the dialogue's.
+    const Machines elsewhere{{L"Scene03_not_alone", 42}, {L"Dialogue_control", 3}};
+    CHECK(waits.Judge(10.3, L"T_wendigo_sighting", L"Mike", &elsewhere).kind == Waits::Kind::NotNow);
+    // It stands in its wait: the scene waits for him.
+    const Machines there{{L"Scene03_not_alone", 35}, {L"Dialogue_control", 3}};
+    CHECK(waits.Judge(10.3, L"T_wendigo_sighting", L"Mike", &there).kind == Waits::Kind::Waiting);
+    // No record of the machines, or none of this one: judged by the asks, as before.
+    CHECK(waits.Judge(10.3, L"T_wendigo_sighting", L"Mike").kind == Waits::Kind::Waiting);
+    const Machines others{{L"Dialogue_control", 3}};
+    CHECK(waits.Judge(10.3, L"T_wendigo_sighting", L"Mike", &others).kind == Waits::Kind::Waiting);
+    // Two of the machine run: one standing in its wait is enough.
+    const Machines twice{{L"Scene03_not_alone", 42}, {L"Scene03_not_alone", 35}};
+    CHECK(waits.Judge(10.3, L"T_wendigo_sighting", L"Mike", &twice).kind == Waits::Kind::Waiting);
+    const Machines first{{L"Scene03_not_alone", 35}, {L"Scene03_not_alone", 42}};
+    CHECK(waits.Judge(10.3, L"T_wendigo_sighting", L"Mike", &first).kind == Waits::Kind::Waiting);
+}

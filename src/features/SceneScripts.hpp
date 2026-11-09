@@ -19,6 +19,7 @@
 #include <set>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace da::scripts
@@ -297,8 +298,16 @@ namespace da::scripts
             const Poll* poll = nullptr; // the state behind the verdict, when there is one
         };
         // What the scenes make of the player's character, named `character`, walking into
-        // `trigger` at `now`.
-        Verdict Judge(double now, const std::wstring& trigger, const std::wstring& character) const;
+        // `trigger` at `now`. `machines`, when the game's Lua state could be read, is each running
+        // machine with the state it stands in (lua::Machines): a state of a machine found there
+        // waits only while its machine stands in it, whoever else asks about the volume. In act7_2
+        // on 2026-11-09 the dialogue's machine (Dialogue_control 3 and 6) asked at every update
+        // whether Mike stood in T_wendigo_sighting, to play a line, while the scene's own wait for it
+        // (Scene03_not_alone 35) was states away (it stood in 28, 31, then 42): the asks were taken
+        // for the scene's, and the volume was a way on for nine minutes
+        // (research/sessions/s63-play.log, 00:19:20 to 00:28:32).
+        Verdict Judge(double now, const std::wstring& trigger, const std::wstring& character,
+                      const std::vector<std::pair<std::wstring, int>>* machines = nullptr) const;
 
     private:
         bool AskedNow(double now, const std::wstring& trigger, bool player) const;

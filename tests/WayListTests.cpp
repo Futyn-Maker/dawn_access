@@ -13,6 +13,7 @@
 #include <numbers>
 #include <optional>
 #include <set>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -2056,4 +2057,456 @@ TEST_CASE("a way on the road to a thing stays left out whichever target is chose
     CHECK(ways::RowRule(e, enters)[0] == 1);
     e[1].chosen = true;
     CHECK(ways::RowRule(e, enters)[0] == 1);
+}
+
+TEST_CASE("a way of the story on the road to a trigger that streams the world in is listed, the trigger given way: the dead wolf, 2026-11-08")
+{
+    // Mike after the dead wolf in act7_2 (research/sessions/s62-play.log, 21:54:42): the scene's way on
+    // T_leave_dead_wolf2 came 10 m off, its ground not known yet, while the trigger into the act's
+    // Section_03 stood listed 34 m off on foot, its road running through the way; and a thing to use.
+    // Weighed apart, the row rule put the way on the trigger's road, the trigger gave way to the way a
+    // look later, and neither was listed again.
+    ways::Settling settle;
+    settle.Reset();
+    settle.Begin(42.0);
+    ways::Lister lister;
+    std::vector<ways::Entry> e(3);
+    e[0].way = true; // T_Streaming_Load_Section02, into Section_03
+    e[0].streams = true;
+    e[0].hasBox = true;
+    e[0].distance = 3441.0;
+    e[0].shown = true;
+    e[1].way = true; // T_leave_dead_wolf2
+    e[1].hasBox = true;
+    e[1].known = false; // its ground not known yet
+    e[1].distance = 1111.0;
+    e[2].hasBox = true; // the doctor's report
+    e[2].distance = 1262.0;
+    e[2].shown = true;
+    const auto enters = [](size_t way, size_t other) { return way == 1 && other == 0; };
+    // The map still running: the scene's way waits for it, and the trigger stands.
+    REQUIRE_FALSE(settle.Update(42.3, false, 2, 3));
+    lister.Judge(e, settle, lister.Due(settle, false, 42.3), true, false, 42.3, enters);
+    CHECK(e[1].unjudged);
+    CHECK_FALSE(e[0].superseded);
+    // The map done, the list settles: the scene's way is weighed, the trigger gives way to it at that
+    // very judgement, and its road is no road.
+    e[1].known = true;
+    REQUIRE(settle.Update(42.77, true, 3, 3));
+    lister.Judge(e, settle, lister.Due(settle, true, 42.77), true, true, 42.77, enters);
+    CHECK_FALSE(e[1].unjudged);
+    CHECK(e[0].superseded);
+    CHECK(e[1].onRoadOf == -1);
+    CHECK(e[1].passed);
+    lister.Freeze();
+    // And so it stays, look after look.
+    e[0].shown = false;
+    e[1].shown = true;
+    for (const double at : {42.95, 43.2, 44.0, 45.0})
+    {
+        lister.Judge(e, settle, lister.Due(settle, false, at), true, true, at, enters);
+        CHECK(e[0].superseded);
+        CHECK(e[1].onRoadOf == -1);
+        CHECK_FALSE(e[1].unjudged);
+    }
+}
+
+TEST_CASE("a verdict kept on the road of a trigger that has given way is judged again")
+{
+    // The verdict the session's list froze with: the scene's way on the trigger's road, the trigger
+    // given way to it since.
+    std::vector<ways::Entry> e(2);
+    e[0].way = true;
+    e[0].streams = true;
+    e[0].hasBox = true;
+    e[0].distance = 3441.0;
+    e[0].superseded = true;
+    e[1].way = true;
+    e[1].hasBox = true;
+    e[1].distance = 1111.0;
+    e[1].kept = true;
+    e[1].onRoadOf = 0;
+    const auto enters = [](size_t way, size_t other) { return way == 1 && other == 0; };
+    CHECK(ways::RowRule(e, enters)[1] == -1);
+    // Chosen by the player (Andrey had the trigger chosen as the way came, 21:54:41), it is listed
+    // all the same, and still no road: the scene's way stays listed beside it.
+    e[0].chosen = true;
+    e[1].kept = false;
+    e[1].onRoadOf = -1;
+    CHECK(ways::RowRule(e, enters)[1] == -1);
+    e[0].chosen = false;
+    e[1].kept = true;
+    e[1].onRoadOf = 0;
+    // A trigger that stands is a road as ever, and a verdict on it is kept.
+    e[0].superseded = false;
+    CHECK(ways::RowRule(e, enters)[1] == 0);
+    e[1].kept = false;
+    CHECK(ways::RowRule(e, enters)[1] == 0);
+    // A trigger given way to is not judged itself: no thing's road takes it.
+    e[0].superseded = true;
+    e[1].way = false;
+    e[1].kept = false;
+    e[1].onRoadOf = -1;
+    e[1].distance = 500.0;
+    CHECK(ways::RowRule(e, [](size_t, size_t) { return true; })[0] == -1);
+    e[0].superseded = false;
+    CHECK(ways::RowRule(e, [](size_t, size_t) { return true; })[0] == 1);
+}
+
+TEST_CASE("a way a judgement cannot weigh keeps no older verdict it did not keep")
+{
+    // From the review of the dead wolf's fix: the story moves on, and a judgement on the map that
+    // stands leaves way W on thing X's road; a map begun since settles by its while before it is done,
+    // W, left out, waits for it unweighed, its verdict overwritten; the map then runs out at a look
+    // that judges nothing, and W was listed with no verdict for the rest of the hold.
+    ways::Settling settle;
+    settle.Reset();
+    settle.Begin(0.0);
+    ways::Lister lister;
+    std::vector<ways::Entry> e(2);
+    e[0].way = true;
+    e[0].hasBox = true;
+    e[0].known = true;
+    e[0].distance = 500.0;
+    e[1].hasBox = true; // a thing listed, its road through W
+    e[1].distance = 2000.0;
+    e[1].shown = true;
+    const auto enters = [](size_t way, size_t other) { return way == 0 && other == 1; };
+    REQUIRE(settle.Update(1.0, true, 2, 2));
+    lister.Judge(e, settle, lister.Due(settle, true, 1.0), true, true, 1.0, enters);
+    REQUIRE(e[0].onRoadOf == 1);
+    lister.StoryMoved();
+    lister.Judge(e, settle, lister.Due(settle, false, 2.0), true, true, 2.0, enters);
+    REQUIRE(e[0].onRoadOf == 1);
+    REQUIRE_FALSE(e[0].shown);
+    settle.Begin(3.0);
+    REQUIRE(settle.Update(6.0, false, 1, 2));
+    lister.Judge(e, settle, lister.Due(settle, true, 6.0), true, false, 6.0, enters);
+    CHECK(e[0].unjudged);
+    CHECK_FALSE(e[0].passed);
+    // The map runs out at a look that judges nothing: W waits for the judgement that weighs it ...
+    lister.Judge(e, settle, lister.Due(settle, false, 6.4), true, true, 6.4, enters);
+    CHECK(e[0].unjudged);
+    // ... which leaves it on the road.
+    lister.Judge(e, settle, lister.Due(settle, false, 7.1), true, true, 7.1, enters);
+    CHECK_FALSE(e[0].unjudged);
+    CHECK(e[0].onRoadOf == 1);
+}
+
+TEST_CASE("a verdict on the road of a trigger given way to is not kept by the judgement either")
+{
+    // A trigger into one section on the road of a trigger into another, the list frozen; then the
+    // story's way is weighed, both give way to it, and the frozen verdict on the given-way road is
+    // weighed again rather than kept.
+    ways::Settling settle;
+    settle.Reset();
+    settle.Begin(0.0);
+    ways::Lister lister;
+    std::vector<ways::Entry> e(3);
+    for (auto& one : e)
+    {
+        one.way = true;
+        one.hasBox = true;
+        one.known = true;
+    }
+    e[0].streams = true; // the farther trigger
+    e[0].distance = 3000.0;
+    e[1].streams = true; // the nearer, on its road
+    e[1].distance = 1000.0;
+    e[2].known = false; // the story's way, not judged yet
+    e[2].distance = 1500.0;
+    const auto enters = [](size_t way, size_t other) { return way == 1 && other == 0; };
+    REQUIRE(settle.Update(1.0, true, 3, 3));
+    lister.Judge(e, settle, lister.Due(settle, true, 1.0), true, true, 1.0, enters);
+    REQUIRE(e[1].onRoadOf == 0);
+    REQUIRE_FALSE(e[0].superseded);
+    lister.Freeze();
+    e[0].shown = true;
+    e[2].known = true;
+    lister.Again();
+    lister.Judge(e, settle, lister.Due(settle, false, 2.0), true, true, 2.0, enters);
+    CHECK(e[0].superseded);
+    CHECK(e[1].superseded);
+    CHECK_FALSE(e[1].kept);
+    CHECK(e[1].onRoadOf == -1);
+    CHECK(e[2].onRoadOf == -1);
+}
+
+TEST_CASE("the way left along the road the walk follows, and its last leg: the damaged doors, 2026-11-08")
+{
+    // The way felt out to the damaged doors (research/sessions/s62-play.log, 21:56:42.883): from the
+    // writing to a corner, then to the spot inside the place.
+    const std::vector<ways::Vec> corners{{20167, 36398, 8298}, {20099, 36173, 8295}};
+    bool lastLeg = false;
+    // On the last stretch, 131 cm from the spot: one straight leg.
+    const auto left = ways::LeftAlong(corners, ways::Vec{20141, 36297, 8298}, lastLeg);
+    REQUIRE(left.has_value());
+    CHECK(*left == doctest::Approx(std::hypot(20141.0 - 20099.0, 36297.0 - 36173.0)));
+    CHECK(lastLeg);
+    // Short of the corner by more than 60 cm: two legs left.
+    const auto before = ways::LeftAlong(corners, ways::Vec{20190, 36480, 8298}, lastLeg);
+    REQUIRE(before.has_value());
+    CHECK_FALSE(lastLeg);
+    CHECK(*before > *left);
+    // On no stretch of it.
+    CHECK_FALSE(ways::LeftAlong(corners, ways::Vec{25000, 30000, 8298}, lastLeg).has_value());
+    CHECK_FALSE(lastLeg);
+}
+
+namespace
+{
+    // Her capsule seen from above against walls of no height: a circle swept over line segments, for
+    // the steps of the ground over a level's hard collision.
+    struct Wall
+    {
+        double ax, ay, bx, by;
+    };
+
+    double ToWall(double x, double y, const Wall& w, double& px, double& py)
+    {
+        const double dx = w.bx - w.ax;
+        const double dy = w.by - w.ay;
+        const double l2 = dx * dx + dy * dy;
+        const double t = l2 > 0.0 ? std::clamp(((x - w.ax) * dx + (y - w.ay) * dy) / l2, 0.0, 1.0) : 0.0;
+        px = w.ax + t * dx;
+        py = w.ay + t * dy;
+        return std::hypot(x - px, y - py);
+    }
+
+    double NearestWall(const std::vector<Wall>& walls, double x, double y, double& px, double& py)
+    {
+        double best = 1e300;
+        for (const auto& w : walls)
+        {
+            double qx = 0.0, qy = 0.0;
+            const double d = ToWall(x, y, w, qx, qy);
+            if (d < best)
+            {
+                best = d;
+                px = qx;
+                py = qy;
+            }
+        }
+        return best;
+    }
+
+    // A sweep as the engine answers it, the capsule `radius` across. Begun pressed in, the engine's
+    // push out of a level's triangle collision gives no way out where `pushFails` (its normal back
+    // along the sweep, no depth: what every step out of a cell pressed into the mine's spline wall
+    // met in play); else it gives the way out from the nearest point of the wall.
+    ways::SweepHit CircleSweep(const std::vector<Wall>& walls, double radius, bool pushFails, const Vec& from, const Vec& to)
+    {
+        ways::SweepHit out;
+        double px = 0.0, py = 0.0;
+        const double at = NearestWall(walls, from.x, from.y, px, py);
+        const double length = std::hypot(to.x - from.x, to.y - from.y);
+        if (at < radius)
+        {
+            out.hit = true;
+            out.penetrating = true;
+            if (pushFails || at < 1e-9)
+            {
+                out.normal = length > 0.0 ? Vec{-(to.x - from.x) / length, -(to.y - from.y) / length, 0.0} : Vec{};
+                out.depth = 0.0;
+            }
+            else
+            {
+                out.normal = Vec{(from.x - px) / at, (from.y - py) / at, 0.0};
+                out.depth = radius - at;
+            }
+            return out;
+        }
+        const int samples = std::max(1, static_cast<int>(length / 0.1));
+        for (int k = 1; k <= samples; ++k)
+        {
+            const double f = static_cast<double>(k) / samples;
+            if (NearestWall(walls, from.x + (to.x - from.x) * f, from.y + (to.y - from.y) * f, px, py) < radius)
+            {
+                const double g = static_cast<double>(k - 1) / samples;
+                const double x = from.x + (to.x - from.x) * g, y = from.y + (to.y - from.y) * g;
+                const double d = NearestWall(walls, x, y, px, py);
+                out.hit = true;
+                out.distance = length * g;
+                out.normal = d > 0.0 ? Vec{(x - px) / d, (y - py) / d, 0.0} : Vec{};
+                return out;
+            }
+        }
+        return out;
+    }
+}
+
+TEST_CASE("a step begun pressed into a wall the engine's push does not free her from is swept from a free spot of its cell")
+{
+    // A corridor 96 cm wide, for her capsule of 84 (42 across): its middle has 6 cm either way. A
+    // cell's middle 9 cm off the corridor's own lies 3 cm in the wall.
+    const std::vector<Wall> walls{{-500.0, -48.0, 500.0, -48.0}, {-500.0, 48.0, 500.0, 48.0}};
+    const auto sweep = [&](const Vec& f, const Vec& t) { return CircleSweep(walls, 42.0, true, f, t); };
+    const Vec from{0.0, 9.0, 0.0};
+    const Vec to{20.0, 9.0, 0.0};
+    const auto swept = ways::SweepOut(sweep, from, to);
+    CHECK(swept.stuck);
+    CHECK(swept.clear < 0.5);
+    // A spot 5 cm across the way stands free: the step from there gets to the next cell.
+    const auto got = ways::SweepFromFreeSpot(sweep, from, to, 10.0);
+    REQUIRE(got.has_value());
+    CHECK(std::hypot(got->x - to.x, got->y - to.y) <= 10.0);
+    // Where the engine's push frees her, the step is free from the middle and not stuck.
+    const auto pushes = [&](const Vec& f, const Vec& t) { return CircleSweep(walls, 42.0, false, f, t); };
+    const auto out = ways::SweepOut(pushes, from, to);
+    CHECK_FALSE(out.stuck);
+    CHECK(std::hypot(out.reached.x - to.x, out.reached.y - to.y) <= 10.0);
+    // A cell whose every spot within half a cell lies in the wall has none to stand at.
+    CHECK_FALSE(ways::SweepFromFreeSpot(sweep, Vec{0.0, 30.0, 0.0}, Vec{20.0, 30.0, 0.0}, 10.0).has_value());
+    // Nor does the free spot take a step into the wall: one toward it gets no nearer than it did.
+    CHECK_FALSE(ways::SweepFromFreeSpot(sweep, from, Vec{0.0, 29.0, 0.0}, 10.0).has_value());
+}
+
+TEST_CASE("the mine's corridor to the scene's trigger is walked by the map: act8_5, 2026-11-09")
+{
+    // The hard collision's walls about the corridor (tests/fixtures/mine-corridor-walls.tsv, cut from
+    // the level's cooked mesh). The reach map of research/sessions/s63-play.log got up the corridor
+    // from the doorway at its foot (BP_DoubleDoorway_C_3) to (-10380, -14575), where every step out
+    // of a cell began pressed into the wall and was refused 0 cm in; the scene's trigger lay past the
+    // doorway at its head (BP_DoubleDoorway_C_5, -10577, -13995) and was left out as closed off.
+    std::ifstream in(std::filesystem::path(DA_REPO_ROOT) / "tests" / "fixtures" / "mine-corridor-walls.tsv");
+    REQUIRE(in.good());
+    std::vector<Wall> walls;
+    std::string line;
+    while (std::getline(in, line))
+    {
+        if (line.size() < 2 || line[0] != 'W') continue;
+        Wall w{};
+        std::istringstream fields(line.substr(1));
+        if (fields >> w.ax >> w.ay >> w.bx >> w.by) walls.push_back(w);
+    }
+    REQUIRE(walls.size() > 50);
+    // The grid of the session's map (its anchor), on one level: the corridor's floor is one slope.
+    const double ox = -10970.69, oy = -13865.07, cell = 20.0, reach = 10.0;
+    const auto middle = [&](grid::Cell c) { return Vec{ox + (c.x + 0.5) * cell, oy + (c.y + 0.5) * cell, 0.0}; };
+    const auto sweep = [&](const Vec& f, const Vec& t) { return CircleSweep(walls, 42.0, true, f, t); };
+    const auto run = [&](bool freeSpots)
+    {
+        const grid::Passable step = [&](grid::Cell from, grid::Cell& to)
+        {
+            to.level = from.level;
+            const Vec a = middle(from), b = middle(to);
+            if (b.x < -10760.0 || b.x > -10200.0 || b.y < -15500.0 || b.y > -13800.0) return false;
+            const auto swept = ways::SweepOut(sweep, a, b);
+            if (std::hypot(swept.reached.x - b.x, swept.reached.y - b.y) <= reach) return true;
+            return freeSpots && swept.stuck && ways::SweepFromFreeSpot(sweep, a, b, reach).has_value();
+        };
+        // From a cell the session's map reached at the corridor's foot.
+        const grid::Cell start{static_cast<int>(std::floor((-10441.0 - ox) / cell)), static_cast<int>(std::floor((-15435.0 - oy) / cell)), 0};
+        grid::Flood flood(start, 200, 100000);
+        while (flood.Step(64, step) == grid::Flood::State::Running)
+        {
+        }
+        double north = -1e300;
+        for (const auto& c : flood.Order())
+            north = std::max(north, middle(c).y);
+        return north;
+    };
+    // Swept from the cells' middles alone the map stops in the corridor, short of its head.
+    CHECK(run(false) < -14060.0);
+    // Swept from where she stands free, it gets through the doorway at its head.
+    CHECK(run(true) > -13990.0);
+}
+
+TEST_CASE("the distance said is the one on foot as far as it is known: the bolt door, 2026-11-09")
+{
+    // research/sessions/s63-play.log: straight up the stairwell 2479 cm; the map had got 11746 cm by
+    // 00:30:54.832, when the door was said; the road came at 11786 cm.
+    CHECK(ways::SpokenDistance(2479.0, std::nullopt, 11746.0) == doctest::Approx(11746.0));
+    CHECK(ways::SpokenDistance(2479.0, 11786.0, 11746.0) == doctest::Approx(11786.0));
+    CHECK(ways::SpokenDistance(2479.0, 11786.0, std::nullopt) == doctest::Approx(11786.0));
+    // Nothing known on foot: the straight line, and never less than it.
+    CHECK(ways::SpokenDistance(2479.0, std::nullopt, std::nullopt) == doctest::Approx(2479.0));
+    CHECK(ways::SpokenDistance(2479.0, std::nullopt, 300.0) == doctest::Approx(2479.0));
+    CHECK(ways::SpokenDistance(2479.0, 2000.0, std::nullopt) == doctest::Approx(2479.0));
+}
+
+TEST_CASE("a way never weighed waits at a hand-over that has no roads yet: Josh's cave, 2026-11-09")
+{
+    // research/sessions/s63-play.log 01:08:15.647: the hold handed back after a vision kept the
+    // settling of the hold before; two ways listed before, two the game turned on meanwhile.
+    ways::Settling settle;
+    settle.Reset();
+    settle.Begin(0.0);
+    REQUIRE(settle.Update(1.0, true, 4, 4));
+    ways::Lister lister;
+    std::vector<ways::Entry> e(4);
+    for (auto& x : e)
+    {
+        x.way = true;
+        x.hasBox = true;
+        x.known = true;
+        x.distance = 500.0;
+    }
+    e[0].passed = e[1].passed = true;
+    e[0].shown = e[1].shown = true;
+    // The map dropped at the hand-over: no roads to judge by, the judgement not due.
+    lister.Judge(e, settle, false, false, false, 2.0, [](size_t, size_t) { return false; });
+    CHECK_FALSE(e[0].unjudged);
+    CHECK_FALSE(e[1].unjudged);
+    CHECK(e[2].unjudged);
+    CHECK(e[3].unjudged);
+}
+
+TEST_CASE("a way the rule cannot weigh keeps the road it was last found on while it waits: the bolt door's road, 2026-11-09")
+{
+    // research/sessions/s63-play.log 00:22:41 to 00:22:52: two ways on the bolt door's road, judged so;
+    // a map begun as Mike walked off settled the list before it got to the door, and the ways waited.
+    ways::Settling settle;
+    settle.Reset();
+    settle.Begin(0.0);
+    ways::Lister lister;
+    std::vector<ways::Entry> e(3);
+    e[0].hasBox = true; // the bolt door, 120 m on foot
+    e[0].distance = 12029.0;
+    e[0].shown = true;
+    for (size_t i = 1; i < 3; ++i)
+    {
+        e[i].way = true;
+        e[i].hasBox = true;
+        e[i].known = true;
+        e[i].distance = 1800.0;
+    }
+    const auto enters = [](size_t way, size_t other) { return way != 0 && other == 0; };
+    REQUIRE(settle.Update(1.0, true, 3, 3));
+    lister.Judge(e, settle, lister.Due(settle, true, 1.0), true, true, 1.0, enters);
+    REQUIRE(e[1].onRoadOf == 0);
+    REQUIRE(e[2].onRoadOf == 0);
+    // The new map: the ways' ground not known yet, the door not reached; they wait, on its road still.
+    lister.NewHold();
+    settle.Begin(2.0);
+    e[1].known = e[2].known = false;
+    e[0].hasBox = true;
+    REQUIRE(settle.Update(5.1, false, 1, 3));
+    lister.Judge(e, settle, lister.Due(settle, true, 5.1), true, false, 5.1, enters);
+    CHECK(e[1].unjudged);
+    CHECK(e[2].unjudged);
+    CHECK(e[1].onRoadOf == 0);
+    CHECK(e[2].onRoadOf == 0);
+}
+
+TEST_CASE("the reach map's measure of the way on foot is its own, from her cell: the bolt door, 2026-11-09")
+{
+    // research/sessions/s63-play.log 00:30:54: the map got 11746 cm (587 cells of 20 cm), the door at
+    // 12319 cm once reached.
+    const double frontier = 11746.0 / 20.0, door = 12319.0 / 20.0;
+    // At the map's start, while it runs: how far it has got.
+    REQUIRE(ways::MapMeasure(false, false, 0.0, true, false, frontier, 0.0).has_value());
+    CHECK(*ways::MapMeasure(false, false, 0.0, true, false, frontier, 0.0) == doctest::Approx(frontier));
+    // Reached: its cost, less hers.
+    CHECK(*ways::MapMeasure(true, true, door, true, false, frontier, 0.0) == doctest::Approx(door));
+    CHECK(*ways::MapMeasure(true, true, door, true, false, frontier, 20.0) == doctest::Approx(door - 20.0));
+    CHECK(*ways::MapMeasure(false, false, 0.0, true, false, frontier, 20.0) == doctest::Approx(frontier - 20.0));
+    // Off its ground, or a target it found out of reach: nothing.
+    CHECK_FALSE(ways::MapMeasure(false, false, 0.0, true, false, frontier, std::nullopt).has_value());
+    CHECK_FALSE(ways::MapMeasure(true, false, 0.0, false, false, frontier, 0.0).has_value());
+    // Ended with every cell opened and the target not judged: nothing; ended short: how far it got.
+    CHECK_FALSE(ways::MapMeasure(false, false, 0.0, false, false, frontier, 0.0).has_value());
+    CHECK(*ways::MapMeasure(false, false, 0.0, false, true, frontier, 0.0) == doctest::Approx(frontier));
+    // Never below nothing.
+    CHECK(*ways::MapMeasure(true, true, 5.0, true, false, frontier, 20.0) == doctest::Approx(0.0));
 }

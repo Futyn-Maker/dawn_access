@@ -329,4 +329,10 @@ namespace da::grid
 
     // Distance between two cells in cells, over the ground, levels aside.
     double Distance(Cell a, Cell b);
+
+    // The way between the ends of two paths of one flood, each from its start (Flood::PathTo): back
+    // along the first to the last cell the two share, then on along the second; every step of it a
+    // step the flood took. Empty when they share no cell (paths of two floods). `shared`, when asked,
+    // is how many cells the two share from the start: the way goes back to the last of them.
+    std::vector<Cell> TreeWay(const std::vector<Cell>& from, const std::vector<Cell>& to, size_t* shared = nullptr);
 }

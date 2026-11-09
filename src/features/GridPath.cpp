@@ -12,6 +12,21 @@ namespace da::grid
         constexpr double kDiagonal = 1.4142135623730951;
     }
 
+    std::vector<Cell> TreeWay(const std::vector<Cell>& from, const std::vector<Cell>& to, size_t* sharedOut)
+    {
+        std::vector<Cell> way;
+        size_t shared = 0;
+        while (shared < from.size() && shared < to.size() && from[shared] == to[shared])
+            ++shared;
+        if (sharedOut) *sharedOut = shared;
+        if (shared == 0) return way;
+        for (size_t i = from.size(); i-- > shared - 1;)
+            way.push_back(from[i]);
+        for (size_t i = shared; i < to.size(); ++i)
+            way.push_back(to[i]);
+        return way;
+    }
+
     double Distance(Cell a, Cell b)
     {
         const double dx = static_cast<double>(a.x - b.x);

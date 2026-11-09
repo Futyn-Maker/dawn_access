@@ -10,8 +10,10 @@
 //   F x y level floor normalZ [on]                   a floor found at a column, probed from a level, and
 //                                                    the level of the world it lies in, where known
 //   N x y level why                                  no floor at a column from a level (n none, s too steep)
-//   S ax ay alevel bx by land why clear [on]         a step: land = the level landed on, why '-' (swept), or
-//                                                    M (free by the step back, grid::MirroredLanding); or X with
+//   S ax ay alevel bx by land why clear [on]         a step: land = the level landed on, why '-' (swept),
+//                                                    M (free by the step back, grid::MirroredLanding), or R
+//                                                    (swept again from a spot of the cell where she stands
+//                                                    free, ways::SweepFromFreeSpot); or X with
 //                                                    why (A/B no floor at a/b, H too high, W swept into something,
 //                                                    D a door's leaf across it), and for W and D the level of
 //                                                    the world what stopped it lies in, where known

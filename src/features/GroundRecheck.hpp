@@ -25,6 +25,7 @@
 #include <cstdint>
 #include <optional>
 #include <set>
+#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -180,6 +181,15 @@ namespace da::recheck
     // 18:40:34; the steps out of his cell refused 'D' in research/dumps/ground-20261108-181921.tsv).
     bool LeafOfDoor(bool heldItem);
 
+    // Whether a prop the scenes bind is a living creature, by the rig its mesh is made on (the game's
+    // /Game/rigs/creatures/<kind>/, the dead and the cut-up ones, <kind>_dead and <kind>_cut, aside): a
+    // creature walks about as the companions do, and is no wall of the ground, as they are not. Mike's
+    // wolf in act7_2 (BP_Wolf_wolfwhite, a bindable prop on /Game/rigs/creatures/wolf_01/SK_wolf_01)
+    // stood beside him at the chapter's start, and the first maps took it for a wall: nine things and
+    // the way on beyond it were closed off (research/sessions/s63-play.log, 00:18:26 to 00:19:12), and
+    // as it walked on its moves were weighed as a door's and the ground asked again about it.
+    bool LivingCreature(std::wstring_view meshPath);
+
     // A door's leaf as the ground's sweeps meet it: its bodies' shape and the box around it.
     struct Leaf
     {
@@ -202,7 +212,10 @@ namespace da::recheck
     // The smallest box holding both.
     Box Union(const Box& a, const Box& b);
 
-    constexpr double kPropTolerance = 3.0; // cm a prop's box may shift without moving (animation's breath)
+    // cm a prop's box may shift without moving (animation's breath): act7_2's film projector, its reels
+    // turning, breathed 4 cm at a corner every few seconds, and the 424 steps about it were asked again
+    // at each breath, each answering as it had (research/sessions/s63-play.log, 00:22:55 to 00:24:38).
+    constexpr double kPropTolerance = 5.0;
     constexpr double kPropRest = 1.0;      // seconds a prop that moved must stand still before its ground is asked
 
     // The widest a prop's box can be across the ground, in cm: the props the game moves are doors,
