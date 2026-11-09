@@ -3,6 +3,7 @@
 // can be tested: subtitles as they appear, and the lines of the HUD's elements.
 
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -91,6 +92,26 @@ namespace da::lines
 
     private:
         double m_since = -1.0; // since when the card has been shown
+    };
+
+    // A title card (a chapter's, a character's) lays its words out at once and fades them in one
+    // after another: the card that changes to Mike at chapter 9 drew "МАЙК" 0.3 s after it came up,
+    // "Лечебница" at 1.1 s and "3:03" at 1.8 s, and the bolt door's prompt, up at 1.4 s, was said
+    // between the place and the time (research/sessions/s62-play.log, 21:33:37.165 to 38.961).
+    // While a word it lays out has not been drawn yet, the card is still filling, for at most
+    // kTitleFillMost from its coming up; the prompts wait for it, as they wait for a hint.
+    constexpr double kTitleFillMost = 3.0;
+    class TitleFill
+    {
+    public:
+        // A poll of the card shown, with the texts it lays out (`laidOut`, faded in or not) and those
+        // it draws now: whether it is still filling.
+        bool Update(double now, const std::vector<std::wstring>& laidOut, const std::vector<std::wstring>& drawn);
+        void Hidden();
+
+    private:
+        double m_since = -1.0;
+        std::set<std::wstring> m_drawn; // every text it has drawn since it came up
     };
 
     // A document read page by page (a book turned with the stick, its transcript shown a page at

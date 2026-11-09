@@ -130,6 +130,20 @@ namespace da::lines
         m_holdUntil = -1.0;
     }
 
+    bool TitleFill::Update(double now, const std::vector<std::wstring>& laidOut, const std::vector<std::wstring>& drawn)
+    {
+        if (m_since < 0.0) m_since = now;
+        m_drawn.insert(drawn.begin(), drawn.end());
+        if (now - m_since >= kTitleFillMost) return false;
+        return std::any_of(laidOut.begin(), laidOut.end(), [&](const std::wstring& text) { return !m_drawn.count(text); });
+    }
+
+    void TitleFill::Hidden()
+    {
+        m_since = -1.0;
+        m_drawn.clear();
+    }
+
     bool Card::Ready(double now, bool bodyDrawn)
     {
         if (m_since < 0.0) m_since = now;

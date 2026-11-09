@@ -28,6 +28,8 @@ namespace da::features
     // The last question an interaction asked that was read (its words as said), and when.
     std::wstring LastInteractionPrompt();
     double LastInteractionPromptAt();
+    // The actions of that question.
+    std::wstring LastInteractionPromptActions();
     // Whether an interaction's question is drawn now.
     bool InteractionPromptShown();
     // Whether a question an interaction draws now asks for the action.

@@ -73,12 +73,22 @@ namespace da::features
         // to say (hud::TextSettling), or one the game may still be about to show.
         // The last question an interaction asked that was read, and when (LastInteractionPrompt).
         std::wstring g_lastQuestion;
+        std::wstring g_lastQuestionActions;
         double g_lastQuestionAt = -1000.0;
+
+        // The staged stage's step as last seen, since when, and the step the reading's page was last
+        // drawn at (prompt::HoldsForPage).
+        int64_t g_stagedStep = -1;
+        double g_stagedStepAt = -1000.0;
+        int64_t g_pageStep = -1;
 
         bool HoldForHint(double now)
         {
-            // A stage on a clock gives no moment to wait for its hint.
-            return hud::TextSettling(now) || (!InteractionStageTimed() && g_hintFirst.Waits(now, hud::LastSaidAt()));
+            // A stage on a clock gives no moment to wait for its hint, nor for a title card's words, nor
+            // for a page; a page is waited for only while a staged stage turns the pages.
+            const bool timed = InteractionStageTimed();
+            const bool turning = prompt::HoldsForPage(SoundingStagedStage() >= 0, hud::PageComing(now), g_stagedStep != g_pageStep, now - g_stagedStepAt);
+            return hud::TextSettling(now) || (!timed && (hud::TitleCardFilling(now) || turning || g_hintFirst.Waits(now, hud::LastSaidAt())));
         }
 
         Shown* Find(UObject* widget)
@@ -373,6 +383,8 @@ namespace da::features
         {
             Shown* s = Find(self);
             if (!s || s->hidden) return;
+            // What it asked no longer stands: a page turned behind it keeps it no longer (speech::Withdraw).
+            if (!s->text.empty()) speech::Withdraw(s->text);
             prompt::Hide(*s);
             log::Verbose(L"prompts: {} sent away", obj::ObjectName(self));
             InputStageEnds(*s);
@@ -419,9 +431,13 @@ namespace da::features
             if (!prompts.empty()) g_hintFirst.Asked(now);
             if (HoldForHint(now)) return;
             std::vector<std::wstring> lines;
+            std::vector<std::wstring> actions;
             for (const auto& p : prompts)
+            {
                 lines.push_back(Line(p));
-            auto fresh = g_bar.Update(now, false, lines);
+                actions.push_back(p.action);
+            }
+            auto fresh = g_bar.Update(now, false, lines, SoundingStagedStage(), actions);
             if (fresh.empty()) return;
             // The prompts shown again with a document's page shown again as it is being read, said with
             // it before, are still to be said behind it (hud::PageResumedAt): Jack's journal, hidden for
@@ -547,6 +563,14 @@ namespace da::features
             // not while the mod walks her, whose arrival says it.
             const bool frozen = gamestate::Paused() || watch::CurrentScreen() != nullptr;
             const bool inPlay = gamestate::InPlay();
+            // A turn of a staged stage's pages: its step changes; the page drawn since is the step's.
+            if (const int64_t step = StagedStageStep(); step != g_stagedStep)
+            {
+                g_stagedStep = step;
+                g_stagedStepAt = now;
+            }
+            if (now - hud::DocumentDrawnAt() < 0.2) g_pageStep = g_stagedStep;
+            bool urgentSaid = false; // a stage on a clock asks at once, one question a look
             const bool glintsAsked = ExplorationActive() && !WalkInProgress();
             if (!frozen) g_hintFirst.Interaction(inPlay && CharacterInInteraction());
             for (auto it = g_shown.begin(); it != g_shown.end();)
@@ -590,15 +614,31 @@ namespace da::features
                     // stage's prompt drawn again at a step, the same as it was, is the steps' pitch's
                     // (prompt::SayAtStep).
                     const bool ahead = it->saidAhead;
-                    const bool again = !it->glint && !ahead && !prompt::SayAtStep(g_stagePrompt, SoundingStagedStage(), text, actions);
+                    bool again = !it->glint && !ahead && !prompt::SayAtStep(g_stagePrompt, SoundingStagedStage(), text, actions, StagedStageInput());
+                    // Said before, and dropped from behind a page turned before it was begun: said now.
+                    if (again && speech::DroppedUnheard(text)) again = false;
                     log::Info(L"prompts: {} {} \"{}\" [{}]{}", obj::ClassName(it->widget), obj::ObjectName(it->widget), text, actions,
                               ahead   ? L": said as it came up"
                               : again ? L": the same prompt again at a step of its stage, not said"
                                       : L"");
-                    if (!ahead && !again) speech::Announce(text);
+                    // A stage on a clock asks at once, over whatever is being said, as a quick-time
+                    // event's key is said: a subtitle queued before it would eat into its clock.
+                    if (!ahead && !again)
+                    {
+                        if (!it->glint && InteractionStageTimed() && !urgentSaid)
+                        {
+                            speech::Urgent(text);
+                            urgentSaid = true;
+                        }
+                        else
+                        {
+                            speech::Announce(text);
+                        }
+                    }
                     if (!it->glint)
                     {
                         g_lastQuestion = text;
+                        g_lastQuestionActions = actions;
                         g_lastQuestionAt = now;
                     }
                 }
@@ -676,6 +716,11 @@ namespace da::features
     double LastInteractionPromptAt()
     {
         return g_lastQuestionAt;
+    }
+
+    std::wstring LastInteractionPromptActions()
+    {
+        return g_lastQuestionActions;
     }
 
     bool InteractionAsks(std::wstring_view action)

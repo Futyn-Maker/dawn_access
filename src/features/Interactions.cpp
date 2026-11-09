@@ -32,6 +32,7 @@
 #include <algorithm>
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -484,6 +485,8 @@ namespace da::features
         std::map<int64_t, std::wstring> g_linearForward;
         std::map<int64_t, std::wstring> g_linearBack; // and its way back, named where the stage stands past its first step
         std::map<int64_t, int64_t> g_linearInitial;   // the step each stage begins at (InitialAnimationStage)
+        std::map<int64_t, std::wstring> g_linearInput; // the action of each staged stage's own prompt (InputActionAssigned)
+        std::set<int64_t> g_linearStepPrompts;        // the staged stages that draw prompts of their own at steps
         int64_t g_linearStage = -1;
         double g_linearSince = -1.0;
         bool g_linearSaid = false;
@@ -502,11 +505,26 @@ namespace da::features
         prompt::LinearProgress g_linearProgress;
         constexpr double kLinearAfterPrompt = 1.0; // the game's own prompt comes up first
 
+        // Whether a map property of an object holds an entry: the sparse array under its set has an
+        // element in use (its count, at +0x08, past its free slots, at +0x34).
+        bool MapHasEntries(UObject* object, const wchar_t* name)
+        {
+            auto* prop = obj::FindProperty(object, name);
+            if (!prop || obj::PropertyTypeName(prop) != L"MapProperty") return false;
+            const auto* map = static_cast<const uint8_t*>(obj::ValuePtr(object, prop));
+            if (!map) return false;
+            const int32_t count = *reinterpret_cast<const int32_t*>(map + 0x08);
+            const int32_t freeSlots = *reinterpret_cast<const int32_t*>(map + 0x34);
+            return count > 0 && count <= 4096 && freeSlots >= 0 && freeSlots < count;
+        }
+
         void FindLinearStages(UObject* interaction)
         {
             g_linearForward.clear();
             g_linearBack.clear();
             g_linearInitial.clear();
+            g_linearInput.clear();
+            g_linearStepPrompts.clear();
             g_linearLast.clear();
             g_linearUnclamped.clear();
             g_linearProgress.Reset();
@@ -535,9 +553,13 @@ namespace da::features
                     g_linearUnclamped[index] = Unclamped{false, last};
                 const std::wstring name = obj::IsLive(action) ? obj::ObjectName(action) : std::wstring();
                 const auto forward = prompt::LinearForward(name, invert);
-                log::Info(L"interactions: {} has a staged stage {} ({}) on {}{}{}{}", obj::ObjectName(interaction), index + 1, obj::ObjectName(component),
+                g_linearInput[index] = name;
+                const bool stepPrompts = MapHasEntries(component, L"LinearStageUISetupScreenRules");
+                if (stepPrompts) g_linearStepPrompts.insert(index);
+                log::Info(L"interactions: {} has a staged stage {} ({}) on {}{}{}{}{}", obj::ObjectName(interaction), index + 1, obj::ObjectName(component),
                           name.empty() ? L"no action" : name, invert ? L", inverted" : L"", forward.empty() ? std::wstring() : L": it goes on with " + forward,
-                          clamp && last > 0 ? std::format(L"; its steps run to {}", last) : std::wstring(L"; it keeps no last step, its graph ends it"));
+                          clamp && last > 0 ? std::format(L"; its steps run to {}", last) : std::wstring(L"; it keeps no last step, its graph ends it"),
+                          stepPrompts ? L"; it draws prompts of its own at steps" : L"");
                 if (!forward.empty())
                 {
                     g_linearForward[index] = forward;
@@ -642,11 +664,23 @@ namespace da::features
             }
             if (g_linearForward.empty()) return;
             const auto forward = g_linearForward.find(current);
-            if (forward == g_linearForward.end() || g_linearSaid || now - g_linearSince < kLinearAfterPrompt) return;
+            if (forward == g_linearForward.end() || g_linearSaid) return;
             // After the game's own words: the page and its card the HUD is still to say, then the
-            // stage's prompt (at most kLinearAfterPrompt more for a prompt that does not come).
-            if (hud::TextSettling(now)) return;
-            if (LastInteractionPromptAt() < g_linearSince && now - g_linearSince < 2.0 * kLinearAfterPrompt) return;
+            // stage's prompt, and the step's own where the stage draws one; nothing where the game
+            // names the way on itself (prompt::WayOnNow).
+            const bool prompted = LastInteractionPromptAt() >= g_linearSince;
+            const auto input = g_linearInput.find(current);
+            const auto wayBack = g_linearBack.find(current);
+            const auto when = prompt::WayOnNow(now - g_linearSince, prompted, prompted ? LastInteractionPromptActions() : std::wstring(),
+                                               input != g_linearInput.end() ? input->second : std::wstring(), forward->second,
+                                               g_linearStepPrompts.count(current) > 0, wayBack != g_linearBack.end() ? wayBack->second : std::wstring());
+            if (when == prompt::WayOn::Skip)
+            {
+                g_linearSaid = true;
+                log::Info(L"interactions: the stage goes on with {}, which the game's own prompt names alone", forward->second);
+                return;
+            }
+            if (when == prompt::WayOn::Wait || hud::TextSettling(now)) return;
             g_linearSaid = true;
             const auto key = input::KeyForAction(forward->second);
             // Standing past its first step, the stage's way back leads somewhere too (prompt::NamesWayBack).
@@ -1279,6 +1313,21 @@ namespace da::features
     bool InteractionStageTimed()
     {
         return g_interaction && obj::IsSame(g_interactionKey) && TimedStageSeconds(g_interaction) > 0.0;
+    }
+
+    int64_t StagedStageStep()
+    {
+        if (!g_interaction || !obj::IsSame(g_interactionKey) || SoundingStagedStage() < 0) return -1;
+        return LinearStep(g_interaction);
+    }
+
+    std::wstring StagedStageInput()
+    {
+        if (!g_interaction || !obj::IsSame(g_interactionKey)) return {};
+        int64_t current = -1;
+        if (!obj::ReadInt(g_interaction, L"CurrentStage", current) || current < 0) return {};
+        const auto input = g_linearInput.find(current);
+        return input != g_linearInput.end() ? input->second : std::wstring();
     }
 
     int64_t SoundingStagedStage()

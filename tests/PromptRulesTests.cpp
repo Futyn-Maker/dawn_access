@@ -626,3 +626,125 @@ TEST_CASE("prompts: the bar's prompts shown again with a page being read are sai
     CHECK(fresh[0] == L"Назад: круг");
     CHECK(fresh[1] == L"Дальше: левый стик влево");
 }
+
+TEST_CASE("a staged stage's own prompt is said once while it stands, a step's own whenever it changes: the office desk, 2026-11-09")
+{
+    // research/sessions/s63-play.log 00:23:22 to 00:24:56: the pages of BP_Officedesk (stage 3 on
+    // IA_SwipeLeftRight), its first page drawing the way on alone, its last the way back alone, and
+    // the stage's own prompt drawn again half a second after each end (its UIIdleTime).
+    const std::wstring main = L"IA_SwipeLeftRight";
+    const std::wstring both = L"левый стик влево и вправо";
+    const std::wstring right = L"левый стик вправо";
+    const std::wstring left = L"левый стик влево";
+    struct Drawn
+    {
+        std::wstring text;
+        std::wstring actions;
+    };
+    const std::vector<Drawn> desk{
+        {both, main},             // the stage begins
+        {right, L"IA_Swipe_Right"}, // page 0
+        {both, main},             // page 1
+        {both, main},             // page 2
+        {left, L"IA_Swipe_Left"},  // page 3
+        {both, main},             // its idle: the stage's own again
+        {both, main},             // back to page 2
+        {both, main},             // page 1
+        {right, L"IA_Swipe_Right"}, // page 0
+        {both, main},             // its idle
+    };
+    prompt::StagePrompt last;
+    std::vector<std::wstring> said;
+    for (const auto& d : desk)
+    {
+        if (prompt::SayAtStep(last, 3, d.text, d.actions, main)) said.push_back(d.text);
+    }
+    CHECK(said == std::vector<std::wstring>{both, right, left, right});
+    // Another device in hand: the stage's own prompt in new words is said.
+    CHECK(prompt::SayAtStep(last, 3, L"A и D", main, main));
+    // Another stage: said afresh.
+    CHECK(prompt::SayAtStep(last, 4, both, main, main));
+    // No staged stage: every prompt is said.
+    CHECK(prompt::SayAtStep(last, -1, both, main, main));
+    CHECK(prompt::SayAtStep(last, -1, both, main, main));
+}
+
+TEST_CASE("the bar's lines are said once while a staged stage stands, though it empties at every step")
+{
+    prompt::Bar bar;
+    const std::wstring back = L"Назад: круг";
+    const std::wstring hide = L"Скрыть расшифровку: квадрат";
+    const auto settled = [&](double t, const std::vector<std::wstring>& lines, int64_t scope)
+    {
+        bar.Update(t, false, lines, scope);
+        return bar.Update(t + prompt::kBarStable + 0.01, false, lines, scope);
+    };
+    CHECK(settled(0.0, {back}, 3) == std::vector<std::wstring>{back});
+    CHECK(settled(1.0, {}, 3).empty());
+    CHECK(settled(2.0, {back}, 3).empty());
+    CHECK(settled(3.0, {hide}, 3) == std::vector<std::wstring>{hide});
+    CHECK(settled(4.0, {}, 3).empty());
+    CHECK(settled(5.0, {back}, 3).empty());
+    CHECK(settled(6.0, {hide}, 3).empty());
+    // Another stage, or none: a line that comes back is said again.
+    CHECK(settled(7.0, {}, 4).empty());
+    CHECK(settled(8.0, {back}, 4) == std::vector<std::wstring>{back});
+    CHECK(settled(9.0, {}, -1).empty());
+    CHECK(settled(10.0, {back}, -1) == std::vector<std::wstring>{back});
+    CHECK(settled(11.0, {}, -1).empty());
+    CHECK(settled(12.0, {back}, -1) == std::vector<std::wstring>{back});
+}
+
+TEST_CASE("a staged stage's way on waits for the step's own prompt, and is not said where the game names it alone: the office desk, 2026-11-09")
+{
+    using prompt::WayOn;
+    const std::wstring main = L"IA_SwipeLeftRight";
+    const std::wstring forward = L"IA_Swipe_Right";
+    // The desk: its own prompt 0.16 s in, the way said 1.04 s in by the old rule, its first page's
+    // prompt naming the way on alone 2.3 s in.
+    CHECK(prompt::WayOnNow(0.5, true, main, main, forward, true) == WayOn::Wait);
+    CHECK(prompt::WayOnNow(1.04, true, main, main, forward, true) == WayOn::Wait);
+    CHECK(prompt::WayOnNow(2.3, true, forward, main, forward, true) == WayOn::Skip);
+    // A step's own prompt that names something else: the way on is said.
+    CHECK(prompt::WayOnNow(2.3, true, L"IA_GrabInteraction", main, forward, true, L"IA_Swipe_Left") == WayOn::Say);
+    // One that names the way back alone stands at the last step, where there is no way on.
+    CHECK(prompt::WayOnNow(2.3, true, L"IA_Swipe_Left", main, forward, true, L"IA_Swipe_Left") == WayOn::Skip);
+    // No step's prompt by kStepPromptWait: said.
+    CHECK(prompt::WayOnNow(prompt::kStepPromptWait, true, main, main, forward, true) == WayOn::Say);
+    // A stage that draws no prompts at its steps: after its own, as before.
+    CHECK(prompt::WayOnNow(0.5, true, main, main, forward, false) == WayOn::Wait);
+    CHECK(prompt::WayOnNow(1.04, true, main, main, forward, false) == WayOn::Say);
+    CHECK(prompt::WayOnNow(1.5, false, L"", main, forward, false) == WayOn::Wait);
+    CHECK(prompt::WayOnNow(2.0, false, L"", main, forward, false) == WayOn::Say);
+}
+
+TEST_CASE("while a staged stage stands the bar says a line its action has new words for: the transcript's key toggled")
+{
+    prompt::Bar bar;
+    const std::wstring hide = L"Скрыть расшифровку: квадрат", show = L"Показать расшифровку: квадрат", back = L"Назад: круг";
+    const auto settled = [&](double t, const std::vector<std::wstring>& lines, const std::vector<std::wstring>& actions)
+    {
+        bar.Update(t, false, lines, 3, actions);
+        return bar.Update(t + prompt::kBarStable + 0.01, false, lines, 3, actions);
+    };
+    CHECK(settled(0.0, {back}, {L"IA_BackoutInteraction"}) == std::vector<std::wstring>{back});
+    CHECK(settled(1.0, {hide, back}, {L"IA_Read", L"IA_BackoutInteraction"}) == std::vector<std::wstring>{hide});
+    CHECK(settled(2.0, {show, back}, {L"IA_Read", L"IA_BackoutInteraction"}) == std::vector<std::wstring>{show});
+    CHECK(settled(3.0, {hide, back}, {L"IA_Read", L"IA_BackoutInteraction"}) == std::vector<std::wstring>{hide});
+    // A step: the bar empties and fills with the same words; nothing new.
+    CHECK(settled(4.0, {}, {}).empty());
+    CHECK(settled(5.0, {back}, {L"IA_BackoutInteraction"}).empty());
+    CHECK(settled(6.0, {hide, back}, {L"IA_Read", L"IA_BackoutInteraction"}).empty());
+}
+
+TEST_CASE("a step's prompts wait for the page only after a turn, and not long: the transcript's own key holds nothing")
+{
+    // A turn of the desk's pages: the step changed, the page hidden as it turns.
+    CHECK(prompt::HoldsForPage(true, true, true, 0.3));
+    CHECK_FALSE(prompt::HoldsForPage(true, true, true, prompt::kPageHoldMost));
+    // The transcript hidden by its key: the page faded, the step the same.
+    CHECK_FALSE(prompt::HoldsForPage(true, true, false, 0.3));
+    // No staged stage, or no page coming.
+    CHECK_FALSE(prompt::HoldsForPage(false, true, true, 0.3));
+    CHECK_FALSE(prompt::HoldsForPage(true, false, true, 0.3));
+}

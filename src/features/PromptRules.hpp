@@ -190,13 +190,49 @@ namespace da::prompt
     // stage begins and again only when its words change (another device in hand, another input) or
     // another stage stands. `stage` identifies the stage in its interaction, -1 for none whose steps
     // sound (every prompt is then said); `last` keeps what was said.
+    // A stage that draws a prompt of its own at some steps (its LinearStageUISetupScreenRules: the
+    // office desk's pages of act7_2 draw the way on alone at the first page, "левый стик вправо", and
+    // the way back alone at the last) sets its own prompt up again once a step has stood UIIdleTime
+    // (UBatesInteractionLinearStaged::UpdateStage): the desk's, left at its default, flipped back to
+    // "влево и вправо" half a second after every end, and every flip was said
+    // (research/sessions/s63-play.log, 00:23:22 to 00:24:56). The stage's own prompt (`main`, the
+    // actions of its InputActionAssigned) is said once while the stage stands, and again only when its
+    // words change; a step's own prompt whenever it differs from the prompt drawn before it.
     struct StagePrompt
     {
         int64_t stage = -1;
         std::wstring text;
         std::wstring actions;
+        std::wstring mainSaid; // the stage's own prompt's words, as said while it stands
     };
-    bool SayAtStep(StagePrompt& last, int64_t stage, const std::wstring& text, const std::wstring& actions);
+    bool SayAtStep(StagePrompt& last, int64_t stage, const std::wstring& text, const std::wstring& actions, const std::wstring& main = {});
+
+    // When the way on of a staged stage whose input has two ways (Interactions' "Дальше: ...") is
+    // said: after the game's own prompt, and not at all where the game names the way on itself with a
+    // prompt for it alone (`lastActions`, the actions of the last prompt drawn since the stage began,
+    // `prompted`, being `forward`). Where the stage draws prompts of its own at its steps
+    // (`stepPrompts`) the way waits for the step's prompt, at most kStepPromptWait from the stage's
+    // start: the desk's way on was said 1 s in, and its first page named it 1.3 s later
+    // (research/sessions/s63-play.log, 00:23:23.497 and 24.748). `since`: the seconds since the stage
+    // began; `main`: the actions of the stage's own prompt. A step's own prompt that names the way
+    // back alone (`back`) stands at the stage's last step, where there is no way on to name.
+    constexpr double kWayOnAfter = 1.0;      // the game's own prompt comes up first
+    constexpr double kStepPromptWait = 3.0;  // a step's own prompt comes once the step stands idle
+    enum class WayOn
+    {
+        Wait,
+        Say,
+        Skip,
+    };
+    WayOn WayOnNow(double since, bool prompted, const std::wstring& lastActions, const std::wstring& main, const std::wstring& forward, bool stepPrompts,
+                   const std::wstring& back = {});
+
+    // Whether a step's prompts wait for the page coming with it (hud::PageComing): while a staged
+    // stage stands (`staged`) and its page is coming, once the stage's step has changed since the page
+    // was last drawn (`turned`: a turn; the transcript hidden by its own key turns nothing, and its
+    // answer on the bar is not held) and for at most kPageHoldMost since (`sinceTurn`).
+    constexpr double kPageHoldMost = 1.5;
+    bool HoldsForPage(bool staged, bool pageComing, bool turned, double sinceTurn);
 
     // An activity's input stage (UBatesActivitySimpleInputStage) sets its prompt up as it begins (its
     // InputWidget, an interaction prompt) and takes it down as it ends, and the input it binds counts
@@ -283,12 +319,20 @@ namespace da::prompt
     class Bar
     {
     public:
-        // The bar's lines now, one per prompt; the lines to say now.
-        std::vector<std::wstring> Update(double now, bool pageUp, const std::vector<std::wstring>& lines);
+        // The bar's lines now, one per prompt; the lines to say now. `scope`, from 0 on, is a staged
+        // stage standing (Interactions' SoundingStagedStage): the bar empties at its every step and
+        // fills again with the same lines, which were said at every page of the office desk
+        // (research/sessions/s63-play.log, 00:23:37 to 00:24:56), so while the stage stands a line is
+        // said only where its action's words differ from those said for it before (`actions`, one per
+        // line: the transcript's key toggled to "show" and back is said each time).
+        std::vector<std::wstring> Update(double now, bool pageUp, const std::vector<std::wstring>& lines, int64_t scope = -1,
+                                         const std::vector<std::wstring>& actions = {});
 
     private:
         std::vector<std::wstring> m_lines;
-        std::set<std::wstring> m_said; // the lines said while they stayed on the bar
+        std::set<std::wstring> m_said;                      // the lines said while they stayed on the bar
+        std::map<std::wstring, std::wstring> m_byAction;   // the words said for each action while the scope stands
+        int64_t m_scope = -1;
         double m_changedAt = -1.0;
     };
 

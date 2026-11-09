@@ -62,7 +62,8 @@ namespace da::features
         {
             UObject* instance = nullptr;
             lines::Element lines;
-            lines::Card card; // for an update card, which waits for its body (Text_Body)
+            lines::Card card;      // for an update card, which waits for its body (Text_Body)
+            lines::TitleFill fill; // for a title card, which fades its words in one after another
         };
 
         std::vector<Tracked> g_tracked;
@@ -134,6 +135,8 @@ namespace da::features
         // (lines::LeaveShownAgain), is not said again, and the prompts the bar shows with it again
         // are not either (PageResumedAt).
         lines::CardFirst g_cardFirst;
+        double g_titleFillUntil = -1.0;    // a title card still fades its words in (lines::TitleFill)
+        double g_pageComingUntil = -1.0;   // a reading's page is still to come (lines::PageComing)
         std::wstring g_pageText;           // the page's own words, as last said
         double g_pageSaidAt = -1000.0;     // when they were
         double g_pageResumedAt = -1000.0;  // when a page was shown again while it was being read
@@ -143,6 +146,13 @@ namespace da::features
         bool IsCard(UObject* widget)
         {
             return obj::IsA(widget, L"BatesHUDUpdateQueueWidget");
+        }
+
+        // The cards that name a chapter, introduce a character or change to another.
+        bool IsTitleCard(UObject* widget)
+        {
+            return obj::IsA(widget, L"BatesChapterIntroWidget") || obj::IsA(widget, L"BatesCharacterIntroWidget") ||
+                   obj::IsA(widget, L"BatesCharacterChangeWidget");
         }
 
         bool IsPage(UObject* widget)
@@ -200,6 +210,7 @@ namespace da::features
             std::vector<Fresh> pages;
             bool cardComing = false; // a card shown whose words are still to come or to be said
             bool pageComing = false; // the reading's page still to come: hidden as it turns, or not said yet
+            bool titleFilling = false;
             const double drawnBefore = g_documentDrawnAt; // when a page was last drawn, before this poll
             bool pageDrawn = false;
             for (auto& t : g_tracked)
@@ -208,6 +219,7 @@ namespace da::features
                 {
                     t.lines.Hidden();
                     t.card.Hidden();
+                    t.fill.Hidden();
                     if (IsPage(t.instance) && lines::PageComing(g_reading.Open(), false, now - drawnBefore, false)) pageComing = true;
                     continue;
                 }
@@ -219,6 +231,8 @@ namespace da::features
                     cardComing = true;
                     continue;
                 }
+                // A title card still fading its words in holds the prompts (lines::TitleFill).
+                if (IsTitleCard(t.instance) && t.fill.Update(now, ui::VisibleTexts(t.instance), ui::DrawnTexts(t.instance))) titleFilling = true;
                 // Faded out to nothing, it shows no lines (a document's transcript hidden).
                 const bool drawn = obj::IsWidgetShown(t.instance, true);
                 if (drawn && IsPage(t.instance))
@@ -247,6 +261,14 @@ namespace da::features
                     g_saidAt = now;
                     if (g_echo.Says(f.text, now)) speech::Announce(f.text);
                 }
+            }
+            // The page still to come holds a step's prompts (hud::PageComing), lapsing by itself.
+            if (pageComing) g_pageComingUntil = now + lines::kHoldLapse;
+            // The hold lapses by itself a poll's while after the last poll that found the card filling.
+            if (titleFilling)
+            {
+                if (g_titleFillUntil < now) log::Verbose(L"hud: a title card fades its words in: the prompts wait for it");
+                g_titleFillUntil = now + lines::kHoldLapse;
             }
             // The page drawn at the last poll is gone: when it was last seen, for what is done after.
             if (g_pageWasDrawn && !pageDrawn) g_pageHiddenAt = drawnBefore;
@@ -516,6 +538,16 @@ namespace da::features
     double hud::PageSaidAt()
     {
         return g_pageSaidAt;
+    }
+
+    bool hud::TitleCardFilling(double now)
+    {
+        return now < g_titleFillUntil;
+    }
+
+    bool hud::PageComing(double now)
+    {
+        return now < g_pageComingUntil;
     }
 
     double hud::LastSaidAt()

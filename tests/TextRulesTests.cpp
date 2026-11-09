@@ -480,3 +480,25 @@ TEST_CASE("lines given back are given again at the next poll")
     CHECK(page.Shown(lines, 1.4) == lines); // given back: again
     CHECK(page.Shown(lines, 1.5).empty());
 }
+
+TEST_CASE("a title card fading its words in one after another holds the prompts until the last is drawn: Mike's card, 2026-11-08")
+{
+    // research/sessions/s62-play.log: the card that changes to Mike came up at 21:33:37.165 with its
+    // name, place and time laid out; it drew the name at 37.460, the place at 38.263 and the time at
+    // 38.961. The bolt door's prompt came at 38.596.
+    const std::vector<std::wstring> laidOut{L"МАЙК", L"Лечебница", L"3:03"};
+    lines::TitleFill fill;
+    CHECK(fill.Update(37.165, laidOut, {}));
+    CHECK(fill.Update(37.460, laidOut, {L"МАЙК"}));
+    CHECK(fill.Update(38.263, laidOut, {L"МАЙК", L"Лечебница"}));
+    CHECK(fill.Update(38.596, laidOut, {L"МАЙК", L"Лечебница"})); // the prompt waits
+    CHECK_FALSE(fill.Update(38.961, laidOut, {L"МАЙК", L"Лечебница", L"3:03"}));
+    // Fading out at its end, every word drawn before: it fills no more.
+    CHECK_FALSE(fill.Update(44.0, laidOut, {}));
+    // Shown again, it fills afresh.
+    fill.Hidden();
+    CHECK(fill.Update(50.0, laidOut, {L"МАЙК"}));
+    // A word it lays out and never draws holds nothing past kTitleFillMost.
+    CHECK(fill.Update(50.0 + lines::kTitleFillMost - 0.1, laidOut, {L"Лечебница"}));
+    CHECK_FALSE(fill.Update(50.0 + lines::kTitleFillMost, laidOut, {L"Лечебница"}));
+}

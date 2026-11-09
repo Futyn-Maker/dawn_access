@@ -196,11 +196,38 @@ namespace da::prompt
         return std::nullopt;
     }
 
-    bool SayAtStep(StagePrompt& last, int64_t stage, const std::wstring& text, const std::wstring& actions)
+    bool SayAtStep(StagePrompt& last, int64_t stage, const std::wstring& text, const std::wstring& actions, const std::wstring& main)
     {
-        const bool again = stage >= 0 && last.stage == stage && last.text == text && last.actions == actions;
-        last = StagePrompt{stage, text, actions};
-        return !again;
+        if (stage < 0)
+        {
+            last = StagePrompt{stage, text, actions, {}};
+            return true;
+        }
+        if (last.stage != stage) last = StagePrompt{stage, {}, {}, {}};
+        bool say = !(last.text == text && last.actions == actions);
+        if (!main.empty() && actions == main)
+        {
+            say = last.mainSaid != text;
+            last.mainSaid = text;
+        }
+        last.text = text;
+        last.actions = actions;
+        return say;
+    }
+
+    WayOn WayOnNow(double since, bool prompted, const std::wstring& lastActions, const std::wstring& main, const std::wstring& forward, bool stepPrompts,
+                   const std::wstring& back)
+    {
+        if (prompted && !forward.empty() && lastActions == forward) return WayOn::Skip;
+        if (prompted && !back.empty() && lastActions == back) return WayOn::Skip;
+        if (since < kWayOnAfter) return WayOn::Wait;
+        if (stepPrompts)
+        {
+            if (prompted && lastActions != main) return WayOn::Say; // a step's own prompt, not the way on alone
+            return since < kStepPromptWait ? WayOn::Wait : WayOn::Say;
+        }
+        if (!prompted && since < 2.0 * kWayOnAfter) return WayOn::Wait;
+        return WayOn::Say;
     }
 
     InputWindow WindowOf(const InputStage& stage)
@@ -279,8 +306,19 @@ namespace da::prompt
         return now - m_openedAt < kHintWait;
     }
 
-    std::vector<std::wstring> Bar::Update(double now, bool pageUp, const std::vector<std::wstring>& lines)
+    bool HoldsForPage(bool staged, bool pageComing, bool turned, double sinceTurn)
     {
+        return staged && pageComing && turned && sinceTurn < kPageHoldMost;
+    }
+
+    std::vector<std::wstring> Bar::Update(double now, bool pageUp, const std::vector<std::wstring>& lines, int64_t scope,
+                                          const std::vector<std::wstring>& actions)
+    {
+        if (scope != m_scope)
+        {
+            m_scope = scope;
+            m_byAction.clear();
+        }
         if (pageUp || lines == m_lines)
         {
             m_changedAt = -1.0;
@@ -293,11 +331,19 @@ namespace da::prompt
         m_lines = lines;
         std::set<std::wstring> current;
         std::vector<std::wstring> fresh;
-        for (const auto& line : lines)
+        for (size_t i = 0; i < lines.size(); ++i)
         {
+            const auto& line = lines[i];
             if (line.empty()) continue;
             current.insert(line);
-            if (!m_said.count(line)) fresh.push_back(line);
+            if (m_said.count(line)) continue;
+            if (m_scope >= 0)
+            {
+                const std::wstring& action = i < actions.size() && !actions[i].empty() ? actions[i] : line;
+                if (const auto said = m_byAction.find(action); said != m_byAction.end() && said->second == line) continue;
+                m_byAction[action] = line;
+            }
+            fresh.push_back(line);
         }
         m_said = current;
         return fresh;

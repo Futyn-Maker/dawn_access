@@ -39,6 +39,11 @@ namespace da::features
     // The staged stage the interaction stands in, where its steps sound (prompt::SayAtStep): a number
     // for that stage of that interaction, another for the next interaction bound; -1 for none.
     int64_t SoundingStagedStage();
+    // The action of the staged stage's own prompt (its InputActionAssigned) where the interaction
+    // stands in one; empty for none (prompt::SayAtStep).
+    std::wstring StagedStageInput();
+    // The step the staged stage stands at, where its steps sound; -1 for none.
+    int64_t StagedStageStep();
     // Whether the stage of the bound interaction that drew a prompt widget toggles the grab
     // (UBatesInteractionStageBase.bUsingToggleGrab): its current stage's answer where several share
     // the widget, none where no stage of the bound interaction drew it.

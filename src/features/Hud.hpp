@@ -45,6 +45,14 @@ namespace da::features
         double PageResumedAt();
         // When the page left to be read on, or the last one, was said.
         double PageSaidAt();
+        // A title card (a chapter's, a character's) still fades its words in (lines::TitleFill):
+        // a prompt that comes meanwhile waits for it.
+        bool TitleCardFilling(double now);
+        // A reading's page is still to come (lines::PageComing): hidden as it turns, or shown and not
+        // said yet. A prompt the step that turns it draws waits for it, so that the page is said
+        // first: at the office desk's pages the stick's prompt and the way back came 0.3 s before
+        // each page and were said before it (research/sessions/s63-play.log, 00:23:37.862 to 38.164).
+        bool PageComing(double now);
         // The card that changes the character (name, place, time) is up now.
         bool CharacterCardShown();
         // An objective is set and waits to be said (for a title card to go, or for play to run).
