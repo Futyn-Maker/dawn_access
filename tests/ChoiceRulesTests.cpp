@@ -204,3 +204,27 @@ TEST_CASE("choices: the players' share of an option is said as a whole percent, 
     CHECK(choice::SharePercent(0.576).compare(L"58%") == 0);
     CHECK(choice::SharePercent(-1.0).empty());
 }
+
+TEST_CASE("choices: a press toward an option says its words with the players' share where the game shows it")
+{
+    // Jessica's first run in the mine (research/sessions/s66-play.log, 16:36:39 to 16:36:42): the game
+    // showed 76% beside СПРЯТАТЬСЯ, and the press toward it said the word alone.
+    choice::Option hide;
+    hide.text = L"СПРЯТАТЬСЯ";
+    hide.globalShare = 0.759;
+    CHECK(choice::HeldWords(hide).compare(L"СПРЯТАТЬСЯ, 76%") == 0);
+    // No share shown (the setting off, or the game not finished once): the words alone.
+    choice::Option run;
+    run.text = L"БЕЖАТЬ";
+    CHECK(choice::HeldWords(run).compare(L"БЕЖАТЬ") == 0);
+    // The second line goes with the first, the share after both.
+    choice::Option two;
+    two.text = L"Left";
+    two.subText = L"Hide";
+    two.globalShare = 0.0;
+    CHECK(choice::HeldWords(two).compare(L"Left. Hide, 0%") == 0);
+    // An option with no words says no share alone.
+    choice::Option empty;
+    empty.globalShare = 0.5;
+    CHECK(choice::HeldWords(empty).empty());
+}

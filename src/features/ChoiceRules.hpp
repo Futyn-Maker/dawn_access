@@ -45,6 +45,13 @@ namespace da::choice
     // share (a fraction of one, UBatesDirectionalChoiceStage::OnShowGlobalStatsChanged's quotient).
     std::wstring SharePercent(double share);
 
+    // An option's own words: its text, then its second line.
+    std::wstring Words(const Option& option);
+    // What is said as a hold toward an option begins: its words, then the share of players who took
+    // it where the game shows one, as the reading of the whole choice says it (Andrey, 2026-11-10: a
+    // press toward an option names it with its share, the hold that takes it as well).
+    std::wstring HeldWords(const Option& option);
+
     // A choice: the options set up together.
     struct Choice
     {

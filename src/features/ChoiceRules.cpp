@@ -1,9 +1,12 @@
 #include "features/ChoiceRules.hpp"
 
+#include "core/Strings.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace da::choice
 {
@@ -12,6 +15,22 @@ namespace da::choice
         if (share < 0.0) return {};
         const double percent = share <= 1.0 ? share * 100.0 : share;
         return std::to_wstring(static_cast<long long>(std::lround(std::clamp(percent, 0.0, 100.0)))) + L"%";
+    }
+
+    std::wstring Words(const Option& option)
+    {
+        std::vector<std::wstring> parts;
+        if (!option.text.empty()) parts.push_back(option.text);
+        if (!option.subText.empty()) parts.push_back(option.subText);
+        return str::JoinSentences(parts);
+    }
+
+    std::wstring HeldWords(const Option& option)
+    {
+        std::wstring words = Words(option);
+        const auto share = SharePercent(option.globalShare);
+        if (!words.empty() && !share.empty()) words += L", " + share;
+        return words;
     }
 
     End EndOf(long long result)

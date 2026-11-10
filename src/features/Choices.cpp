@@ -54,14 +54,6 @@ namespace da::features
             return str::Join(keys, L", ");
         }
 
-        std::wstring OptionWords(const Option& option)
-        {
-            std::vector<std::wstring> parts;
-            if (!option.text.empty()) parts.push_back(option.text);
-            if (!option.subText.empty()) parts.push_back(option.subText);
-            return str::JoinSentences(parts);
-        }
-
         bool Timed(const Choice& choice)
         {
             return std::any_of(choice.options.begin(), choice.options.end(), [](const Option& o) { return o.timed; });
@@ -76,7 +68,7 @@ namespace da::features
             for (const auto& option : choice.options)
             {
                 if (!obj::IsLive(WidgetOf(option))) continue;
-                const auto words = OptionWords(option);
+                const auto words = choice::Words(option);
                 if (words.empty()) continue;
                 std::wstring line = locale::Mod(Side(option.direction)) + L": " + words;
                 // The share of players who took it, where the game shows it (choice::SharePercent).
@@ -128,7 +120,8 @@ namespace da::features
             if (!choice || !option || choice->finished) return;
             if (choice::Hold(*option, progress))
             {
-                const auto words = OptionWords(*option);
+                // With the players' share where the game shows it (choice::HeldWords).
+                const auto words = choice::HeldWords(*option);
                 log::Verbose(L"choices: holding toward \"{}\"", words);
                 if (!words.empty()) speech::Focus(words);
             }
