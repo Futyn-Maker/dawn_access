@@ -212,3 +212,25 @@ TEST_CASE("pictures: a long film is said in parts as it plays, the part it stand
     e.Reset();
     CHECK(e.Update(epilogue, 6.0, true) == size_t{0});
 }
+
+TEST_CASE("pictures: the events of the past are described on the key, the part the film stands in alone: 2026-11-10")
+{
+    // Andrey: the film's narration never stops, so its parts' words, said as it played, ran over it
+    // (research/sessions/s66-play.log, 15:56:53 to 15:58:40); a key says the part it stands in.
+    CHECK(picture::OnKey(L"totem_events_of_the_past"));
+    CHECK(picture::OnKey(L"Totem_Events_Of_The_Past"));
+    // The other long films have no narration over their parts and go on being said as they play.
+    CHECK_FALSE(picture::OnKey(L"smg_sting"));
+    CHECK_FALSE(picture::OnKey(L"sam_end_credits"));
+    const auto parts = picture::PartsOf(L"totem_events_of_the_past");
+    REQUIRE(parts.size() == 7);
+    // A press says the part the film is in then, not the ones before it.
+    CHECK(picture::PartAt(parts, 0.0, true) == std::optional<size_t>(0));
+    CHECK(picture::PartAt(parts, 25.0, true) == std::optional<size_t>(1));
+    CHECK(picture::PartAt(parts, 51.0, true) == std::optional<size_t>(3));
+    CHECK(picture::PartAt(parts, 124.0, true) == std::optional<size_t>(6));
+    // Over a part not unlocked the film shows static: no part.
+    CHECK_FALSE(picture::PartAt(parts, 25.0, false));
+    // The epilogue's film begins its first part 5.5 s in: nothing before it.
+    CHECK_FALSE(picture::PartAt(picture::PartsOf(L"sam_end_credits"), 2.0, true));
+}

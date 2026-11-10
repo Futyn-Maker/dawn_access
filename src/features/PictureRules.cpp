@@ -135,15 +135,26 @@ namespace da::picture
         return L"film." + str::ToLower(name) + L"." + std::to_wstring(part + 1);
     }
 
+    bool OnKey(std::wstring_view name)
+    {
+        return str::ToLower(name) == L"totem_events_of_the_past";
+    }
+
+    std::optional<size_t> PartAt(const std::vector<double>& parts, double position, bool shown)
+    {
+        if (!shown || parts.empty() || position < parts.front()) return std::nullopt;
+        size_t part = 0;
+        while (part + 1 < parts.size() && parts[part + 1] <= position) ++part;
+        return part;
+    }
+
     std::optional<size_t> PartTracker::Update(const std::vector<double>& parts, double position, bool shown)
     {
         // Played again from an earlier point: its parts are said again.
         if (m_position >= 0.0 && position < m_position - 1.0) m_said.reset();
         m_position = position;
-        if (!shown || parts.empty() || position < parts.front()) return std::nullopt;
-        size_t part = 0;
-        while (part + 1 < parts.size() && parts[part + 1] <= position) ++part;
-        if (m_said && *m_said == part) return std::nullopt;
+        const auto part = PartAt(parts, position, shown);
+        if (!part || (m_said && *m_said == *part)) return std::nullopt;
         m_said = part;
         return part;
     }

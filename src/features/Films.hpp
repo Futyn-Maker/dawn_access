@@ -5,7 +5,9 @@
 // Bink media player (UBinkMediaPlayer): one for each television, projector and monitor of a level, one
 // for the films over the screen (UBatesBinkMoviePlayer), the totems' and the credits' own. Each is
 // watched for the film it opens and whether it plays; the totems' visions and the films of the dead
-// are left to their features (picture::OwnerOf), which know whose they are.
+// are left to their features (picture::OwnerOf), which know whose they are. The events of the past,
+// narrated throughout, are described on the player's key instead (picture::OnKey): N or the D-pad's
+// right says the part the film stands in.
 #include "features/Feature.hpp"
 
 #include <string>
@@ -23,6 +25,7 @@ namespace da::features
         }
         void Install() override;
         void Describe(std::vector<std::wstring>& out) override;
+        void Help(std::vector<std::wstring>& out) override;
     };
 
     // A map was loaded: the players of its levels are looked for anew.

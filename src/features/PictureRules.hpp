@@ -64,6 +64,14 @@ namespace da::picture
         double m_position = -1.0;
     };
 
+    // A long film whose parts are said on the player's key rather than as it plays: the events of the
+    // past, whose narration runs through the whole film and leaves no room between its lines for the
+    // words of a part (Andrey, 2026-11-10). The key is named once as the film begins; a press says the
+    // part the film stands in then, alone.
+    bool OnKey(std::wstring_view name);
+    // The part a film's position lies in: none before its first part, or while the film is not shown.
+    std::optional<size_t> PartAt(const std::vector<double>& parts, double position, bool shown);
+
     // The same for a totem's vision ("totem.totem_death_1"); the fifth hunger totem's three cuts
     // (totem_hunger_5_1 to _3, by what Jessica wears) fall back to "totem.totem_hunger_5", a censored
     // cut ("totem_death_5_ja") to the vision it censors.

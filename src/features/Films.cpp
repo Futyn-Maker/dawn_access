@@ -7,6 +7,7 @@
 #include "core/ObjectUtil.hpp"
 #include "core/Symbols.hpp"
 #include "hooks/HookDispatcher.hpp"
+#include "hotkeys/Hotkeys.hpp"
 #include "locale/GameText.hpp"
 #include "locale/Locale.hpp"
 #include "speech/Speech.hpp"
@@ -31,6 +32,8 @@ namespace da::features
             bool playing = false; // as last polled
             std::vector<double> parts; // a long film's parts (picture::PartsOf), for one described as it plays
             picture::PartTracker said;
+            bool onKey = false;     // its parts are said on the player's key (picture::OnKey)
+            double keyDueAt = -1.0; // when the key is named, once the page over the film has been read
         };
 
         // Where the film stands, in seconds (UBinkMediaPlayer::GetTime, a timespan of 100 ns ticks).
@@ -61,6 +64,11 @@ namespace da::features
         // The film described last and still playing, for the screen's readout.
         obj::ObjectKey g_nowPlayer;
         std::wstring g_nowWords;
+
+        // The key is named a moment after the film begins: the page the film plays on is read as it
+        // arrives, 1.2 s in (WBP_Totem_EOTP_Overlay, research/sessions/s66-play.log, 15:56:53.945 to
+        // 15:56:55.157), and its reading cut the film's first words then.
+        constexpr double kKeyAfter = 1.5;
 
         void Track(UObject* player)
         {
@@ -111,6 +119,13 @@ namespace da::features
                 return;
             }
             p.parts = picture::PartsOf(p.film);
+            p.onKey = !p.parts.empty() && picture::OnKey(p.film);
+            p.keyDueAt = p.onKey ? gamethread::NowSeconds() + kKeyAfter : -1.0;
+            if (p.onKey)
+            {
+                log::Info(L"films: {} of {} plays \"{}\"; its {} parts are said on the key", obj::ObjectName(player), OwnerName(player), p.film, p.parts.size());
+                return;
+            }
             if (!p.parts.empty())
             {
                 log::Info(L"films: {} of {} plays \"{}\"; it is described in {} parts as it plays", obj::ObjectName(player), OwnerName(player), p.film,
@@ -132,6 +147,12 @@ namespace da::features
             if (!part) return;
             const auto key = picture::PartKey(p.film, *part);
             const bool described = locale::Has(key);
+            // A film said on the key only notes where its parts begin, for the log.
+            if (p.onKey)
+            {
+                log::Info(L"films: \"{}\" comes to its part {} at {:.1f} s; said on the key", p.film, *part + 1, position);
+                return;
+            }
             log::Info(L"films: \"{}\" comes to its part {} at {:.1f} s; {}", p.film, *part + 1, position, described ? L"its words are said" : L"no words for it");
             if (described) Say(p, Words(key));
         }
@@ -153,6 +174,13 @@ namespace da::features
                 p.film = film;
                 if (began) Began(p, player);
                 if (playing && !p.parts.empty()) PollParts(p, player);
+                if (playing && p.onKey && p.keyDueAt >= 0.0 && gamethread::NowSeconds() >= p.keyDueAt)
+                {
+                    p.keyDueAt = -1.0;
+                    const auto words = locale::Mod(L"film.start", hotkeys::SpokenKey(hotkeys::Command::NextTarget));
+                    log::Info(L"films: the key to read \"{}\" is said: \"{}\"", p.film, words);
+                    speech::Announce(words);
+                }
                 if (!playing && p.key == g_nowPlayer) g_nowWords.clear();
             }
         }
@@ -160,6 +188,45 @@ namespace da::features
         void Poll(float)
         {
             obj::SafeInvokeLogged(L"films.PollImpl", [](void*) { PollImpl(); }, nullptr);
+        }
+
+        // The film playing now whose parts are said on the key.
+        Player* KeyFilm()
+        {
+            for (auto& p : g_players)
+            {
+                if (p.onKey && p.playing && obj::IsSame(p.key)) return &p;
+            }
+            return nullptr;
+        }
+
+        bool KeyFilmUp()
+        {
+            return KeyFilm() != nullptr;
+        }
+
+        // The part the film stands in (picture::PartAt); over static, the word for it.
+        std::wstring PartWords(Player& p, double& position, bool& shown)
+        {
+            UObject* player = p.key.object;
+            position = Position(player);
+            shown = Shown(player);
+            const auto part = picture::PartAt(p.parts, position, shown);
+            if (!part) return shown ? std::wstring() : locale::Mod(L"film.static");
+            const auto key = picture::PartKey(p.film, *part);
+            return locale::Has(key) ? Words(key) : std::wstring();
+        }
+
+        bool OnRead()
+        {
+            Player* p = KeyFilm();
+            if (!p) return false;
+            double position = 0.0;
+            bool shown = true;
+            const auto words = PartWords(*p, position, shown);
+            log::Info(L"films: \"{}\" read on the key at {:.1f} s{}", p->film, position, shown ? L"" : L", over static");
+            if (!words.empty()) speech::Now(words);
+            return true;
         }
     }
 
@@ -195,11 +262,27 @@ namespace da::features
         // Every player made from now on, the Events of the Past's own kind included.
         hooks::OnConstructed(L"BinkMediaPlayer", false, [](UObject* player) { Track(player); });
         hooks::OnConstructed(L"BatesEventsOfThePastMoviePlayer", false, [](UObject* player) { Track(player); });
+        // A film said on the key takes N and the D-pad's right while it plays, as the credits do.
+        hotkeys::AddContext(&KeyFilmUp);
+        hotkeys::OnCommand(hotkeys::Command::NextTarget, &OnRead);
         gamethread::AddPoller(L"films", &Poll);
     }
 
     void FilmsFeature::Describe(std::vector<std::wstring>& out)
     {
+        if (Player* p = KeyFilm())
+        {
+            double position = 0.0;
+            bool shown = true;
+            const auto words = PartWords(*p, position, shown);
+            if (!words.empty()) out.push_back(words);
+            return;
+        }
         if (!g_nowWords.empty() && obj::IsSame(g_nowPlayer)) out.push_back(g_nowWords);
+    }
+
+    void FilmsFeature::Help(std::vector<std::wstring>& out)
+    {
+        if (KeyFilm()) out.push_back(locale::Mod(L"help.film", hotkeys::SpokenKey(hotkeys::Command::NextTarget)));
     }
 }
