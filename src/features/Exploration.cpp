@@ -40,7 +40,6 @@
 #include <Unreal/CoreUObject/UObject/UnrealType.hpp>
 #include <Unreal/FString.hpp>
 #include <Unreal/FWeakObjectPtr.hpp>
-
 #include <algorithm>
 #include <chrono>
 #include <climits>
@@ -6855,6 +6854,9 @@ namespace da::features
         look::Rest g_lookRest; // she comes to rest where only the camera's look is missing
         look::Flicker g_flicker;
         unsigned long long g_flickFrame = 0; // the frame a flick's push was given on
+        double g_lastPushAt = -1.0;          // when the last stretch last pushed her (look::GivesUp)
+        bool g_settleLogged = false;         // its time up, the wait for her to settle is logged
+        double g_levelSince = -1.0;          // held to a path, since when she is level with a thing not offered (look::PathLevelGivesUp)
         std::wstring g_arriveLogged;
 
         // Her own yaw, for the flicks; 0 when it cannot be read.
@@ -6959,6 +6961,8 @@ namespace da::features
                 g_lookRest.Reset();
                 g_flicker.Reset(now);
                 g_arriveLogged.clear();
+                g_lastPushAt = now;
+                g_settleLogged = false;
                 if (!t.inside)
                 {
                     log::Info(L"explore: the walk's last stretch to \"{}\" begins {:.0f} cm from a spot of its place the ground carries her to", t.label,
@@ -7024,8 +7028,21 @@ namespace da::features
             // look (look::CanBeLed): she steps on toward the spot the game puts her on to use the
             // thing, where the shot may take the glint in.
             const bool offShot = p.inside && p.measured && !LookCanBeLed(p);
-            if (now - g_arriveSince > 8.0)
+            if (now - g_arriveSince > look::kArriveMost)
             {
+                // Its time is up: no more pushes, and it gives up once she has settled after the last
+                // (look::GivesUp); a turn on the spot sets her down a moment later, often inside.
+                if (!look::GivesUp(now - g_arriveSince, now - g_lastPushAt, still))
+                {
+                    if (!g_settleLogged)
+                    {
+                        g_settleLogged = true;
+                        log::Info(L"explore: the walk's last stretch to \"{}\" has had its time; it waits for her to settle after its last push", t.label);
+                    }
+                    g_flicker.Hold(now, facing);
+                    input::ReleaseWalkKeys();
+                    return true;
+                }
                 log::Info(L"explore: the walk to \"{}\" ends without the press taken: {}", t.label, PressTestText(p));
                 // Inside, a look of the player's is what is missing, and the guidance says so once she
                 // stands still, again for each walk; outside, where no look of the player's brings it,
@@ -7112,6 +7129,7 @@ namespace da::features
             {
                 input::HoldWalkKeys(push->forward, push->right);
                 g_flickFrame = gamethread::FrameCount();
+                g_lastPushAt = now;
             }
             else
             {
@@ -7530,14 +7548,25 @@ namespace da::features
                     return;
                 }
                 // Level with a thing beside the path she is as near as the path goes; the game
-                // has not offered it (that is the last stretch's), so this is as far as a walk
-                // gets her.
+                // has not offered it (that is the last stretch's). The walk gives up once she has
+                // come to rest (look::PathLevelGivesUp): she slides on along the path, and the
+                // game may offer it as she does, the last stretch taking it then.
                 if (ahead < kLevelOnPath && !target->way)
                 {
-                    log::Info(L"explore: \"{}\" is level with the character on the path the game holds her to, and not offered", target->label);
+                    input::ReleaseWalkKeys();
+                    if (g_levelSince < 0.0)
+                    {
+                        g_levelSince = now;
+                        log::Info(L"explore: \"{}\" is level with the character on the path the game holds her to, and not offered: the stick is let go, "
+                                  L"and the walk waits for her to come to rest",
+                                  target->label);
+                    }
+                    if (!look::PathLevelGivesUp(now - g_levelSince, g_motion.Still(now))) return;
+                    log::Info(L"explore: \"{}\" is level with the character on the path the game holds her to, and not offered, she at rest", target->label);
                     StopWalk(L"explore.walk.blocked", false);
                     return;
                 }
+                g_levelSince = -1.0;
                 bearing = PathBearing(yaw);
             }
             const double radians = bearing * std::numbers::pi / 180.0;
@@ -7675,6 +7704,7 @@ namespace da::features
             g_walkFor = target->actor;
             g_walkForLabel = target->label;
             g_arriveSince = -1.0;
+            g_levelSince = -1.0;
             StraightenChosen(*target, gamethread::NowSeconds());
             g_autoChosen = false; // walking to it makes it the player's choice
             g_walkStartedAt = gamethread::NowSeconds();

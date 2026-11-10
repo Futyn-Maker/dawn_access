@@ -1109,3 +1109,36 @@ TEST_CASE("look: the walk key at a thing reached says it, asks for the camera's 
     CHECK(look::WalkKeyAt(false, false, false, Lead::Camera) == WalkKey::Walk);
     CHECK(look::WalkKeyAt(false, true, true, Lead::None) == WalkKey::Walk);
 }
+
+TEST_CASE("look: the last stretch gives up only once she has settled after its last push: Hannah's diary, 2026-11-10")
+{
+    // research/sessions/s66-play.log: the last stretch began at 16:20:00.060; its eighth flick at
+    // 16:20:07.707; at 16:20:08.066 the walk said it could not get there, she 30 cm out of the place;
+    // at 16:20:08.619 the game offered the diary, only the camera's look missing.
+    const double begun = 0.0;
+    const double flick8 = 7.647;
+    // At the old give-up, 0.36 s after the flick: not yet, though she reads still (a turn on the spot).
+    CHECK_FALSE(look::GivesUp(8.006 - begun, 8.006 - flick8, true));
+    // As the game offers the diary, 0.9 s after the flick: still waiting (the look-only branch takes it).
+    CHECK_FALSE(look::GivesUp(8.559 - begun, 8.559 - flick8, true));
+    // Settled long enough after the last push: it gives up.
+    CHECK(look::GivesUp(9.0 - begun, 9.0 - flick8, true));
+    // Still moving: it waits, but not past its last wait.
+    CHECK_FALSE(look::GivesUp(10.0, 3.0, false));
+    CHECK(look::GivesUp(look::kArriveMost + look::kGiveUpWaitMost + 0.1, 0.0, false));
+    // Within its time it never gives up.
+    CHECK_FALSE(look::GivesUp(look::kArriveMost, 10.0, true));
+}
+
+TEST_CASE("look: held to a path and level with a thing not offered, the walk waits for her slide: the stream, 2026-11-10")
+{
+    // research/sessions/s66-play.log: at 16:42:17.284 the walk found the climb out of the stream level
+    // with her on the path and gave up; at 16:42:17.753 the game offered it, she still sliding on.
+    CHECK_FALSE(look::PathLevelGivesUp(0.0, false));
+    CHECK_FALSE(look::PathLevelGivesUp(0.469, false));
+    // At rest at once (pressed against something): a moment, then it gives up.
+    CHECK_FALSE(look::PathLevelGivesUp(0.2, true));
+    CHECK(look::PathLevelGivesUp(look::kPathLevelSettle, true));
+    // Never longer than its last wait.
+    CHECK(look::PathLevelGivesUp(look::kPathLevelWaitMost, false));
+}

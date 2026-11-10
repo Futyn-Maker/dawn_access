@@ -212,6 +212,28 @@ namespace da::look
     // `letGoAt`: the way left at which the walk lets go, a step's (kStepWay) or her slide's (Slide).
     bool StretchKeeps(bool offered, bool begun, double fromSpot, double wayLeft = 1e9, double letGoAt = kStepWay);
 
+    // The last stretch's own time: kArriveMost to get the press taken, then the walk gives up on it.
+    // It gives up only once she is at rest and kSettleAfterPush has passed since its last push, or
+    // kGiveUpWaitMost after its time at most: a flick that turns her on the spot sets her down a
+    // moment after it, inside the place as often as not. At Hannah's diary the walk said it could not
+    // get there 0.36 s after its eighth flick, and 0.55 s later the game offered the diary, only the
+    // camera's look missing (research/sessions/s66-play.log, 16:20:07.707 to 16:20:08.619).
+    constexpr double kArriveMost = 8.0;
+    constexpr double kSettleAfterPush = 1.2;
+    constexpr double kGiveUpWaitMost = 3.0;
+    // `sinceBegun`: the last stretch's time so far; `sinceLastPush`: the time since its last push;
+    // `still`: she reads still (Motion).
+    bool GivesUp(double sinceBegun, double sinceLastPush, bool still);
+
+    // Held to a path, level with a thing the game has not offered: the walk lets the stick go and
+    // gives up only once she has come to rest, at least kPathLevelSettle after it let go, or
+    // kPathLevelWaitMost after at most. She slides on along the path, and the game's offer comes as
+    // she does: the climb out of the stream was offered 0.47 s after the walk had said it could not
+    // get there (research/sessions/s66-play.log, 16:42:17.284 to 16:42:17.753).
+    constexpr double kPathLevelSettle = 0.5;
+    constexpr double kPathLevelWaitMost = 1.5;
+    bool PathLevelGivesUp(double sinceLevel, bool still);
+
     // How far she slides on once the walk lets go at speed: the game's locomotion ends a walk with a
     // stopping stride, about a second's walk on. At the damaged doors of act7_2 on 2026-11-08 the
     // walk let go at 138 cm/s as the place took her, 62 cm short of the spot found well inside it;

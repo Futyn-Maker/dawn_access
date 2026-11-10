@@ -166,6 +166,19 @@ namespace da::look
         return offered || ((begun || wayLeft < letGoAt) && fromSpot <= kStretchReach);
     }
 
+    bool GivesUp(double sinceBegun, double sinceLastPush, bool still)
+    {
+        if (sinceBegun <= kArriveMost) return false;
+        if (sinceBegun > kArriveMost + kGiveUpWaitMost) return true;
+        return still && sinceLastPush >= kSettleAfterPush;
+    }
+
+    bool PathLevelGivesUp(double sinceLevel, bool still)
+    {
+        if (sinceLevel >= kPathLevelWaitMost) return true;
+        return still && sinceLevel >= kPathLevelSettle;
+    }
+
     double LetGoAt(double slide, bool lastLeg, std::optional<double> headingOff)
     {
         if (!lastLeg || !headingOff || std::fabs(*headingOff) > kSlideAlong) return kStepWay;
