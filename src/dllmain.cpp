@@ -8,6 +8,7 @@
 #include "core/Strings.hpp"
 #include "diag/Audit.hpp"
 #include "diag/Diagnostics.hpp"
+#include "features/Achievements.hpp"
 #include "features/Choices.hpp"
 #include "features/Credits.hpp"
 #include "features/DontMove.hpp"
@@ -167,6 +168,7 @@ public:
         da::features::Register(std::make_unique<da::features::InteractionsFeature>());
         da::features::Register(std::make_unique<da::features::CreditsFeature>());
         da::features::Register(std::make_unique<da::features::FilmsFeature>());
+        da::features::Register(std::make_unique<da::features::AchievementsFeature>());
 
         Unreal::Hook::FCallbackOptions options{};
         options.bReadonly = true;
