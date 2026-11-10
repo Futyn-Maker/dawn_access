@@ -7087,7 +7087,9 @@ namespace da::features
             const bool intoGlint = p.inside && !offShot && p.glintAway;
             const Vec toward = offShot ? Aim(t) : intoGlint ? GlintStepOf(t, here) : p.inside ? LookAtPoint(t) : spot;
             const double bearing = BearingDegrees(here, toward, yaw);
-            const auto push = g_flicker.Update(now, bearing, facing, g_motion.Speed(now), here);
+            // Every goal but her turn to the glint is a step, which only moving her brings nearer.
+            const bool step = offShot || intoGlint || !p.inside;
+            const auto push = g_flicker.Update(now, bearing, facing, g_motion.Speed(now), here, step);
             // A flick of the mod's own moves her: that slide says nothing of the walk's.
             if (g_flicker.Began()) g_slide.Spoiled();
             if (g_flicker.Began())

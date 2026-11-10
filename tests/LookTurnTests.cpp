@@ -819,6 +819,68 @@ TEST_CASE("look: flicks that move her nowhere give way to a held push, the libra
         CHECK(h == 0.0);
 }
 
+TEST_CASE("look: toward a spot, flicks that only turn her give way to a held push: the guidance totem by the cable car, 2026-11-11")
+{
+    // research/sessions/s68-play.log, 01:16:49 to 01:16:57: out of the totem's place, 66 cm from her
+    // spot, six flicks turned Sam by 45 to 90 degrees four times and nowhere twice and never stepped
+    // her; each turn counted as something done, the held push never came, and the walk said it could
+    // not get there 2 m from the totem. Walked to again, the walk's own push took her in.
+    constexpr double dt = 1.0 / 30.0;
+    const look::Vec stuck{26149.0, -39630.0, -17041.0};
+    // Her facing as each flick found her, the log's (off the glint): the n-th flick left her at the
+    // (n+1)-th.
+    const double facings[] = {-11.0, -56.0, -101.0, -101.0, -11.0, -11.0, -53.0};
+    const auto run = [&](bool step, bool steps)
+    {
+        look::Flicker flicker;
+        flicker.Reset(0.0);
+        look::Vec here = stuck;
+        std::vector<double> holds;
+        double facing = facings[0];
+        double turnAt = -1.0;
+        size_t flicks = 0;
+        for (int frame = 0; frame < 900 && holds.size() < 6; ++frame)
+        {
+            const double now = frame * dt;
+            if (turnAt >= 0.0 && now >= turnAt)
+            {
+                facing = facings[std::min(flicks, std::size(facings) - 1)];
+                if (steps) here.x += 20.0;
+                turnAt = -1.0;
+            }
+            if (flicker.Pushing() && !flicker.Holding(now))
+            {
+                flicker.Release(now);
+                turnAt = now + 0.3; // the turn on the spot plays out after the push
+                continue;
+            }
+            const auto push = flicker.Update(now, 54.0, facing, 0.0, here, step);
+            if (flicker.Began())
+            {
+                holds.push_back(push->hold);
+                ++flicks;
+            }
+        }
+        return holds;
+    };
+    // Toward her spot: two flicks that moved her nowhere, and the third is held.
+    const auto toward = run(true, false);
+    REQUIRE(toward.size() >= 3);
+    CHECK(toward[0] == 0.0);
+    CHECK(toward[1] == 0.0);
+    CHECK(toward[2] == doctest::Approx(look::kPulse));
+    // Turning her to the glint, a turn is what a flick is for: flicks, as before.
+    const auto turning = run(false, false);
+    REQUIRE(turning.size() >= 6);
+    for (const double h : turning)
+        CHECK(h == 0.0);
+    // A flick that stepped her did something toward the spot: the next is a flick again.
+    const auto stepping = run(true, true);
+    REQUIRE(stepping.size() >= 6);
+    for (const double h : stepping)
+        CHECK(h == 0.0);
+}
+
 TEST_CASE("look: a map begun far off is begun again from where the last stretch finds her, 2026-11-06")
 {
     // research/sessions/s47-full.log: the map the walk to the guidance totem judged by was begun at

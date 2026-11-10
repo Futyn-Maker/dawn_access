@@ -191,7 +191,13 @@ namespace da::look
     // 0.16 s at full stick Into needs, so that a walk starts and carries her a step. In the library
     // on 2026-11-06 ten flicks toward a spot of the totem's place 30 cm off turned Ashley nowhere and
     // stepped her nowhere, and the walk said "could not get there"; walked to again, one step took her
-    // in.
+    // in. A flick to step her somewhere did nothing toward it unless it moved her, however it turned
+    // her: at the guidance totem by the cable car on 2026-11-11 six flicks toward a spot 66 cm off
+    // turned Sam by 45 to 90 degrees four times and nowhere twice, never stepped her, and as each turn
+    // counted as something done the held push never came; "could not get there" 2 m from the totem,
+    // and walked to again, the walk's own push took her in (research/sessions/s68-play.log, 01:16:49 to
+    // 01:17:22). Over every session's last stretches flicks toward a spot moved her 3 times of 100, and
+    // the held push after two dead flicks was the last push of 19 that ended well.
     constexpr double kDeadMove = 3.0;
     constexpr double kDeadTurn = 3.0;
     constexpr int kDeadFlicks = 2;
@@ -383,8 +389,9 @@ namespace da::look
         // A frame on which she must turn toward `bearing` (degrees right of the stick's forward,
         // the control rotation's) or step that way: the push to give on this frame, if any; a
         // flick's push is let go at the next call, a held one once its time is up. `facing` is her
-        // own yaw, `speed` how fast she moves, `here` where she stands.
-        std::optional<Push> Update(double now, double bearing, double facing, double speed, const Vec& here);
+        // own yaw, `speed` how fast she moves, `here` where she stands; `step`, the push is to step her
+        // toward a spot, which only moving her brings nearer, not to turn her.
+        std::optional<Push> Update(double now, double bearing, double facing, double speed, const Vec& here, bool step = false);
         // The flicks in a row that did nothing.
         int Dead() const
         {

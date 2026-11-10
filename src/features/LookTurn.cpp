@@ -116,7 +116,7 @@ namespace da::look
         Release(now);
     }
 
-    std::optional<Push> Flicker::Update(double now, double bearing, double facing, double speed, const Vec& here)
+    std::optional<Push> Flicker::Update(double now, double bearing, double facing, double speed, const Vec& here, bool step)
     {
         Watch(now, facing);
         m_began = false;
@@ -134,12 +134,13 @@ namespace da::look
         const bool waited = now - m_releasedAt >= kAfterPush;
         const bool overdue = now - m_releasedAt >= kSettleMax;
         if (!(settled && waited) && !overdue) return std::nullopt;
-        // What the last push did: nothing, or a step or a turn.
+        // What the last push did: nothing, or a step or a turn; toward a step, a turn on the spot is
+        // nothing.
         if (m_count > 0)
         {
             const bool moved = std::hypot(here.x - m_flickedFrom.x, here.y - m_flickedFrom.y) >= kDeadMove;
             const bool turned = std::fabs(Normalize(facing - m_flickedFacing)) >= kDeadTurn;
-            m_dead = moved || turned ? 0 : m_dead + 1;
+            m_dead = moved || (turned && !step) ? 0 : m_dead + 1;
         }
         m_pushing = true;
         ++m_count;
