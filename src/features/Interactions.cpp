@@ -1,7 +1,9 @@
 #include "features/Interactions.hpp"
 
 #include "features/Exploration.hpp"
+#include "features/Films.hpp"
 #include "features/NudgeRules.hpp"
+#include "features/PictureRules.hpp"
 #include "features/PromptRules.hpp"
 #include "features/Hud.hpp"
 #include "features/Prompts.hpp"
@@ -32,6 +34,7 @@
 #include <algorithm>
 #include <map>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
@@ -61,6 +64,126 @@ namespace da::features
             UObject* bound = nullptr;
             obj::CallReturn(bindable, L"GetBoundActorAsInteraction", [&](void* params, FProperty* ret) { obj::ReadObjectAt(params, ret, bound); });
             return obj::IsLive(bound) ? bound : nullptr;
+        }
+
+        // ---- pictures in the character's hands ---------------------------------------------------
+        //
+        // What a thing the character handles shows without words of its own is described from the
+        // mod's table (lang/pictures): Dr. Hill's card as it is turned to its face, by its interaction's
+        // core name and the moment picture::PlanFor gives it; Sam's sketchbook spread by spread; and
+        // the prologue's camera, each photo as the camera is raised and as its page turns, by the
+        // texture it shows.
+
+        std::optional<picture::LookPlan> g_look; // the plan for the interaction in use, if any
+        std::wstring g_lookCore;                 // its core name
+        bool g_lookSaid = false;
+        std::wstring g_lookWords; // what was said for it, for the screen's readout
+        int g_lookPage = 0;       // the spread said last, for a book read spread by spread
+
+        picture::PhotoPager g_photos;
+        std::wstring g_photoWords; // the photo's words said last, which a page turned cuts short
+
+        // The name the scene scripts know an interaction by (its core properties' CoreName).
+        std::wstring CoreName(UObject* interaction)
+        {
+            UObject* core = nullptr;
+            std::wstring name;
+            if (obj::ReadObject(interaction, L"CoreProperties", core) && obj::IsLive(core)) obj::ReadString(core, L"CoreName", name);
+            return name;
+        }
+
+        void PlanLook(UObject* bound)
+        {
+            g_lookSaid = false;
+            g_lookWords.clear();
+            g_lookPage = 0;
+            g_lookCore = bound ? CoreName(bound) : std::wstring();
+            g_look = g_lookCore.empty() ? std::nullopt : picture::PlanFor(g_lookCore);
+            g_photos.Reset();
+            g_photoWords.clear();
+        }
+
+        void SayLook(const wchar_t* why)
+        {
+            if (!g_look || g_lookSaid) return;
+            g_lookSaid = true;
+            const auto key = picture::LookKey(g_lookCore);
+            const bool described = locale::Has(key);
+            log::Info(L"interactions: the picture of {} is shown ({}); {}", g_lookCore, why, described ? L"its words are said" : L"no words for it");
+            if (!described) return;
+            g_lookWords = Words(key);
+            speech::Announce(g_lookWords);
+        }
+
+        // The texture of the camera's photo at an index (CameraPictures, set on the level's camera), and
+        // how many photos it holds.
+        std::wstring PhotoTexture(UObject* camera, int index, int& count)
+        {
+            std::wstring texture;
+            count = 0;
+            auto* pictures = obj::FindProperty(camera, L"CameraPictures");
+            if (!pictures) return texture;
+            obj::ForEachArrayElement(obj::ValuePtr(camera, pictures), pictures,
+                                     [&](void* element, FProperty* inner)
+                                     {
+                                         UObject* picture = nullptr;
+                                         if (count++ == index && obj::ReadObjectAt(element, inner, picture) && obj::IsLive(picture))
+                                             texture = obj::ObjectName(picture);
+                                     });
+            return texture;
+        }
+
+        // The camera held: the photo it shows (ABatesInteractionCamera: bIsHoldingCamera and
+        // CurrentlySelectedPicture, kept by its native code; the stick pages through the photos, no wrap).
+        void PollPhotos(UObject* camera)
+        {
+            const auto* holding = static_cast<const bool*>(sym::MemberOf(camera, L"ABatesInteractionCamera.bIsHoldingCamera"));
+            const auto* index = static_cast<const int32_t*>(sym::MemberOf(camera, L"ABatesInteractionCamera.CurrentlySelectedPicture"));
+            if (!holding || !index) return;
+            const auto shown = g_photos.Update(*holding, *index);
+            if (!shown) return;
+            int count = 0;
+            const std::wstring texture = PhotoTexture(camera, *shown, count);
+            const auto key = picture::PictureKey(texture);
+            const bool described = !texture.empty() && locale::Has(key);
+            log::Info(L"interactions: the camera shows its photo {} of {} ({}); {}", *shown + 1, count, texture.empty() ? L"no texture" : texture,
+                      described ? L"its words are said" : L"no words for it");
+            if (!described) return;
+            std::wstring words = Words(key);
+            // The photo's place among them, drawn on it ("1/5"), is a detail like any other position,
+            // said after the photo's words.
+            if (cfg::Detailed() && count > 1)
+                words = str::JoinSentences({words, locale::Mod(L"ui.pos", std::to_wstring(*shown + 1), std::to_wstring(count))});
+            if (g_photoWords.empty())
+                speech::Announce(words);
+            else
+                speech::Replace(g_photoWords, words);
+            g_photoWords = words;
+        }
+
+        // A book read spread by spread: the spread one of its graphs has come to, said as it comes and
+        // cutting short the spread before (picture::PageOf); nothing while a page turns.
+        void SayPage(const std::vector<std::wstring>& states)
+        {
+            if (!g_look || g_look->moment != picture::Moment::Pages) return;
+            for (const auto& state : states)
+            {
+                const auto page = picture::PageOf(state);
+                if (!page) continue;
+                if (*page == g_lookPage) return;
+                g_lookPage = *page;
+                const auto key = picture::PageKey(g_lookCore, *page);
+                const bool described = locale::Has(key);
+                log::Info(L"interactions: {} shows its spread {} ({}); {}", g_lookCore, *page, state, described ? L"its words are said" : L"no words for it");
+                if (!described) return;
+                const std::wstring words = Words(key);
+                if (g_lookWords.empty())
+                    speech::Announce(words);
+                else
+                    speech::Replace(g_lookWords, words);
+                g_lookWords = words;
+                return;
+            }
         }
 
         // The anim instances an interaction drives (AnimInstanceData.AnimInstances): its anim graphs
@@ -712,6 +835,9 @@ namespace da::features
                 g_statesSince = now;
                 g_promptRepeated = false;
                 log::Verbose(L"interactions: {} stands in {}", obj::ObjectName(interaction), joined.empty() ? L"no state" : joined);
+                if (g_look && g_look->moment == picture::Moment::State && std::find(states.begin(), states.end(), g_look->state) != states.end())
+                    SayLook(L"its item comes to the state that shows it");
+                SayPage(states);
                 if (std::find(states.begin(), states.end(), L"no_matches") != states.end())
                 {
                     log::Info(L"interactions: {} has no matches to light it", obj::ObjectName(interaction));
@@ -882,6 +1008,8 @@ namespace da::features
                 }
                 s.graphReadsReveal = g_turnGraph == 1;
             }
+            // A picture turned to its face is described then, whether or not its turn is led.
+            if (stage && s.revealing && g_look && g_look->moment == picture::Moment::Reveals) SayLook(L"it is turned to its face");
             switch (g_turnCourse.Update(s))
             {
             case nudge::TurnCourse::Event::Begins:
@@ -1131,6 +1259,8 @@ namespace da::features
                     g_lampActive = g_window != nullptr;
                     g_sidesSaid = false;
                     if (bound) log::Info(L"interactions: the character uses {} ({})", obj::ObjectName(bound), obj::ClassName(bound));
+                    PlanLook(bound);
+                    if (g_look && g_look->moment == picture::Moment::Begins) SayLook(L"its interaction begins");
                     if (bound && obj::IsA(bound, L"BatesInteractionComplex") && !obj::IsA(bound, L"BatesInteractionComplexCameraNudge"))
                         FindExamineStages(bound);
                     // The interaction ending as its stage's clock ran out out of a waiting state ran out.
@@ -1166,6 +1296,7 @@ namespace da::features
             if (gamethread::FrameCount() % 6 == 3) PollLinear(g_interaction, now);
             if (gamethread::FrameCount() % 6 == 5) PollDial(now);
             if (gamethread::FrameCount() % 6 == 1) PollStates(g_interaction, now);
+            if (gamethread::FrameCount() % 6 == 2 && obj::IsA(g_interaction, L"BatesInteractionCamera")) PollPhotos(g_interaction);
         }
 
         void Poll(float)
@@ -1250,6 +1381,9 @@ namespace da::features
 
     void InteractionsFeature::Describe(std::vector<std::wstring>& out)
     {
+        const bool inUse = g_interaction && obj::IsSame(g_interactionKey);
+        if (inUse && !g_photoWords.empty()) out.push_back(g_photoWords);
+        if (inUse && !g_lookWords.empty()) out.push_back(g_lookWords);
         if (FramingLed()) out.push_back(FramingText());
         if (RevealLed()) out.push_back(TurnText());
     }
