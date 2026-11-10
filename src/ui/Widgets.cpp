@@ -903,6 +903,36 @@ namespace da::ui
         return str::JoinSentences(ScreenBodyTexts(page, opacityOf));
     }
 
+    std::vector<std::wstring> QuestionTexts(UObject* control, const OpacityOf& opacityOf)
+    {
+        std::vector<std::wstring> texts;
+        UObject* row = control ? obj::ParentWidget(control) : nullptr;
+        UObject* holder = row ? obj::ParentWidget(row) : nullptr;
+        if (!row || !holder || !obj::IsA(row, L"PanelWidget") || !obj::IsA(holder, L"PanelWidget")) return texts;
+        std::vector<menu::Controls> panels;
+        for (auto* child : obj::PanelChildren(holder))
+        {
+            if (obj::IsA(child, L"PanelWidget")) panels.push_back(ControlsIn(child));
+        }
+        if (!menu::AsksOver(ControlsIn(row), ControlsIn(holder), panels)) return texts;
+        for (auto* child : obj::PanelChildren(holder))
+        {
+            if (child == row) break;
+            if (!obj::IsWidgetVisible(child) || IsInteractable(child)) continue;
+            if (IsTextWidget(child))
+            {
+                const double opacity = opacityOf ? opacityOf(child) : obj::WidgetOpacity(child);
+                if (opacity < kFadedOpacity) continue;
+                const auto text = str::StripMarkup(obj::TextOf(child));
+                if (!text.empty() && !IsTemplate(text)) texts.push_back(text);
+                continue;
+            }
+            for (const auto& text : OwnTexts(child, true, true))
+                texts.push_back(text);
+        }
+        return texts;
+    }
+
     bool TabOf(UObject* page, Tab& out)
     {
         UObject* group = page ? obj::NearestAncestorOfClass(obj::ParentWidget(page), L"BatesTabGroupPage") : nullptr;

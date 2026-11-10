@@ -114,4 +114,21 @@ namespace da::menu
     {
         return own.any || std::any_of(panels.begin(), panels.end(), [](const Controls& p) { return p.any && !p.named; });
     }
+
+    bool AsksOver(const Controls& row, const Controls& own, const std::vector<Controls>& panels)
+    {
+        return row.any && row.named && !LaysOutControls(own, panels);
+    }
+
+    std::vector<std::wstring> WithQuestion(std::vector<std::wstring> body, const std::vector<std::wstring>& question)
+    {
+        std::set<std::wstring> shapes;
+        for (const auto& text : body)
+            shapes.insert(Shape(text));
+        for (const auto& text : question)
+        {
+            if (shapes.insert(Shape(text)).second) body.push_back(text);
+        }
+        return body;
+    }
 }

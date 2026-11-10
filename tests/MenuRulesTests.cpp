@@ -224,3 +224,30 @@ TEST_CASE("menus: a question shown with its buttons is said with the button the 
     const std::set<std::wstring> ticking{menu::Shape(L"Осталось: 10")};
     CHECK(menu::TextsWithFocus(true, {L"Осталось: 9"}, ticking).empty());
 }
+
+TEST_CASE("menus: the chapter select's question is found beside its buttons, the page's own walk leaving it out: 2026-11-10")
+{
+    // WBP_Episodes (research/extract/json/.../WBP_Episodes.json): the root overlay holds the title, the
+    // carousel, its two arrows (CarouselButtons: two BMUIButtons with no words), the input blocker and
+    // the question (Confirmation: a vertical box of BMUIStyledTextBlock_45 "Начать?" over HorizontalBox_0
+    // with "Да" and "Нет").
+    const menu::Controls none{};
+    const menu::Controls arrows{true, false};
+    const menu::Controls answers{true, true};
+    // The root lays out controls by its wordless arrows, so the page's walk stops there and finds no
+    // body at all: the question had nothing to come with (research/sessions/s66-play.log, 16:05:28.737).
+    CHECK(menu::LaysOutControls(none, {none, arrows, none}));
+    // The question's own panel lays out no controls: its text asks over the row of named buttons.
+    CHECK(menu::AsksOver(answers, none, {answers}));
+    // A row of wordless controls is headed, not asked over; a panel that holds controls itself asks
+    // nothing (a settings list with its headings); a panel with no controls in the row asks nothing.
+    CHECK_FALSE(menu::AsksOver(arrows, none, {arrows}));
+    CHECK_FALSE(menu::AsksOver(answers, answers, {}));
+    CHECK_FALSE(menu::AsksOver(none, none, {none}));
+    // The focus comes to "Да" from the carousel: the question goes before it, once.
+    const std::set<std::wstring> said{};
+    const auto body = menu::WithQuestion({}, {L"Начать?"});
+    CHECK(menu::TextsWithFocus(true, body, said) == std::vector<std::wstring>{L"Начать?"});
+    // A question the page's walk found already is not added twice.
+    CHECK(menu::WithQuestion({L"Начать?", L"Внимание"}, {L"Начать?"}) == std::vector<std::wstring>{L"Начать?", L"Внимание"});
+}

@@ -50,6 +50,11 @@ namespace da::ui
     std::vector<std::wstring> ScreenBodyTexts(UObject* page, const OpacityOf& opacityOf = nullptr);
     std::wstring ScreenBody(UObject* page, const OpacityOf& opacityOf = nullptr);
 
+    // The question a control's row answers: the texts before the row in the panel that holds it,
+    // where the row's controls are named buttons and that panel lays out no controls itself
+    // (menu::AsksOver), as a modal's question over its buttons. Empty otherwise.
+    std::vector<std::wstring> QuestionTexts(UObject* control, const OpacityOf& opacityOf = nullptr);
+
     // The tab a page is shown under, when it belongs to a group of tabs: its name, its place
     // and the number of tabs. False when the page is not in a tab group.
     struct Tab

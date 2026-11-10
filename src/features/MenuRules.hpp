@@ -171,4 +171,17 @@ namespace da::menu
     // its column by its badge, and the columns' captions were read as the page's text
     // (2026-11-01: "Тотемы. Смерть. Наставление.").
     bool LaysOutControls(const Controls& own, const std::vector<Controls>& panels);
+
+    // Whether the texts beside a row of controls, in the panel that holds the row, ask the question
+    // the row answers: a row of named buttons (`row`) in a panel that lays out no controls itself
+    // (`own`, `panels`: its own controls and its child panels', LaysOutControls). Such a text is the
+    // page's own, but the page's walk can leave it out with the panel around it: the chapter select's
+    // root also holds the carousel's two arrows, wordless buttons, so the whole page lays out controls
+    // and its texts are no body; its "Начать?" over "Да" and "Нет" was never said
+    // (research/sessions/s66-play.log, 16:05:28.737), though the focus came to "Да" from another group.
+    bool AsksOver(const Controls& row, const Controls& own, const std::vector<Controls>& panels);
+
+    // The page's texts with a question added (AsksOver), each text once by its Shape, the page's
+    // first: what TextsWithFocus weighs as the focus comes to the row.
+    std::vector<std::wstring> WithQuestion(std::vector<std::wstring> body, const std::vector<std::wstring>& question);
 }

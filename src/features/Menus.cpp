@@ -272,7 +272,9 @@ namespace da::features
                     // One walk of the page's texts serves both: what came with the control, and what
                     // is remembered as said. A move within the group walks nothing: the periodic
                     // check says what the page gained, as it always did.
-                    const auto body = ui::ScreenBodyTexts(page, &OpacitySeen);
+                    // The question the control's row answers is the page's too, where the walk of the
+                    // page left it out (menu::AsksOver: the chapter select's "Начать?").
+                    const auto body = menu::WithQuestion(ui::ScreenBodyTexts(page, &OpacitySeen), ui::QuestionTexts(control, &OpacitySeen));
                     before = menu::TextsWithFocus(newGroup, body, g_bodySaid);
                     RememberBodyTexts(body);
                 }
