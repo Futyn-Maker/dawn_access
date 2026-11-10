@@ -88,6 +88,29 @@ namespace da::prompt
         return waited && now != atLimit;
     }
 
+    bool TimedCue::Update(int64_t stage, bool asked)
+    {
+        if (stage != m_stage)
+        {
+            m_stage = stage;
+            m_asked = false;
+        }
+        if (stage < 0 || m_asked || !asked) return false;
+        m_asked = true;
+        return true;
+    }
+
+    bool TimedCue::Asked(int64_t stage) const
+    {
+        return stage >= 0 && stage == m_stage && m_asked;
+    }
+
+    void TimedCue::Reset()
+    {
+        m_stage = -1;
+        m_asked = false;
+    }
+
     std::optional<double> LinearProgress::Update(int64_t step, int64_t last)
     {
         if (step < 0 || last <= 0) return std::nullopt;

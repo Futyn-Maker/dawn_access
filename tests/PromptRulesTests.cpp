@@ -748,3 +748,32 @@ TEST_CASE("a step's prompts wait for the page only after a turn, and not long: t
     CHECK_FALSE(prompt::HoldsForPage(false, true, true, 0.3));
     CHECK_FALSE(prompt::HoldsForPage(true, false, true, 0.3));
 }
+
+TEST_CASE("prompt: a stage on a clock sounds its cue only once it asks; the prologue's shack door asks nothing, 2026-11-10")
+{
+    // BP_ShackScare's LookThroughDoorStage (research/sessions/s67-play.log, 19:10:24.912 to 19:10:32.941):
+    // the push's prompt sent away as the stage began, 8 s with nothing drawn, then Beth's scare. The cue
+    // had sounded at its start.
+    prompt::TimedCue cue;
+    CHECK_FALSE(cue.Update(-1, true)); // the push before it: no stage on a clock
+    for (int poll = 0; poll < 48; ++poll)
+        CHECK_FALSE(cue.Update(1, false));
+    CHECK_FALSE(cue.Asked(1)); // its clock running out is no time's up
+    CHECK_FALSE(cue.Update(-1, false));
+    // Jessica's phone in chapter 3 (5 s): the question drawn a moment after the stage began: the cue then,
+    // once, and its running out is said.
+    prompt::TimedCue phone;
+    CHECK_FALSE(phone.Update(0, false));
+    CHECK(phone.Update(0, true));
+    CHECK_FALSE(phone.Update(0, true));
+    CHECK_FALSE(phone.Update(0, false));
+    CHECK(phone.Asked(0));
+    // The psycho door's bolt: its question already drawn as the stage on a clock begins: the cue at once.
+    prompt::TimedCue bolt;
+    CHECK(bolt.Update(2, true));
+    CHECK(bolt.Asked(2));
+    // The next stage on a clock asks anew.
+    CHECK_FALSE(bolt.Update(3, false));
+    CHECK_FALSE(bolt.Asked(2));
+    CHECK(bolt.Update(3, true));
+}

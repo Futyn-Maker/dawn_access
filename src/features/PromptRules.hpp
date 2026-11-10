@@ -87,6 +87,26 @@ namespace da::prompt
     bool WaitingState(std::wstring_view state);
     bool TimeoutTaken(const std::vector<std::wstring>& atLimit, const std::vector<std::wstring>& now);
 
+    // A stage on a clock asks something of the player only where the game draws its question while
+    // the stage stands: its Timer cue sounds then, once a stage, and only such a stage's clock running
+    // out is a time's up. The prologue's shack door (BP_ShackScare's LookThroughDoorStage) runs 8 s with
+    // nothing drawn, its clock timing Beth's scare: the cue had sounded at its start with no question
+    // after it (research/sessions/s67-play.log, 19:10:24.912).
+    class TimedCue
+    {
+    public:
+        // `stage`: the stage on a clock standing (-1 none); `asked`: a question of the interaction is
+        // drawn. True as the cue is to sound.
+        bool Update(int64_t stage, bool asked);
+        // Whether the stage asked anything while it stood, so that its clock running out is said.
+        bool Asked(int64_t stage) const;
+        void Reset();
+
+    private:
+        int64_t m_stage = -1;
+        bool m_asked = false;
+    };
+
     // An interaction whose stick's side is the choice, with no word for either side on the screen:
     // chapter 4's death machine (act4_1's BP_Deathmachinelever). Its graph pulls the lever left once
     // the stick passes its threshold that way with R2 held (pull_lever_left_to_end, which sets

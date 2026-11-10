@@ -437,14 +437,16 @@ namespace da::features
             obj::ObjectKey component;
         };
         std::map<int64_t, TimedStage> g_timedStages;
-        int64_t g_timedCued = -1;    // the stage the cue sounded for
+        int64_t g_timedCued = -1;    // the stage whose beginning was logged
         int64_t g_timedOutSaid = -1; // the stage whose running out was said
+        prompt::TimedCue g_timedCue; // the cue once the stage asks, and whether it asked
 
         void FindTimedStages(UObject* interaction)
         {
             g_timedStages.clear();
             g_timedCued = -1;
             g_timedOutSaid = -1;
+            g_timedCue.Reset();
             std::vector<UObject*> components;
             obj::ReadObjectArray(interaction, L"BlueprintCreatedComponents", components);
             for (UObject* component : components)
@@ -472,11 +474,13 @@ namespace da::features
             return it == g_timedStages.end() ? 0.0 : it->second.seconds;
         }
 
-        // A stage on a clock sounds the Timer cue as it begins, with the word at the detailed level;
-        // the clock running out while the stage still stands is said as every clock that runs out is
-        // (the Fail cue, "Time's up."), whatever running out leads to: whether letting it run is the
-        // answer the scene wanted is not the mod's to say (Andrey, 2026-11-06). The stage counts its
-        // own time (TimeSpentInStage) against SecondsUntilTimeout.
+        // A stage on a clock sounds the Timer cue once the game draws its question while it stands
+        // (prompt::TimedCue), with the word at the detailed level; the clock of a stage that asked
+        // running out while the stage still stands is said as every clock that runs out is (the Fail
+        // cue, "Time's up."), whatever running out leads to: whether letting it run is the answer the
+        // scene wanted is not the mod's to say (Andrey, 2026-11-06). A stage that asks nothing (the
+        // prologue's shack door, whose 8 s time Beth's scare) sounds nothing. The stage counts its own
+        // time (TimeSpentInStage) against SecondsUntilTimeout.
         // The timed stage last seen standing, to be asked once more as it goes: a clock that runs out
         // may end its stage, or the interaction, before a look of the mod's sees it run out.
         int64_t g_timedWatched = -1;
@@ -514,7 +518,15 @@ namespace da::features
             }
             if (now - g_limitAt > kTimeoutTakenWithin) return;
             const auto states = interaction ? CurrentStates(interaction) : std::vector<std::wstring>{};
-            if (prompt::TimeoutTaken(g_statesAtLimit, states)) SayRanOut(std::format(L"its graphs moving on to {}", str::Join(states, L", ")).c_str());
+            if (!prompt::TimeoutTaken(g_statesAtLimit, states)) return;
+            if (g_timedCue.Asked(index))
+                SayRanOut(std::format(L"its graphs moving on to {}", str::Join(states, L", ")).c_str());
+            else if (g_timedOutSaid != index)
+            {
+                g_timedOutSaid = index;
+                log::Info(L"interactions: the stage's clock ran out, its graphs moving on to {}; it asked nothing, so nothing is said",
+                          str::Join(states, L", "));
+            }
         }
 
         void PollTimedStage(UObject* interaction)
@@ -522,19 +534,25 @@ namespace da::features
             int64_t current = -1;
             if (g_timedStages.empty() || !obj::ReadInt(interaction, L"CurrentStage", current)) return;
             const double now = gamethread::NowSeconds();
-            // A stage that went on as its clock ran out out of a waiting state ran out.
+            // A stage that asked and went on as its clock ran out out of a waiting state ran out.
             if (g_timedWatched >= 0 && g_timedWatched != current && g_limitStage == g_timedWatched && g_timedOutSaid != g_timedWatched &&
-                now - g_limitAt <= kTimeoutTakenWithin && std::any_of(g_statesAtLimit.begin(), g_statesAtLimit.end(), prompt::WaitingState))
+                now - g_limitAt <= kTimeoutTakenWithin && std::any_of(g_statesAtLimit.begin(), g_statesAtLimit.end(), prompt::WaitingState) &&
+                g_timedCue.Asked(g_timedWatched))
                 SayRanOut(L"its stage going on");
             const auto it = g_timedStages.find(current);
             g_timedWatched = it == g_timedStages.end() ? -1 : current;
+            if (g_timedCue.Update(g_timedWatched, InteractionPromptShown()))
+            {
+                log::Info(L"interactions: the stage on a clock asks: {:.1f} s", it->second.seconds);
+                sounds::Play(sounds::Cue::Timer);
+                if (cfg::Detailed()) speech::Announce(locale::Mod(L"cue.timer"));
+            }
             if (it == g_timedStages.end()) return;
             if (current != g_timedCued)
             {
                 g_timedCued = current;
-                log::Info(L"interactions: the stage on a clock begins: {:.1f} s", it->second.seconds);
-                sounds::Play(sounds::Cue::Timer);
-                if (cfg::Detailed()) speech::Announce(locale::Mod(L"cue.timer"));
+                log::Info(L"interactions: the stage on a clock begins: {:.1f} s{}", it->second.seconds,
+                          g_timedCue.Asked(current) ? L"" : L"; the cue waits for its question");
             }
             if (gamethread::FrameCount() % 6 == 3) CheckRanOut(current, interaction, now);
         }
@@ -1266,7 +1284,7 @@ namespace da::features
                     // The interaction ending as its stage's clock ran out out of a waiting state ran out.
                     if (g_timedWatched >= 0 && g_limitStage == g_timedWatched && g_timedOutSaid != g_timedWatched &&
                         gamethread::NowSeconds() - g_limitAt <= kTimeoutTakenWithin &&
-                        std::any_of(g_statesAtLimit.begin(), g_statesAtLimit.end(), prompt::WaitingState))
+                        std::any_of(g_statesAtLimit.begin(), g_statesAtLimit.end(), prompt::WaitingState) && g_timedCue.Asked(g_timedWatched))
                         SayRanOut(L"the interaction ending");
                     g_timedWatched = -1;
                     g_limitStage = -1;
