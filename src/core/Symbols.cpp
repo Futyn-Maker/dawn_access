@@ -228,6 +228,13 @@ namespace da::sym
             // the line rolls, and its setting up puts it back to 0: the line widgets are pooled, and
             // one set up again shows another line (UBatesCreditWidget::SpawnNextCredit).
             {L"UBatesCreditLineWidget.CurrentOffset", 0x36c}, // float
+            // The prologue's camera: whether it is raised, and the photo it shows of CameraPictures
+            // (OnCameraLeftButton/OnCameraRightButton page it, no wrap).
+            {L"ABatesInteractionCamera.bIsHoldingCamera", 0xdb9},         // bool
+            {L"ABatesInteractionCamera.CurrentlySelectedPicture", 0xdbc}, // int32
+            // The events of the past's player shows static over a part not unlocked while it seeks to
+            // the next one unlocked (ProcessUnlockedRegions).
+            {L"UBatesEventsOfThePastMoviePlayer.bIsShowingStatic", 0x188}, // bool
         };
 
         struct CodeViewRecord

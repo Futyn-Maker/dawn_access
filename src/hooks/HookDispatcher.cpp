@@ -48,6 +48,11 @@ namespace da::hooks
         std::unordered_map<UFunction*, std::vector<Entry*>> g_postCache;
         std::unordered_map<UFunction*, std::vector<Entry*>> g_preCache;
         std::vector<ConstructedEntry> g_constructed;
+        // Which construction listeners a class matches, by the class: the game makes tens of thousands
+        // of objects as a level loads, and each class's name is spelled out and compared once. The
+        // classes listened for are native ones, never unloaded; a Blueprint class freed and its address
+        // taken by another keeps a "no" that is still right for them. Forgotten when a listener is added.
+        std::unordered_map<const UClass*, std::vector<size_t>> g_constructedMatches;
         std::atomic<bool> g_trace{false};
         std::wstring g_lastHook;
         bool g_installed = false;
@@ -190,12 +195,19 @@ namespace da::hooks
             {
                 fault::Guard lock(g_mutex, L"hooks");
                 if (g_constructed.empty()) return;
-                const std::wstring cls = obj::ClassName(const_cast<UClass*>(params.Class));
-                for (const auto& entry : g_constructed)
+                auto found = g_constructedMatches.find(params.Class);
+                if (found == g_constructedMatches.end())
                 {
-                    const bool match = entry.suffix ? str::EndsWith(cls, entry.className) : cls == entry.className;
-                    if (match) matched.push_back(entry.handler);
+                    std::vector<size_t> indices;
+                    const std::wstring cls = obj::ClassName(const_cast<UClass*>(params.Class));
+                    for (size_t i = 0; i < g_constructed.size(); ++i)
+                    {
+                        const auto& entry = g_constructed[i];
+                        if (entry.suffix ? str::EndsWith(cls, entry.className) : cls == entry.className) indices.push_back(i);
+                    }
+                    found = g_constructedMatches.emplace(params.Class, std::move(indices)).first;
                 }
+                for (const size_t i : found->second) matched.push_back(g_constructed[i].handler);
             }
             if (matched.empty()) return;
             gamethread::Post(
@@ -353,6 +365,7 @@ namespace da::hooks
     {
         fault::Guard lock(g_mutex, L"hooks");
         g_constructed.push_back(ConstructedEntry{std::move(className), suffix, std::move(handler)});
+        g_constructedMatches.clear();
     }
 
     void SetTrace(bool enabled)

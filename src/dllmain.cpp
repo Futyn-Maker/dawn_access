@@ -13,6 +13,7 @@
 #include "features/DontMove.hpp"
 #include "features/Exploration.hpp"
 #include "features/Feature.hpp"
+#include "features/Films.hpp"
 #include "features/Hud.hpp"
 #include "features/Interactions.hpp"
 #include "features/Menus.hpp"
@@ -165,6 +166,7 @@ public:
         da::features::Register(std::make_unique<da::features::ShootingFeature>());
         da::features::Register(std::make_unique<da::features::InteractionsFeature>());
         da::features::Register(std::make_unique<da::features::CreditsFeature>());
+        da::features::Register(std::make_unique<da::features::FilmsFeature>());
 
         Unreal::Hook::FCallbackOptions options{};
         options.bReadonly = true;
@@ -183,6 +185,7 @@ public:
                         da::watch::Reset();
                         da::features::ResetMenus();
                         da::features::ResetSubtitles();
+                        da::features::ResetFilms();
                         da::gamestate::Reset();
                         da::input::InvalidateCache();
                     });

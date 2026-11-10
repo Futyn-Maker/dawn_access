@@ -1,6 +1,8 @@
 #include "features/Credits.hpp"
 
 #include "features/CreditsRules.hpp"
+#include "features/Films.hpp"
+#include "features/PictureRules.hpp"
 
 #include "core/GameThread.hpp"
 #include "core/Log.hpp"
@@ -210,7 +212,7 @@ namespace da::features
         // ---- the films of the dead ----
 
         obj::ObjectKey g_filmSaid; // the film whose death was said
-        std::wstring g_filmName;   // the name said for it
+        std::wstring g_filmName;   // what was said for it: the name, and what the film shows
 
         UObject* Manager(double now)
         {
@@ -253,10 +255,14 @@ namespace da::features
             // the time of death it also gave is drawn nowhere, and left unsaid.
             const auto nameKey = StringMember(film, L"UBatesCreditMovieQueueObject.CharacterName");
             const auto deathKey = StringMember(film, L"UBatesCreditMovieQueueObject.TimeOfDeath");
-            g_filmName = nameKey.empty() ? std::wstring() : str::CollapseWhitespace(gametext::Resolve(nameKey));
-            log::Info(L"credits: the film {} shows the death of \"{}\" ({}; the time of death \"{}\" is drawn nowhere)",
-                      StringMember(film, L"UBatesCreditQueueObjectBase.Identifier"), g_filmName, nameKey.empty() ? L"no name given" : nameKey,
-                      deathKey.empty() ? std::wstring() : gametext::Resolve(deathKey));
+            const auto identifier = StringMember(film, L"UBatesCreditQueueObjectBase.Identifier");
+            const std::wstring name = nameKey.empty() ? std::wstring() : str::CollapseWhitespace(gametext::Resolve(nameKey));
+            // What the film shows, after whose death it is (lang/films, by the film's name).
+            const std::wstring words = FilmWords(picture::FilmName(identifier));
+            log::Info(L"credits: the film {} shows the death of \"{}\" ({}; the time of death \"{}\" is drawn nowhere); {}", identifier, name,
+                      nameKey.empty() ? L"no name given" : nameKey, deathKey.empty() ? std::wstring() : gametext::Resolve(deathKey),
+                      words.empty() ? L"no words for it" : L"its words are said");
+            g_filmName = str::JoinSentences({name, words});
             if (!g_filmName.empty()) speech::Announce(g_filmName);
         }
 

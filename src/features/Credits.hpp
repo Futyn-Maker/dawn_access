@@ -8,8 +8,9 @@
 //   and the help names it while the roll is up;
 // - the overlay over an interview says its room and its clock as the interview begins, then the clock
 //   as its hours or minutes change (credits::Overlay); the tape's number is read with the screen;
-// - a film of the dead says whose death it shows, by the name the scene's script gives it: the film's
-//   widget draws no text of its own, and a sighted player knows the face.
+// - a film of the dead says whose death it shows, by the name the scene's script gives it (the film's
+//   widget draws no text of its own, and a sighted player knows the face), then what the film shows
+//   (lang/films, by the film's name).
 #include "features/Feature.hpp"
 
 #include <string>
