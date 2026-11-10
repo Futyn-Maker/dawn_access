@@ -235,6 +235,9 @@ namespace da::sym
             // The events of the past's player shows static over a part not unlocked while it seeks to
             // the next one unlocked (ProcessUnlockedRegions).
             {L"UBatesEventsOfThePastMoviePlayer.bIsShowingStatic", 0x188}, // bool
+            // The prologue's camera: the texture its screen shows (UpdateCameraPictureTexture sets it
+            // from CameraPictures and hands it to the screen's material).
+            {L"ABatesInteractionCamera.CurrentPictureTexture", 0xd98}, // TWeakObjectPtr<UTexture>
             // The key a prompt draws for an action, as the UI framework works it out per device
             // (UBMUIActionMappingCache's ProcessedActionMappings, whose values these are): the
             // keyboard and mouse's key leads the value, the pad's follows; each is the key's FKey (its

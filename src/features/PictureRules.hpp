@@ -80,10 +80,10 @@ namespace da::picture
     // A picture by the texture the game draws it from ("picture.t_camera_sam_01_clr_up").
     std::wstring PictureKey(std::wstring_view texture);
 
-    // When a thing the character handles shows its picture: as its interaction begins (a look at a
-    // wall), as it is turned to its face (the game's reveal: Dr. Hill's card is held face down), as
-    // the interaction's item comes to a state of its anim graph (the station's map held up), or
-    // spread by spread as the item's graph comes to each (Sam's sketchbook: PageOf).
+    // When a thing the character handles shows its picture: as its interaction begins, as it is turned
+    // to its face (the game's reveal: Dr. Hill's card is held face down), as the interaction's item
+    // comes to a state of its anim graph (the station's map held up, a look at a wall once the look
+    // stands), or spread by spread as the item's graph comes to each (Sam's sketchbook: PageOf).
     enum class Moment
     {
         Begins,
@@ -95,12 +95,17 @@ namespace da::picture
     {
         Moment moment = Moment::Begins;
         std::wstring state; // the anim graph's state, for Moment::State
+        std::wstring key;   // the name its description is kept under (LookKey, PageKey)
     };
-    // The plan for an interaction by the name the game's scene scripts know it by (its core name,
-    // "I_psychsession_1_Interaction"), or nothing when the mod describes nothing there.
-    std::optional<LookPlan> PlanFor(std::wstring_view coreName);
-    // The description's key for an interaction ("look.i_psychsession_1_interaction").
-    std::wstring LookKey(std::wstring_view coreName);
+    // The plan for an interaction by any of the names the game gives it, or nothing when the mod
+    // describes nothing there: its core name, its name in the level's actor database (the one its scene
+    // scripts and activities call it by), or its class. Dr. Hill's card and Sam's sketchbook have no core
+    // name (their CorePropertiesComponent sets none, in the level and the class alike), which the plans
+    // had been keyed by, so neither was ever described (research/sessions/s67-play.log, 19:16:29); the
+    // activity starts the card as "I_psychsession_1_Interaction" (act20_1's InteractionWithIdle stage).
+    std::optional<LookPlan> PlanFor(const std::vector<std::wstring>& names);
+    // The description's key for an interaction's plan ("look.i_psychsession_1_interaction").
+    std::wstring LookKey(std::wstring_view planKey);
 
     // The spread a book's anim graph shows in one of its states: its idles are named by the spread
     // ("page2_idle_right", "page4_idle_left1"; ABP_Act5_3_oldhotel_sams_sketchbook_template, whose
@@ -111,17 +116,22 @@ namespace da::picture
 
     // The prologue's camera (ABatesInteractionCamera) pages through its photos while it is held; a
     // photo is described as the camera is raised and each time the page turns to another, never
-    // twice in a row for the same photo.
+    // twice in a row for the same photo. The first waits for the game's own prompt (the stick or the
+    // keys to page with, and the way back), said as the camera comes up: the photo then, after it
+    // (Andrey, 2026-11-10), or by itself once kPromptWaitMost has gone without one.
+    constexpr double kPromptSettle = 0.25;   // after the prompt, for the action bar's line said with it
+    constexpr double kPromptWaitMost = 2.0;  // from the camera raised
     class PhotoPager
     {
     public:
-        // The camera's state at a poll: held or not, and the photo it shows (its index; -1 unknown).
-        // Returns the index to describe now, if any.
-        std::optional<int> Update(bool holding, int index);
+        // The camera's state at a poll: held or not, and the photo it shows (its index; -1 unknown);
+        // `promptAt` when the game's prompt was last said (-1 never). Returns the index to describe now.
+        std::optional<int> Update(bool holding, int index, double now, double promptAt);
         void Reset();
 
     private:
         bool m_holding = false;
+        double m_heldAt = 0.0;
         int m_said = -1;
     };
 }

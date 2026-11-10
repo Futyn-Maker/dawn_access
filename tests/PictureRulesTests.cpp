@@ -81,28 +81,44 @@ TEST_CASE("pictures: the fifth hunger totem's three cuts fall back to the totem'
     CHECK(picture::VisionKeys(L"").empty());
 }
 
-TEST_CASE("pictures: a photo is known by its texture, a thing in the hand by its core name")
+TEST_CASE("pictures: a photo is known by its texture, a thing in the hand by any name the game gives it")
 {
+    using Names = std::vector<std::wstring>;
     CHECK(picture::PictureKey(L"T_camera_Sam_01_clr_UP") == L"picture.t_camera_sam_01_clr_up");
     CHECK(picture::LookKey(L"I_psychsession_1_Interaction") == L"look.i_psychsession_1_interaction");
-    // Dr. Hill's card is described as it is turned to its face, whatever the case of its name.
-    const auto card = picture::PlanFor(L"I_PsychSession_1_Interaction");
+    // Dr. Hill's card has no core name and goes by its class, or by the name its activity starts it by
+    // (research/sessions/s67-play.log, 19:16:06: BP_PsychSession_PickUp_C_1, never described); it is
+    // described as it is turned to its face, under its one description, whatever the case.
+    const auto card = picture::PlanFor(Names{L"", L"", L"BP_PsychSession_PickUp_C"});
     REQUIRE(card.has_value());
     CHECK(card->moment == picture::Moment::Reveals);
-    // Sam's sketchbook spread by spread, the station's map as it is held up (states of their anim
-    // graphs, research/sessions/s58-whole.log, s54-full.log), the station's walls at once.
-    const auto book = picture::PlanFor(L"I_sams_sketchbook");
+    CHECK(card->key == L"i_psychsession_1_interaction");
+    const auto named = picture::PlanFor(Names{L"", L"I_PsychSession_1_Interaction", L"BP_PsychSession_PickUp_C"});
+    REQUIRE(named.has_value());
+    CHECK(named->key == L"i_psychsession_1_interaction");
+    // Sam's sketchbook has none either: spread by spread, by its class or the level's name.
+    const auto book = picture::PlanFor(Names{L"", L"", L"BP_sam_sketchbook_C"});
     REQUIRE(book.has_value());
     CHECK(book->moment == picture::Moment::Pages);
-    const auto map = picture::PlanFor(L"I_map");
+    CHECK(book->key == L"i_sams_sketchbook");
+    CHECK(picture::PlanFor(Names{L"", L"I_sams_sketchbook", L""})->key == L"i_sams_sketchbook");
+    // The station's map as it is held up, by its core name; the looks at it and the walls once the look
+    // stands, the game's own idle states (research/sessions/s54-full.log, 22:11:56 to 22:21:14).
+    const auto map = picture::PlanFor(Names{L"I_map", L"", L"BP_Map_C"});
     REQUIRE(map.has_value());
+    CHECK(map->moment == picture::Moment::State);
     CHECK(map->state == L"map_inspect1");
-    const auto walls = picture::PlanFor(L"I_graffiti");
+    const auto walls = picture::PlanFor(Names{L"I_graffiti", L"", L"BP_Graffiti_C"});
     REQUIRE(walls.has_value());
-    CHECK(walls->moment == picture::Moment::Begins);
-    // The chapter 1 graffiti is transcribed by the game itself (its reading widget).
-    CHECK_FALSE(picture::PlanFor(L"I_carved_graffiti").has_value());
-    CHECK_FALSE(picture::PlanFor(L"").has_value());
+    CHECK(walls->moment == picture::Moment::State);
+    CHECK(walls->state == L"examine_idle");
+    CHECK(picture::PlanFor(Names{L"I_lookatmap_with_emily", L"", L"BP_Lookatmap_with_emily_C"})->state == L"inspect_idle");
+    CHECK(picture::PlanFor(Names{L"I_lookatmap_without_emily", L"", L"BP_Lookatmap_without_emily_C"})->state == L"inspect_idle1");
+    // The chapter 1 graffiti is transcribed by the game itself (its reading widget); a class shared by
+    // other things (the generic wall examine the walls are made from) names no picture.
+    CHECK_FALSE(picture::PlanFor(Names{L"I_carved_graffiti", L"", L"BP_Examine_wall_item_left_C"}).has_value());
+    CHECK_FALSE(picture::PlanFor(Names{L"", L"", L""}).has_value());
+    CHECK_FALSE(picture::PlanFor(Names{}).has_value());
 }
 
 TEST_CASE("pictures: Sam's sketchbook says each spread as its graph comes to it, nothing while a page turns")
@@ -135,31 +151,65 @@ TEST_CASE("pictures: Sam's sketchbook says each spread as its graph comes to it,
     CHECK_FALSE(picture::PageOf(L"").has_value());
     // Only the sketchbook is read so: the doll house's diary turns the same pages and is the game's
     // own words.
-    CHECK_FALSE(picture::PlanFor(L"I_Doll_house_diary").has_value());
+    CHECK_FALSE(picture::PlanFor(std::vector<std::wstring>{L"I_Doll_house_diary", L"", L"BP_Doll_house_diary_C"}).has_value());
 }
 
 TEST_CASE("pictures: the camera's photo is described as the camera is raised and as each page turns, once in a row")
 {
+    // A prompt said long before: the first photo waits its while (kPromptWaitMost) for the camera's own.
     picture::PhotoPager pager;
     // Not held yet: nothing, whatever the index.
-    CHECK_FALSE(pager.Update(false, 0).has_value());
-    // Raised on the first photo.
-    CHECK(pager.Update(true, 0) == 0);
-    CHECK_FALSE(pager.Update(true, 0).has_value());
-    // The stick pages on, and back.
-    CHECK(pager.Update(true, 1) == 1);
-    CHECK_FALSE(pager.Update(true, 1).has_value());
-    CHECK(pager.Update(true, 0) == 0);
+    CHECK_FALSE(pager.Update(false, 0, 0.0, -1.0).has_value());
+    // Raised on the first photo, its prompt said 0.3 s on.
+    CHECK_FALSE(pager.Update(true, 0, 1.0, -1.0).has_value());
+    CHECK_FALSE(pager.Update(true, 0, 1.3, 1.3).has_value());
+    CHECK(pager.Update(true, 0, 1.6, 1.3) == 0);
+    CHECK_FALSE(pager.Update(true, 0, 1.7, 1.3).has_value());
+    // The stick pages on, and back, at once.
+    CHECK(pager.Update(true, 1, 2.0, 1.3) == 1);
+    CHECK_FALSE(pager.Update(true, 1, 2.1, 1.3).has_value());
+    CHECK(pager.Update(true, 0, 2.2, 1.3) == 0);
     // Pushed past the last photo, the index stays (no wrap): nothing new.
-    CHECK(pager.Update(true, 4) == 4);
-    CHECK_FALSE(pager.Update(true, 4).has_value());
+    CHECK(pager.Update(true, 4, 2.5, 1.3) == 4);
+    CHECK_FALSE(pager.Update(true, 4, 2.6, 1.3).has_value());
     // An index not known yet says nothing.
-    CHECK_FALSE(pager.Update(true, -1).has_value());
-    // Put down and raised again: the photo it shows is described again.
-    CHECK_FALSE(pager.Update(false, 4).has_value());
-    CHECK(pager.Update(true, 4) == 4);
+    CHECK_FALSE(pager.Update(true, -1, 2.7, 1.3).has_value());
+    // Put down and raised again: the photo it shows is described again, after its prompt again.
+    CHECK_FALSE(pager.Update(false, 4, 3.0, 1.3).has_value());
+    CHECK_FALSE(pager.Update(true, 4, 4.0, 1.3).has_value());
+    CHECK(pager.Update(true, 4, 4.5, 4.2) == 4);
+    // No prompt at all: the photo once its while has run.
     pager.Reset();
-    CHECK(pager.Update(true, 4) == 4);
+    CHECK_FALSE(pager.Update(true, 4, 10.0, -1.0).has_value());
+    CHECK_FALSE(pager.Update(true, 4, 11.9, -1.0).has_value());
+    CHECK(pager.Update(true, 4, 12.0, -1.0) == 4);
+}
+
+TEST_CASE("pictures: the prologue's camera says its photo after the game's prompt, 2026-11-10")
+{
+    // research/sessions/s67-play.log: the camera raised at 18:44:30.767 (its photo 1), "A, D" and the way
+    // back said at 18:44:31.528, the pages turned at 39.068, 40.969, 42.771 and 44.175 (photos 2 to 5).
+    // The photo had come before the prompt, and its words were never found (CameraPictures read off
+    // its place).
+    picture::PhotoPager pager;
+    const double held = 30.767;
+    const double prompt = 31.528;
+    std::vector<std::pair<double, int>> said;
+    const auto look = [&](double now, int index, double promptAt)
+    {
+        if (const auto shown = pager.Update(true, index, now, promptAt)) said.emplace_back(now, *shown);
+    };
+    for (double now = held; now < 33.0; now += 0.1)
+        look(now, 0, now >= prompt ? prompt : -1.0);
+    look(39.068, 1, prompt);
+    look(40.969, 2, prompt);
+    look(42.771, 3, prompt);
+    look(44.175, 4, prompt);
+    REQUIRE(said.size() == 5);
+    CHECK(said[0].second == 0);
+    CHECK(said[0].first >= prompt + picture::kPromptSettle);
+    CHECK(said[0].first < prompt + picture::kPromptSettle + 0.11);
+    CHECK(said[4] == std::pair<double, int>{44.175, 4});
 }
 
 TEST_CASE("pictures: a long film is said in parts as it plays, the part it stands in once, none while static shows")

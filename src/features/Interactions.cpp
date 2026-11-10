@@ -11,6 +11,7 @@
 
 #include "core/Config.hpp"
 #include "core/GameThread.hpp"
+#include "core/LevelNames.hpp"
 #include "core/Log.hpp"
 #include "core/ObjectUtil.hpp"
 #include "core/ParamReader.hpp"
@@ -26,6 +27,7 @@
 #include "watch/GameState.hpp"
 #include "watch/Watchers.hpp"
 
+#include <Unreal/FWeakObjectPtr.hpp>
 #include <Unreal/NameTypes.hpp>
 
 #include <cmath>
@@ -75,7 +77,6 @@ namespace da::features
         // texture it shows.
 
         std::optional<picture::LookPlan> g_look; // the plan for the interaction in use, if any
-        std::wstring g_lookCore;                 // its core name
         bool g_lookSaid = false;
         std::wstring g_lookWords; // what was said for it, for the screen's readout
         int g_lookPage = 0;       // the spread said last, for a book read spread by spread
@@ -83,47 +84,43 @@ namespace da::features
         picture::PhotoPager g_photos;
         std::wstring g_photoWords; // the photo's words said last, which a page turned cuts short
 
-        // The name the scene scripts know an interaction by (its core properties' CoreName).
-        std::wstring CoreName(UObject* interaction)
-        {
-            UObject* core = nullptr;
-            std::wstring name;
-            if (obj::ReadObject(interaction, L"CoreProperties", core) && obj::IsLive(core)) obj::ReadString(core, L"CoreName", name);
-            return name;
-        }
-
+        // The picture's plan, by every name the game gives the interaction (picture::PlanFor): its core
+        // name, its name in the level's actor database, its class. The names go to the log, so that the
+        // next session's log shows which the game gives where nothing is described.
         void PlanLook(UObject* bound)
         {
             g_lookSaid = false;
             g_lookWords.clear();
             g_lookPage = 0;
-            g_lookCore = bound ? CoreName(bound) : std::wstring();
-            g_look = g_lookCore.empty() ? std::nullopt : picture::PlanFor(g_lookCore);
             g_photos.Reset();
             g_photoWords.clear();
+            g_look.reset();
+            if (!bound) return;
+            const std::vector<std::wstring> names = {level::CoreName(bound), level::FriendlyName(bound), obj::ClassName(bound)};
+            g_look = picture::PlanFor(names);
+            log::Info(L"interactions: {} goes by core name \"{}\", the level's name \"{}\"; {}", obj::ObjectName(bound), names[0], names[1],
+                      g_look ? L"its picture is described as \"" + g_look->key + L"\"" : std::wstring(L"no picture of it is described"));
         }
 
         void SayLook(const wchar_t* why)
         {
             if (!g_look || g_lookSaid) return;
             g_lookSaid = true;
-            const auto key = picture::LookKey(g_lookCore);
+            const auto key = picture::LookKey(g_look->key);
             const bool described = locale::Has(key);
-            log::Info(L"interactions: the picture of {} is shown ({}); {}", g_lookCore, why, described ? L"its words are said" : L"no words for it");
+            log::Info(L"interactions: the picture of {} is shown ({}); {}", g_look->key, why, described ? L"its words are said" : L"no words for it");
             if (!described) return;
             g_lookWords = Words(key);
             speech::Announce(g_lookWords);
         }
 
-        // The texture of the camera's photo at an index (CameraPictures, set on the level's camera), and
-        // how many photos it holds.
-        std::wstring PhotoTexture(UObject* camera, int index, int& count)
+        // How many photos the camera holds (CameraPictures, set on the level's camera), and the texture
+        // of the one at an index.
+        std::wstring PhotoAt(UObject* camera, int index, int& count)
         {
             std::wstring texture;
             count = 0;
-            auto* pictures = obj::FindProperty(camera, L"CameraPictures");
-            if (!pictures) return texture;
-            obj::ForEachArrayElement(obj::ValuePtr(camera, pictures), pictures,
+            obj::ForEachArrayElement(camera, obj::FindProperty(camera, L"CameraPictures"),
                                      [&](void* element, FProperty* inner)
                                      {
                                          UObject* picture = nullptr;
@@ -133,6 +130,19 @@ namespace da::features
             return texture;
         }
 
+        // The texture the camera's screen shows (CurrentPictureTexture, which UpdateCameraPictureTexture
+        // hands to the screen's material), else the one of CameraPictures at its index.
+        std::wstring ShownPhoto(UObject* camera, int index, int& count)
+        {
+            const std::wstring listed = PhotoAt(camera, index, count);
+            if (const auto* weak = static_cast<const RC::Unreal::FWeakObjectPtr*>(sym::MemberOf(camera, L"ABatesInteractionCamera.CurrentPictureTexture")))
+            {
+                UObject* texture = weak->Get();
+                if (obj::IsLive(texture)) return obj::ObjectName(texture);
+            }
+            return listed;
+        }
+
         // The camera held: the photo it shows (ABatesInteractionCamera: bIsHoldingCamera and
         // CurrentlySelectedPicture, kept by its native code; the stick pages through the photos, no wrap).
         void PollPhotos(UObject* camera)
@@ -140,10 +150,10 @@ namespace da::features
             const auto* holding = static_cast<const bool*>(sym::MemberOf(camera, L"ABatesInteractionCamera.bIsHoldingCamera"));
             const auto* index = static_cast<const int32_t*>(sym::MemberOf(camera, L"ABatesInteractionCamera.CurrentlySelectedPicture"));
             if (!holding || !index) return;
-            const auto shown = g_photos.Update(*holding, *index);
+            const auto shown = g_photos.Update(*holding, *index, gamethread::NowSeconds(), LastInteractionPromptAt());
             if (!shown) return;
             int count = 0;
-            const std::wstring texture = PhotoTexture(camera, *shown, count);
+            const std::wstring texture = ShownPhoto(camera, *shown, count);
             const auto key = picture::PictureKey(texture);
             const bool described = !texture.empty() && locale::Has(key);
             log::Info(L"interactions: the camera shows its photo {} of {} ({}); {}", *shown + 1, count, texture.empty() ? L"no texture" : texture,
@@ -172,9 +182,9 @@ namespace da::features
                 if (!page) continue;
                 if (*page == g_lookPage) return;
                 g_lookPage = *page;
-                const auto key = picture::PageKey(g_lookCore, *page);
+                const auto key = picture::PageKey(g_look->key, *page);
                 const bool described = locale::Has(key);
-                log::Info(L"interactions: {} shows its spread {} ({}); {}", g_lookCore, *page, state, described ? L"its words are said" : L"no words for it");
+                log::Info(L"interactions: {} shows its spread {} ({}); {}", g_look->key, *page, state, described ? L"its words are said" : L"no words for it");
                 if (!described) return;
                 const std::wstring words = Words(key);
                 if (g_lookWords.empty())

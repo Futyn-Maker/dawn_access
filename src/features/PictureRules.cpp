@@ -39,27 +39,35 @@ namespace da::picture
 
         struct Planned
         {
-            std::wstring_view coreName; // lower case
+            std::wstring_view key;       // its description's name (lower case), and a name the game gives it
+            std::wstring_view className; // its class, lower case, where its class is its own
             Moment moment;
             std::wstring_view state;
         };
 
-        // The interactions whose pictures the mod describes, and when.
+        // The interactions whose pictures the mod describes, and when; the moments are the game's own
+        // states, as the logs of chapters 5 and 6 show them.
         constexpr std::array<Planned, 6> kPlans = {
             // Dr. Hill's card is picked up face down and turned over with the stick (act20_1,
-            // BP_PsychSession_PickUp: its examine stage reveals).
-            Planned{L"i_psychsession_1_interaction", Moment::Reveals, L""},
-            // Sam's sketchbook is held shut, then opened on its second spread (act5_3, BP_sam_sketchbook:
-            // closed_ik_idle, then page2_idle_right); the swipes turn its pages, each spread two pencil
-            // portraits (T_Sams_Sketchpad_Paper_CLR_BM, laid on the mesh's three sheets and two covers).
-            Planned{L"i_sams_sketchbook", Moment::Pages, L""},
+            // BP_PsychSession_PickUp, which no other level places: its examine stage reveals). It has no
+            // core name; its activity starts it as I_psychsession_1_Interaction.
+            Planned{L"i_psychsession_1_interaction", L"bp_psychsession_pickup_c", Moment::Reveals, L""},
+            // Sam's sketchbook is held shut, then opened on its second spread (act5_3, BP_sam_sketchbook,
+            // in the old hotel alone: closed_ik_idle, then page2_idle_right); the swipes turn its pages,
+            // each spread two pencil portraits (T_Sams_Sketchpad_Paper_CLR_BM, laid on the mesh's three
+            // sheets and two covers). It has no core name either; the level calls it I_sams_sketchbook.
+            Planned{L"i_sams_sketchbook", L"bp_sam_sketchbook_c", Moment::Pages, L""},
             // The station's map is taken down from the wall and held up to look at (act4_3, BP_Map:
-            // grab_idle, map_adjust, then map_inspect1), and looked at again with Emily and without her.
-            Planned{L"i_map", Moment::State, L"map_inspect1"},
-            Planned{L"i_lookatmap_with_emily", Moment::Begins, L""},
-            Planned{L"i_lookatmap_without_emily", Moment::Begins, L""},
-            // The words painted over the station's walls (act4_3, BP_Graffiti: a look at the wall).
-            Planned{L"i_graffiti", Moment::Begins, L""},
+            // grab_idle, map_adjust, then map_inspect1), and looked at again with Emily (stand_to_inspect,
+            // then inspect_idle 1.1 s on, for 3.3 s) and without her (stand_to_inspect1, then inspect_idle1
+            // 0.9 s on; research/sessions/s54-full.log, 22:12:19 to 22:21:14). Their core names are set in
+            // the level.
+            Planned{L"i_map", L"", Moment::State, L"map_inspect1"},
+            Planned{L"i_lookatmap_with_emily", L"", Moment::State, L"inspect_idle"},
+            Planned{L"i_lookatmap_without_emily", L"", Moment::State, L"inspect_idle1"},
+            // The words painted over the station's walls (act4_3, BP_Graffiti, whose class sets its core
+            // name: a look at the wall, examine_into, then examine_idle 3 s on as the look stands).
+            Planned{L"i_graffiti", L"", Moment::State, L"examine_idle"},
         };
     }
 
@@ -196,19 +204,23 @@ namespace da::picture
         return L"picture." + str::ToLower(texture);
     }
 
-    std::optional<LookPlan> PlanFor(std::wstring_view coreName)
+    std::optional<LookPlan> PlanFor(const std::vector<std::wstring>& names)
     {
-        const std::wstring lower = str::ToLower(coreName);
-        for (const auto& p : kPlans)
+        for (const auto& name : names)
         {
-            if (p.coreName == lower) return LookPlan{p.moment, std::wstring(p.state)};
+            if (name.empty()) continue;
+            const std::wstring lower = str::ToLower(name);
+            for (const auto& p : kPlans)
+            {
+                if (p.key == lower || (!p.className.empty() && p.className == lower)) return LookPlan{p.moment, std::wstring(p.state), std::wstring(p.key)};
+            }
         }
         return std::nullopt;
     }
 
-    std::wstring LookKey(std::wstring_view coreName)
+    std::wstring LookKey(std::wstring_view planKey)
     {
-        return L"look." + str::ToLower(coreName);
+        return L"look." + str::ToLower(planKey);
     }
 
     std::optional<int> PageOf(std::wstring_view state)
@@ -228,7 +240,7 @@ namespace da::picture
         return LookKey(coreName) + L"." + std::to_wstring(page);
     }
 
-    std::optional<int> PhotoPager::Update(bool holding, int index)
+    std::optional<int> PhotoPager::Update(bool holding, int index, double now, double promptAt)
     {
         if (!holding)
         {
@@ -236,8 +248,18 @@ namespace da::picture
             m_said = -1;
             return std::nullopt;
         }
-        m_holding = true;
+        if (!m_holding)
+        {
+            m_holding = true;
+            m_heldAt = now;
+        }
         if (index < 0 || index == m_said) return std::nullopt;
+        // The first photo after the prompt said as the camera came up, its line on the bar with it.
+        if (m_said < 0)
+        {
+            const bool prompted = promptAt >= m_heldAt && now - promptAt >= kPromptSettle;
+            if (!prompted && now - m_heldAt < kPromptWaitMost) return std::nullopt;
+        }
         m_said = index;
         return index;
     }
@@ -245,6 +267,7 @@ namespace da::picture
     void PhotoPager::Reset()
     {
         m_holding = false;
+        m_heldAt = 0.0;
         m_said = -1;
     }
 }
