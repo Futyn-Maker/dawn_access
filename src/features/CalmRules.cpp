@@ -17,6 +17,13 @@ namespace da::calm
         return std::max(std::fabs(m.x), std::fabs(m.y)) >= m.edge;
     }
 
+    Way WayOf(int steerRight, int steerUp)
+    {
+        if (steerUp != 0 && std::abs(steerUp) >= std::abs(steerRight)) return steerUp > 0 ? Way::Up : Way::Down;
+        if (steerRight != 0) return steerRight > 0 ? Way::Right : Way::Left;
+        return Way::None;
+    }
+
     Step Follower::Update(double now, const Marker& m, bool modeKnown, bool passive)
     {
         Step step;
@@ -104,6 +111,12 @@ namespace da::calm
                     step.steerChanged = changed;
                     step.steerRight = right;
                     step.steerUp = up;
+                    // A new way is said once; the same word again only for a new pull.
+                    if (changed && WayOf(right, up) != m_said)
+                    {
+                        m_said = WayOf(right, up);
+                        step.word = m_said;
+                    }
                     step.sounds.push_back({Sound::Kind::Steer, right / 2.0, up / 2.0, beyond});
                     return step;
                 }
@@ -112,6 +125,7 @@ namespace da::calm
             {
                 m_steerRight = 0;
                 m_steerUp = 0;
+                m_said = Way::None;
             }
             if (beyond) return step; // the signal is the sound past the edge
             // Inside: the double ping every half second.

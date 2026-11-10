@@ -82,6 +82,20 @@ namespace da::calm
         bool beyond = false; // the low thud in front: the marker past the edge
     };
 
+    // The way to push, in one word (dir.up, dir.down, dir.left, dir.right), said at both levels as each
+    // new way is first signalled, while its notes go on as before (Andrey, 2026-11-10: the notes alone
+    // did not tell the way soon enough at the prologue's first encounters). The word is the axis the way
+    // leans on most; a way as much up as aside is up or down, as its notes are.
+    enum class Way
+    {
+        None,
+        Up,
+        Down,
+        Left,
+        Right,
+    };
+    Way WayOf(int steerRight, int steerUp);
+
     // What a look at the marker gives: its sounds in order, and what changed, for the log.
     struct Step
     {
@@ -96,6 +110,7 @@ namespace da::calm
         bool steerChanged = false; // with a new way to push (else a repeat past the edge)
         int steerRight = 0;        // the way, in halves
         int steerUp = 0;
+        Way word = Way::None;      // the way to say now: a new way, not the word said last for this pull
         bool moving = false;        // the passive version: the game counts the controller moving
         bool movingChanged = false;
     };
@@ -139,5 +154,6 @@ namespace da::calm
         double m_lastPingAt = -10.0;
         int m_steerRight = 0; // the way last steered, in halves
         int m_steerUp = 0;
+        Way m_said = Way::None; // the way last said, until the pull ends
     };
 }

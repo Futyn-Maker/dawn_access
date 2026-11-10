@@ -347,6 +347,16 @@ namespace da::features
                               step.beyond ? L"back from the edge" : L"against the pull", step.beyond ? L" with thud" : L"");
                 else
                     log::Verbose(L"dontmove: {} sound: signal {}{} with thud", name(), vertical, side);
+                // The new way in one word, at both levels, over whatever is being said.
+                if (step.word != calm::Way::None)
+                {
+                    const wchar_t* key = step.word == calm::Way::Up     ? L"dir.up"
+                                         : step.word == calm::Way::Down ? L"dir.down"
+                                         : step.word == calm::Way::Left ? L"dir.left"
+                                                                        : L"dir.right";
+                    log::Info(L"dontmove: {} the way said: {}", name(), key);
+                    speech::Urgent(locale::Mod(key));
+                }
             }
             for (size_t i = 0; i < step.sounds.size(); ++i)
             {

@@ -323,3 +323,102 @@ TEST_CASE("calm: the active version's start is told by the mod's word, the passi
     CHECK(calm::StartWordsOf(true, false, false, false) == StartWords::Game);
     CHECK(calm::StartWordsOf(true, true, true, true) == StartWords::Wait);
 }
+
+TEST_CASE("calm: each new way to push is said once in a word, the signal going on as before: the prologue's encounters, 2026-11-10")
+{
+    // The tutorial's second encounter (research/sessions/s67-play.log, 18:32:45 to 18:32:55): a pull
+    // left, the same again after it ended, back from the edge the other way and back again, then a
+    // pull to the right. Each new way was told by its notes alone.
+    calm::Follower f;
+    f.Update(T(0), At(0.0, 0.0), true, false);
+    calm::Marker pulled = At(0.1, 0.0);
+    pulled.pulled = true;
+    pulled.pullX = 0.5; // pulled to the right: push left
+    auto step = f.Update(T(1), pulled, true, false);
+    REQUIRE(step.steered);
+    CHECK(step.word == calm::Way::Left);
+    // The same pull, and past the edge the signal again and again: no word more.
+    for (int poll = 2; poll < 6; ++poll)
+        CHECK(f.Update(T(poll), pulled, true, false).word == calm::Way::None);
+    calm::Marker out = At(0.9, 0.0); // drifted out to the right: push left, the signal every third of a second
+    int signals = 0;
+    for (int poll = 6; poll < 14; ++poll)
+    {
+        step = f.Update(T(poll), out, true, false);
+        if (step.steered) ++signals;
+        CHECK(step.word == calm::Way::None);
+    }
+    CHECK(signals >= 2);
+    // Pushed too far, out to the left: push right, said once.
+    out = At(-0.9, 0.0);
+    step = f.Update(T(14), out, true, false);
+    REQUIRE(step.steered);
+    CHECK(step.word == calm::Way::Right);
+    CHECK(f.Update(T(17), out, true, false).word == calm::Way::None);
+    // Back inside and the pull gone; a new pull the same way as the first is a new pull: said again.
+    calm::Marker still = At(0.1, 0.0);
+    f.Update(T(20), still, true, false);
+    f.Update(T(24), still, true, false);
+    step = f.Update(T(26), pulled, true, false);
+    REQUIRE(step.steered);
+    CHECK(step.word == calm::Way::Left);
+    // Up the screen is a smaller y: a pull up asks for a push down.
+    calm::Follower g;
+    g.Update(T(0), At(0.0, 0.0), true, false);
+    calm::Marker up = At(0.0, -0.1);
+    up.pulled = true;
+    up.pullY = -0.5;
+    step = g.Update(T(1), up, true, false);
+    REQUIRE(step.steered);
+    CHECK(step.word == calm::Way::Down);
+}
+
+TEST_CASE("calm: the word is the axis the way leans on most; past the edge a turn of half a step keeps the word")
+{
+    CHECK(calm::WayOf(0, 2) == calm::Way::Up);
+    CHECK(calm::WayOf(0, -2) == calm::Way::Down);
+    CHECK(calm::WayOf(-2, 0) == calm::Way::Left);
+    CHECK(calm::WayOf(2, 1) == calm::Way::Right);
+    CHECK(calm::WayOf(1, -2) == calm::Way::Down);
+    CHECK(calm::WayOf(2, 2) == calm::Way::Up); // as its notes are: the rising run
+    CHECK(calm::WayOf(0, 0) == calm::Way::None);
+    // Out down and drifting a little aside: the way back turns by half a step, the word stays.
+    calm::Follower f;
+    f.Update(T(0), At(0.0, 0.0), true, false);
+    auto step = f.Update(T(1), At(0.0, 0.9), true, false);
+    REQUIRE(step.steered);
+    CHECK(step.word == calm::Way::Up);
+    step = f.Update(T(2), At(0.3, 0.9), true, false);
+    REQUIRE(step.steered);
+    CHECK(step.steerChanged);
+    CHECK(step.word == calm::Way::None);
+}
+
+TEST_CASE("calm: the passive version and the version unknown say no way")
+{
+    for (const bool modeKnown : {true, false})
+    {
+        calm::Follower f;
+        calm::Marker m = At(0.9, 0.0);
+        m.pulled = true;
+        m.pullX = 0.5;
+        for (int poll = 0; poll < 8; ++poll)
+            CHECK(f.Update(T(poll), m, modeKnown, true).word == calm::Way::None);
+    }
+}
+
+TEST_CASE("calm: a pull that ends and comes again the same way says its word again: the tutorial's two pulls left, 18:32:47 and 18:32:49")
+{
+    calm::Follower f;
+    f.Update(T(0), At(0.0, 0.0), true, false);
+    calm::Marker pulled = At(0.1, 0.0);
+    pulled.pulled = true;
+    pulled.pullX = 0.5; // pulled to the right: push left
+    CHECK(f.Update(T(1), pulled, true, false).word == calm::Way::Left);
+    calm::Marker free = pulled;
+    free.pulled = false; // the pull over, the marker inside
+    CHECK(f.Update(T(2), free, true, false).word == calm::Way::None);
+    const auto step = f.Update(T(3), pulled, true, false);
+    REQUIRE(step.steered);
+    CHECK(step.word == calm::Way::Left);
+}
