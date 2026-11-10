@@ -235,6 +235,13 @@ namespace da::sym
             // The events of the past's player shows static over a part not unlocked while it seeks to
             // the next one unlocked (ProcessUnlockedRegions).
             {L"UBatesEventsOfThePastMoviePlayer.bIsShowingStatic", 0x188}, // bool
+            // The key a prompt draws for an action, as the UI framework works it out per device
+            // (UBMUIActionMappingCache's ProcessedActionMappings, whose values these are): the
+            // keyboard and mouse's key leads the value, the pad's follows; each is the key's FKey (its
+            // name first) and the action held for it to count, its chord.
+            {L"FProcessedActionMapping.Size", 0x128},
+            {L"FProcessedActionMapping.GamepadKey", 0x20},  // FKeyWithChord; KeyboardAndMouseKey at 0
+            {L"FKeyWithChord.ChordAction", 0x18},          // TObjectPtr<const UInputAction>
         };
 
         struct CodeViewRecord

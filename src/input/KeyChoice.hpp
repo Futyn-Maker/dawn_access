@@ -22,6 +22,47 @@ namespace da::input
     // action has.
     std::vector<std::wstring> KeysForDevice(const std::vector<std::wstring>& keys, bool pad, const std::function<bool(const std::wstring&)>& gamepadKey);
 
+    // The game's setting for which key its prompts draw where an action has several on the keyboard
+    // and the mouse (the controls tab's "Mouse/Keyboard Icons", UBatesGameUserSettings's
+    // KBMIconSwitchBehaviour, EBMUIKBMIconBehaviour): the first key mapped, a mouse button first, or a
+    // key of the keyboard first.
+    enum class IconPriority
+    {
+        Standard = 0,
+        Mouse = 1,
+        Keyboard = 2,
+    };
+
+    // A key as the engine tells it (UKismetInputLibrary's Key_IsDigital, Key_IsMouseButton and
+    // Key_IsGamepadKey).
+    struct KeyTraits
+    {
+        std::wstring name;
+        bool digital = true;
+        bool mouseButton = false;
+        bool gamepad = false;
+    };
+
+    // Which of an action's keys on the keyboard and the mouse its prompt draws, as the game's UI
+    // framework picks it (FProcessedActionMapping::ProcessKeyArray, 0x421ef70), which the mod reads
+    // where it can and follows here where it cannot: a key alone is drawn; of several, the first in the
+    // game's order, unless the setting prefers the mouse (the first mouse button) or the keyboard (the
+    // first digital key that is neither a mouse button nor a pad's), and the first again where none is
+    // such. Keys bound to nothing ("None") are passed over. -1 for none. With the keyboard preferred,
+    // grabbing the prologue's note drew E, of [LeftMouseButton, E], where the mod had said the first
+    // (research/sessions/s67-play.log, 18:54:35).
+    int ShownKeyIndex(const std::vector<KeyTraits>& keys, IconPriority priority);
+
+    // The words of a key cap drawn with a chord (FKeyWithChord's ChordAction: the action held for the
+    // key to count): the cap's picture lights the chord's key where it is a mouse button, and only
+    // then (UBMUIInputActionInternalWidget::Setup sets the mouse picture's button from its
+    // MouseButtonIndexMap), so a swipe of the mouse, made with the left button held, is "left mouse
+    // button + mouse right" (`join` of the chord's words and the key's, key.chord); a chord the cap
+    // does not draw leaves the key's words alone. The prologue's phone swipe was said "mouse right",
+    // and moving the mouse did nothing until the left button was held (s67, 19:02:03).
+    std::wstring CapWords(const std::wstring& keyWords, const std::wstring& chordWords, bool chordMouseButton,
+                          const std::function<std::wstring(const std::wstring&, const std::wstring&)>& join);
+
     // A chord's second button pressed a moment before its hold reaches the game, which takes it as it
     // goes down: R1 pressed a frame before the touch pad opened the game's status page five times of
     // thirty-six last-subtitle chords on 2026-11-09 (research/sessions/s63-play.log, 01:04:18 and on).

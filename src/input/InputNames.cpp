@@ -11,6 +11,7 @@
 #include "locale/Locale.hpp"
 
 #include <Unreal/Core/Containers/Array.hpp>
+#include <Unreal/CoreUObject/UObject/UnrealType.hpp>
 #include <Unreal/NameTypes.hpp>
 
 #include <windows.h>
@@ -254,6 +255,147 @@ namespace da::input
             }
             return pad;
         }
+
+        // What else the engine says of a key (input::ShownKeyIndex), asked once a key.
+        std::map<std::wstring, KeyTraits> g_keyTraits;
+
+        KeyTraits TraitsOf(const std::wstring& keyName)
+        {
+            {
+                fault::Guard lock(g_mutex, L"input");
+                const auto it = g_keyTraits.find(keyName);
+                if (it != g_keyTraits.end()) return it->second;
+            }
+            KeyTraits traits;
+            traits.name = keyName;
+            traits.gamepad = IsGamepadKey(keyName);
+            const bool digital =
+                CallOnKey(L"Key_IsDigital", keyName, [&](void* params, FProperty* prop) { obj::ReadBoolAt(params, prop, traits.digital); });
+            const bool mouse =
+                CallOnKey(L"Key_IsMouseButton", keyName, [&](void* params, FProperty* prop) { obj::ReadBoolAt(params, prop, traits.mouseButton); });
+            if (digital && mouse)
+            {
+                fault::Guard lock(g_mutex, L"input");
+                g_keyTraits[keyName] = traits;
+            }
+            return traits;
+        }
+
+        // ---- the key the game's prompts draw ---------------------------------------------------
+        //
+        // The game's UI framework works out once, per action and device, the key its prompts draw
+        // (UBMUIActionMappingCache::RebuildActionCache over the mapping context in play, under the
+        // player's mouse and keyboard icon setting, FProcessedActionMapping::ProcessKeyArray), and every
+        // prompt's key cap draws that key and its chord (UBMUIInputActionWidget::Setup, by
+        // GetRelevantKeys): the UI subsystem's ActionMappingCache keeps them in its
+        // ProcessedActionMappings, by action.
+        struct ShownKey
+        {
+            std::wstring key;      // the engine's name of the key
+            UObject* chord = nullptr; // the action held for it to count, if any
+        };
+
+        UObject* ActionMappingCache()
+        {
+            static UObject* ui = nullptr;
+            if (!ui || !obj::IsLive(ui)) ui = obj::FindFirstLive(L"BMUISubsystem");
+            UObject* cache = nullptr;
+            if (!ui || !obj::ReadObject(ui, L"ActionMappingCache", cache) || !obj::IsLive(cache)) return nullptr;
+            return cache;
+        }
+
+        // The key the cache keeps for an action and a device: the value's keyboard and mouse key (its
+        // first member) or the pad's, each an FKeyWithChord, its FKey's name first. The layouts are the
+        // database's, used only for its build and a value of its size.
+        bool ReadShownKey(UObject* cache, UObject* action, bool pad, ShownKey& out)
+        {
+            if (!cache || !action || !sym::BuildMatches()) return false;
+            auto* prop = obj::FindProperty(cache, L"ProcessedActionMappings");
+            if (!prop || obj::PropertyTypeName(prop) != L"MapProperty") return false;
+            auto* map = static_cast<RC::Unreal::FMapProperty*>(prop);
+            const FProperty* value = map->GetValueProp();
+            const auto& layout = map->GetMapLayout();
+            const int32_t stride = layout.SetLayout.Size;
+            const int32_t valueAt = layout.ValueOffset;
+            const size_t padAt = sym::Offset(L"FProcessedActionMapping.GamepadKey");
+            const size_t chordAt = sym::Offset(L"FKeyWithChord.ChordAction");
+            if (!value || static_cast<size_t>(value->GetSize()) != sym::Offset(L"FProcessedActionMapping.Size") || stride <= 0 || stride > 0x400 ||
+                valueAt <= 0 || padAt == 0 || chordAt == 0)
+                return false;
+            // The map's sparse array: its elements, their count, and the bits of those in use (inline
+            // up to 128, past that on the heap).
+            const auto* base = static_cast<const uint8_t*>(obj::ValuePtr(cache, prop));
+            if (!base) return false;
+            const auto* elements = *reinterpret_cast<const uint8_t* const*>(base);
+            const int32_t count = *reinterpret_cast<const int32_t*>(base + 0x08);
+            const int32_t maxBits = *reinterpret_cast<const int32_t*>(base + 0x2c);
+            if (!elements || count <= 0 || count > 4096) return false;
+            const auto* bits = maxBits > 128 ? *reinterpret_cast<const uint32_t* const*>(base + 0x20) : reinterpret_cast<const uint32_t*>(base + 0x10);
+            if (!bits) return false;
+            for (int32_t i = 0; i < count; ++i)
+            {
+                if ((bits[i / 32] & (1u << (i % 32))) == 0) continue; // a free slot
+                const uint8_t* element = elements + static_cast<size_t>(i) * static_cast<size_t>(stride);
+                if (*reinterpret_cast<UObject* const*>(element) != action) continue;
+                const uint8_t* mapping = element + valueAt + (pad ? padAt : 0);
+                out.key = const_cast<FName*>(reinterpret_cast<const FName*>(mapping))->ToString();
+                out.chord = *reinterpret_cast<UObject* const*>(mapping + chordAt);
+                return true;
+            }
+            return false;
+        }
+
+        // What the game said a prompt of an action draws, last told the log.
+        std::map<std::wstring, std::wstring> g_shownLogged;
+
+        // The words of the key the game's prompts draw for an action on the keyboard and the mouse,
+        // with the chord its cap lights; empty where the game's cache does not have it. The pad's keys
+        // keep the mod's own rule (input::KeysForDevice), which every pad session has matched to the
+        // caps the game draws, its touch pad's among them.
+        std::wstring GameShownWords(const std::wstring& action)
+        {
+            UObject* cache = ActionMappingCache();
+            UObject* asset = cache ? ActionByName(action) : nullptr;
+            ShownKey shown;
+            if (!ReadShownKey(cache, asset, false, shown) || shown.key.empty() || shown.key == L"None") return {};
+            const std::wstring keyWords = KeyDisplayName(shown.key);
+            std::wstring chordKey;
+            std::wstring chordWords;
+            bool chordMouse = false;
+            ShownKey chord;
+            if (shown.chord && obj::IsLive(shown.chord) && ReadShownKey(cache, shown.chord, false, chord) && !chord.key.empty() && chord.key != L"None")
+            {
+                chordKey = chord.key;
+                chordMouse = TraitsOf(chord.key).mouseButton;
+                chordWords = KeyDisplayName(chord.key);
+            }
+            const std::wstring words =
+                CapWords(keyWords, chordWords, chordMouse, [](const std::wstring& c, const std::wstring& k) { return locale::Mod(L"key.chord", c, k); });
+            const std::wstring said = shown.key + (chordKey.empty() ? std::wstring() : L" held with " + chordKey) + L": " + words;
+            {
+                fault::Guard lock(g_mutex, L"input");
+                auto& logged = g_shownLogged[action];
+                if (logged == said) return words;
+                logged = said;
+            }
+            log::Verbose(L"input: the game's prompts draw {} as {}", action, said);
+            return words;
+        }
+
+        // The player's mouse and keyboard icon setting, as the game's settings hold it.
+        IconPriority GameIconPriority()
+        {
+            static UObject* settings = nullptr;
+            if (!settings || !obj::IsLive(settings)) settings = obj::FindFirstLive(L"BatesGameUserSettings");
+            int64_t value = 0;
+            if (settings)
+                obj::CallReturn(settings, L"BP_GetKBMIconSwitchBehaviour",
+                                [&](void* params, FProperty* returnValue)
+                                {
+                                    if (returnValue) obj::ReadIntAt(params, returnValue, value);
+                                });
+            return value == 1 ? IconPriority::Mouse : value == 2 ? IconPriority::Keyboard : IconPriority::Standard;
+        }
     }
 
     void NoteHotkeyDevice(Scheme scheme)
@@ -431,15 +573,36 @@ namespace da::input
     {
         const Scheme scheme = CurrentScheme();
         const std::wstring action(actionName);
-        // The words depend on the device and on the make of the pad the game draws for.
-        const auto cacheKey = std::make_pair(static_cast<int>(scheme) + (GameVendor() == Vendor::PlayStation ? 16 : 0), action);
+        // On the keyboard and the mouse, the key the game's own prompts draw, as its UI framework
+        // worked it out (asked of the game on its thread; the setting can change it at any time).
+        const bool desk = scheme != Scheme::Gamepad;
+        if (desk && gamethread::IsGameThread())
+        {
+            const auto shown = GameShownWords(action);
+            if (!shown.empty()) return shown;
+        }
+        // Else the game's rule over the keys the engine maps to the action: the words depend on the
+        // device, on the make of the pad the game draws for and, on the keyboard and the mouse, on the
+        // icon setting.
+        const IconPriority priority = desk && gamethread::IsGameThread() ? GameIconPriority() : IconPriority::Standard;
+        const auto cacheKey =
+            std::make_pair(static_cast<int>(scheme) + (GameVendor() == Vendor::PlayStation ? 16 : 0) + 32 * static_cast<int>(priority), action);
         {
             fault::Guard lock(g_mutex, L"input");
             const auto it = g_actionCache.find(cacheKey);
             if (it != g_actionCache.end()) return it->second;
         }
         const auto keys = SchemeKeys(action, scheme);
-        const std::wstring display = keys.empty() ? std::wstring() : KeyDisplayName(keys.front());
+        size_t chosen = 0;
+        if (desk && keys.size() > 1)
+        {
+            std::vector<KeyTraits> traits;
+            for (const auto& key : keys)
+                traits.push_back(TraitsOf(key));
+            const int index = ShownKeyIndex(traits, priority);
+            if (index >= 0) chosen = static_cast<size_t>(index);
+        }
+        const std::wstring display = keys.empty() ? std::wstring() : KeyDisplayName(keys[chosen]);
         // Nothing found is not remembered: the action's context may not be applied yet.
         if (!display.empty())
         {
@@ -616,6 +779,7 @@ namespace da::input
         g_schemeKeysCache.clear();
         g_keyNameCache.clear();
         g_actions.clear();
+        g_shownLogged.clear();
     }
 
     // ---- input activity ----------------------------------------------------

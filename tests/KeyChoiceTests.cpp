@@ -115,3 +115,68 @@ TEST_CASE("a shoulder button waits a reading or two for the chord's hold before 
     CHECK(given == 4);
     CHECK(pads.HeldBack(input::ChordGraces::kPads, rb, false, graced) == 0);
 }
+
+namespace
+{
+    // The keys as the engine tells them: the mouse's buttons are mouse buttons, the mouse's moves are
+    // not digital, the pad's are a pad's.
+    input::KeyTraits Key(const wchar_t* name)
+    {
+        const std::wstring n(name);
+        input::KeyTraits k;
+        k.name = n;
+        k.mouseButton = n == L"LeftMouseButton" || n == L"RightMouseButton" || n == L"MiddleMouseButton";
+        k.digital = !(n == L"MouseX" || n == L"MouseY" || n == L"Mouse2D" || n.rfind(L"Gamepad_Left", 0) == 0);
+        k.gamepad = n.rfind(L"Gamepad_", 0) == 0;
+        return k;
+    }
+
+    int Shown(std::initializer_list<const wchar_t*> names, input::IconPriority priority)
+    {
+        std::vector<input::KeyTraits> keys;
+        for (const auto* n : names)
+            keys.push_back(Key(n));
+        return input::ShownKeyIndex(keys, priority);
+    }
+
+    std::wstring Join(const std::wstring& chord, const std::wstring& key)
+    {
+        return chord + L" + " + key;
+    }
+}
+
+TEST_CASE("keys: the prompt draws the key the game's mouse and keyboard icon setting prefers, 2026-11-10")
+{
+    using P = input::IconPriority;
+    // The prologue's laptop: grabbing the note, IA_GrabInteraction [LeftMouseButton, E] on the keyboard
+    // and the mouse. With Andrey's setting at "Prefer Keyboard" the game drew E; the mod said the first.
+    CHECK(Shown({L"LeftMouseButton", L"E"}, P::Keyboard) == 1);
+    CHECK(Shown({L"LeftMouseButton", L"E"}, P::Standard) == 0);
+    CHECK(Shown({L"LeftMouseButton", L"E"}, P::Mouse) == 0);
+    // The interaction's press, IA_StartInteraction [E, LeftMouseButton]: the mouse preferred draws its button.
+    CHECK(Shown({L"E", L"LeftMouseButton"}, P::Mouse) == 1);
+    CHECK(Shown({L"E", L"LeftMouseButton"}, P::Keyboard) == 0);
+    CHECK(Shown({L"E", L"LeftMouseButton"}, P::Standard) == 0);
+    // The way back, IA_BackoutInteraction [BackSpace, RightMouseButton].
+    CHECK(Shown({L"BackSpace", L"RightMouseButton"}, P::Mouse) == 1);
+    // A key alone is drawn whatever the setting prefers; a key bound to nothing is passed over.
+    CHECK(Shown({L"MouseRight"}, P::Keyboard) == 0);
+    CHECK(Shown({L"None", L"W"}, P::Standard) == 1);
+    CHECK(Shown({L"W", L"None"}, P::Mouse) == 0);
+    // No key of the kind preferred: the first.
+    CHECK(Shown({L"Mouse2D", L"LeftMouseButton"}, P::Keyboard) == 0);
+    CHECK(Shown({}, P::Standard) == -1);
+    CHECK(Shown({L"None"}, P::Standard) == -1);
+}
+
+TEST_CASE("keys: a mouse swipe's cap lights the left button it is made with; other chords are not drawn, 2026-11-10")
+{
+    // The prologue's phone, IA_Swipe_Right: MouseRight chorded with IA_MouseClickChord, the left
+    // button (MC_Gameplay); moving the mouse did nothing until the button was held.
+    CHECK(input::CapWords(L"mouse right", L"left mouse button", true, &Join) == L"left mouse button + mouse right");
+    // A chord whose key is no mouse button is not drawn on the cap, and no chord leaves the key alone.
+    CHECK(input::CapWords(L"mouse right", L"E", false, &Join) == L"mouse right");
+    CHECK(input::CapWords(L"mouse right", L"", true, &Join) == L"mouse right");
+    // A quick-time event's stick direction on the mouse, IA_QTELeftStickRight: MouseRight with no chord.
+    CHECK(input::CapWords(L"mouse right", L"", false, &Join) == L"mouse right");
+}

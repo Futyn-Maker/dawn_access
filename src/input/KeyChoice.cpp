@@ -35,6 +35,29 @@ namespace da::input
         if (own.empty() && !keys.empty()) own.push_back(keys.front());
         return own;
     }
+
+    int ShownKeyIndex(const std::vector<KeyTraits>& keys, IconPriority priority)
+    {
+        int first = -1;
+        int preferred = -1;
+        for (size_t i = 0; i < keys.size(); ++i)
+        {
+            const auto& key = keys[i];
+            if (key.name.empty() || key.name == L"None") continue;
+            if (first < 0) first = static_cast<int>(i);
+            if (preferred >= 0) continue;
+            if (priority == IconPriority::Mouse && key.mouseButton) preferred = static_cast<int>(i);
+            if (priority == IconPriority::Keyboard && key.digital && !key.mouseButton && !key.gamepad) preferred = static_cast<int>(i);
+        }
+        return preferred >= 0 ? preferred : first;
+    }
+
+    std::wstring CapWords(const std::wstring& keyWords, const std::wstring& chordWords, bool chordMouseButton,
+                          const std::function<std::wstring(const std::wstring&, const std::wstring&)>& join)
+    {
+        if (!chordMouseButton || chordWords.empty() || keyWords.empty() || !join) return keyWords;
+        return join(chordWords, keyWords);
+    }
 }
 
 namespace da::input
