@@ -657,6 +657,22 @@ namespace da::ways
     // platform's first stretch lying nearer over the ground than the walkway's, until the walk gave
     // up. The road's heights and hers are taken alike (the corners at the height of her middle).
     int StretchOn(const std::vector<Vec>& corners, size_t count, const Vec& here, double reach, double rise);
+
+    // The corner the beacon and the spoken bearing lead her to while she walks by herself: the one that
+    // ends the stretch she stands on (StretchOn), and past it the next once she is within kCornerPassed
+    // of it or has gone beyond it along its stretch; with the length of the road left from her through
+    // it. Asked afresh at every look: the walk's own corner is refreshed only now and then (a road is
+    // kept 1.5 s while no walk runs), and a corner passed meanwhile was said to lie behind her ("6 m,
+    // behind" seven seconds after "9 m, ahead left", walking to the pool by the beacon,
+    // research/sessions/s66-play.log, 16:15:17 to 16:15:24); at a sharp turn walked past, the nearest
+    // stretch is still the one that ends at the corner behind her. Nothing when she is on no stretch.
+    constexpr double kCornerPassed = 60.0;
+    struct Lead
+    {
+        size_t corner = 0;
+        double length = 0.0;
+    };
+    std::optional<Lead> LeadCorner(const std::vector<Vec>& corners, size_t count, const Vec& here, double reach, double rise);
     constexpr double kStretchRise = 150.0;
 
     // The way left from where she stands along a road the walk follows, as the walk heads for its

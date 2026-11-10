@@ -552,6 +552,38 @@ namespace da::ways
         return stretch;
     }
 
+    std::optional<Lead> LeadCorner(const std::vector<Vec>& corners, size_t count, const Vec& here, double reach, double rise)
+    {
+        count = std::min(count, corners.size());
+        const int on = StretchOn(corners, count, here, reach, rise);
+        if (on < 0) return std::nullopt;
+        const auto flat = [](const Vec& a, const Vec& b) { return std::hypot(a.x - b.x, a.y - b.y); };
+        size_t next = static_cast<size_t>(on);
+        while (next + 1 < count)
+        {
+            if (flat(here, corners[next]) < kCornerPassed)
+            {
+                ++next;
+                continue;
+            }
+            if (next == 0) break;
+            // Beyond the corner along the stretch that ends there.
+            const Vec& a = corners[next - 1];
+            const Vec& b = corners[next];
+            const double abx = b.x - a.x;
+            const double aby = b.y - a.y;
+            const double length = abx * abx + aby * aby;
+            if (length <= 1.0 || ((here.x - a.x) * abx + (here.y - a.y) * aby) / length < 1.0) break;
+            ++next;
+        }
+        Lead lead;
+        lead.corner = next;
+        lead.length = flat(here, corners[next]);
+        for (size_t i = next + 1; i < count; ++i)
+            lead.length += flat(corners[i - 1], corners[i]);
+        return lead;
+    }
+
     Vec SlideWalk(const Sweep& sweep, const Vec& from, const Vec& to, int& touches)
     {
         Vec pos = from;

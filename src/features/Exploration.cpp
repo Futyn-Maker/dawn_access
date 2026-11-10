@@ -53,6 +53,7 @@
 #include <map>
 #include <memory>
 #include <numbers>
+#include <optional>
 #include <regex>
 #include <set>
 #include <string>
@@ -6047,9 +6048,49 @@ namespace da::features
             return cells ? *cells * kCellSize : -1.0;
         }
 
+        // Where the beacon and the spoken bearing lead: while she walks by herself, the corner of the road
+        // ahead of her, asked afresh at every look (ways::LeadCorner), with the road left through it; the
+        // walk's own corner while a walk runs (the beacon leads where the walk goes).
+        struct LeadPoint
+        {
+            Vec point;
+            std::optional<double> length;
+            std::optional<size_t> corner; // the corner's place on the road, for the log
+            size_t corners = 0;
+        };
+
+        LeadPoint LeadOf(const Target& t, const Vec& here)
+        {
+            if (!g_walking)
+            {
+                const std::vector<Vec>* corners = nullptr;
+                if (!t.detour.empty())
+                    corners = &t.detour;
+                else if (!t.gridCorners.empty() && FlatDistance(Aim(t), t.gridGoal) < 50.0)
+                    corners = &t.gridCorners;
+                if (corners)
+                {
+                    if (const auto lead = ways::LeadCorner(*corners, corners->size(), here, 150.0, ways::kStretchRise))
+                        return LeadPoint{(*corners)[lead->corner], lead->length, lead->corner, corners->size()};
+                }
+            }
+            return LeadPoint{t.routeNext, std::nullopt, std::nullopt, 0};
+        }
+
+        // The distance said from where she stands: on her own, along the road left through the corner
+        // the beacon leads to.
+        double SpokenDistanceAt(const Target& t, const Vec& here)
+        {
+            if (t.hasRoute)
+            {
+                if (const auto lead = LeadOf(t, here); lead.length) return ways::SpokenDistance(t.distance, *lead.length, std::nullopt);
+            }
+            return SpokenDistance(t);
+        }
+
         double SpokenBearing(const Target& t, const Vec& here, double yaw)
         {
-            return t.hasRoute ? BearingDegrees(here, t.routeNext, yaw) : t.bearing;
+            return t.hasRoute ? BearingDegrees(here, LeadOf(t, here).point, yaw) : t.bearing;
         }
 
         // ---- what is said -------------------------------------------------------------------
@@ -6069,7 +6110,7 @@ namespace da::features
         std::wstring TargetText(const Target& t, const Vec& here, double yaw)
         {
             if (t.reached) return locale::Mod(L"explore.reached", t.label);
-            return locale::Mod(L"explore.target", {t.label, Metres(SpokenDistance(t)), Bearings(t, here, yaw)});
+            return locale::Mod(L"explore.target", {t.label, Metres(SpokenDistanceAt(t, here)), Bearings(t, here, yaw)});
         }
 
         // What the scanner says of the target it lands on: the target as ever, and, at the
@@ -6088,7 +6129,7 @@ namespace da::features
             if (position == 0) return TargetText(t, here, yaw);
             const auto place = locale::Mod(L"ui.pos", {std::to_wstring(position), std::to_wstring(total)});
             if (t.reached) return locale::Mod(L"explore.reached.pos", {t.label, place});
-            return locale::Mod(L"explore.target.pos", {t.label, Metres(SpokenDistance(t)), Bearings(t, here, yaw), place});
+            return locale::Mod(L"explore.target.pos", {t.label, Metres(SpokenDistanceAt(t, here)), Bearings(t, here, yaw), place});
         }
 
         std::wstring ListText()
@@ -8501,6 +8542,43 @@ namespace da::features
 
         // ---- free roaming ----------------------------------------------------------------
 
+        // While the beacon leads her and she walks by herself: once a second as she moves, and as the
+        // corner it leads to changes, where she stands and faces, the frames the bearing and the stick
+        // are read in, the corner and the road left through it, the bearing and its word, and the stick,
+        // so that what the beacon said can be laid beside where she went (the walk to the pool by the
+        // beacon, research/sessions/s66-play.log, 16:15:11 to 16:16:26, left a trace of neither).
+        double g_beaconTracedAt = -1.0;
+        std::optional<size_t> g_beaconTracedCorner;
+
+        void TraceBeacon(UObject* pawn, const Target& t, const Vec& here, double yaw, const LeadPoint& lead, double bearing, bool onPath, double now)
+        {
+            if (!g_beacon || g_walking)
+            {
+                g_beaconTracedCorner.reset();
+                return;
+            }
+            const bool cornerChanged = lead.corner != g_beaconTracedCorner;
+            if (!cornerChanged && (now - g_beaconTracedAt < 1.0 || g_motion.Still(now))) return;
+            g_beaconTracedAt = now;
+            g_beaconTracedCorner = lead.corner;
+            double controlYaw = 0.0;
+            const bool control = ControlYaw(controlYaw);
+            const auto pad = input::ReadPad();
+            std::wstring road = L"straight to it";
+            if (onPath)
+                road = L"along the path the game holds her to";
+            else if (lead.corner)
+                road = std::format(L"corner {} of {} at ({:.0f}, {:.0f}), {:.0f} cm of road left", *lead.corner + 1, lead.corners, lead.point.x, lead.point.y,
+                                   lead.length.value_or(0.0));
+            else if (t.hasRoute)
+                road = std::format(L"the road's corner at ({:.0f}, {:.0f}), not on her stretch", lead.point.x, lead.point.y);
+            log::Info(L"explore: beacon to \"{}\": {}; bearing {:+.0f} deg ({}), {} m said; she at ({:.0f}, {:.0f}, {:.0f}), facing {:.0f}, speed {:.0f}; "
+                      L"camera yaw {:.0f}, control yaw {}; stick ({}, {})",
+                      t.label, road, bearing, locale::Mod(SectorKey(bearing)), Metres(SpokenDistanceAt(t, here)), here.x, here.y, here.z, FacingYaw(pawn),
+                      g_motion.Speed(now), yaw, control ? std::format(L"{:.0f}", controlYaw) : std::wstring(L"unknown"), pad.valid ? pad.leftX : 0,
+                      pad.valid ? pad.leftY : 0);
+        }
+
         void Step(int direction);
 
         // The room she is in, and a crossing into another said by its name alone (rooms::Crossing):
@@ -9043,7 +9121,10 @@ namespace da::features
             // The beacon leads where the walk would go: along the path the game holds her to,
             // else to the next corner of the way, else straight to the target.
             const bool onPath = g_path.set && AheadOnPath(here, Aim(*target));
-            Beacon(onPath ? PathBearing(yaw) : BearingDegrees(here, target->hasRoute ? target->routeNext : Aim(*target), yaw), SpokenDistance(*target), now);
+            const LeadPoint lead = target->hasRoute ? LeadOf(*target, here) : LeadPoint{Aim(*target)};
+            const double bearing = onPath ? PathBearing(yaw) : BearingDegrees(here, lead.point, yaw);
+            Beacon(bearing, SpokenDistanceAt(*target, here), now);
+            TraceBeacon(pawn, *target, here, yaw, lead, bearing, onPath, now);
         }
 
         // ---- the world streamed in ------------------------------------------------------------

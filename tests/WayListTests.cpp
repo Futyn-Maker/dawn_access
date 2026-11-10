@@ -2616,3 +2616,39 @@ TEST_CASE("a map begun for the change the list's verdicts are given anew for cou
     // No map yet.
     CHECK(ways::FreezeAfter(0, -1000.0, 20.552) == 0);
 }
+
+TEST_CASE("ways: the beacon leads to the corner ahead of her, never one she walked past: the pool, 2026-11-10")
+{
+    // The road to "wade into pool" as the map felt it out (research/sessions/s66-play.log, 16:15:16.745),
+    // its corners at the height of her middle.
+    const std::vector<Vec> road{{-25346, 2104, -7985}, {-25106, 1815, -7985}, {-24986, 1455, -7991}, {-24986, 1375, -7990}};
+    // Where the road begins: its second corner, the whole road left (835 cm, as the map said).
+    auto lead = ways::LeadCorner(road, road.size(), road[0], 150.0, ways::kStretchRise);
+    REQUIRE(lead);
+    CHECK(lead->corner == 1);
+    CHECK(lead->length == doctest::Approx(835.1).epsilon(0.002));
+    // Gone on a stride past the first corner, a little off the line: the corner after it, the road left
+    // from her through it.
+    lead = ways::LeadCorner(road, road.size(), {-25030, 1720, -7985}, 150.0, ways::kStretchRise);
+    REQUIRE(lead);
+    CHECK(lead->corner == 2);
+    CHECK(lead->length == doctest::Approx(268.6 + 80.0).epsilon(0.002));
+    // A sharp turn walked past: the stretch nearest her is still the one that ends at the corner behind
+    // her, where the walk's own following would lead her back; the beacon leads on.
+    const std::vector<Vec> turn{{0, 0, 0}, {500, 0, 0}, {500, 500, 0}};
+    const Vec past{600, -50, 0};
+    CHECK(ways::StretchOn(turn, turn.size(), past, 150.0, ways::kStretchRise) == 1);
+    lead = ways::LeadCorner(turn, turn.size(), past, 150.0, ways::kStretchRise);
+    REQUIRE(lead);
+    CHECK(lead->corner == 2);
+    // Short of a corner by more than a step: that corner still.
+    lead = ways::LeadCorner(turn, turn.size(), {300, 20, 0}, 150.0, ways::kStretchRise);
+    REQUIRE(lead);
+    CHECK(lead->corner == 1);
+    // Within a step of it: the next.
+    lead = ways::LeadCorner(turn, turn.size(), {470, 10, 0}, 150.0, ways::kStretchRise);
+    REQUIRE(lead);
+    CHECK(lead->corner == 2);
+    // On no stretch: nothing; a new map gives the road from where she stands.
+    CHECK_FALSE(ways::LeadCorner(turn, turn.size(), {2000, 2000, 0}, 150.0, ways::kStretchRise));
+}
