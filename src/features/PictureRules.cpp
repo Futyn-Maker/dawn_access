@@ -240,18 +240,24 @@ namespace da::picture
         return LookKey(coreName) + L"." + std::to_wstring(page);
     }
 
-    std::optional<int> PhotoPager::Update(bool holding, int index, double now, double promptAt)
+    std::optional<int> PhotoPager::Update(bool holding, int index, double now, double promptAt, bool keyHeld)
     {
         if (!holding)
         {
             m_holding = false;
             m_said = -1;
+            m_index = -1;
             return std::nullopt;
         }
         if (!m_holding)
         {
             m_holding = true;
             m_heldAt = now;
+        }
+        if (index != m_index)
+        {
+            m_index = index;
+            m_indexAt = now;
         }
         if (index < 0 || index == m_said) return std::nullopt;
         // The first photo after the prompt said as the camera came up, its line on the bar with it.
@@ -260,6 +266,8 @@ namespace da::picture
             const bool prompted = promptAt >= m_heldAt && now - promptAt >= kPromptSettle;
             if (!prompted && now - m_heldAt < kPromptWaitMost) return std::nullopt;
         }
+        // The key that paged to it, let go: the photo it lands on.
+        if (keyHeld && now - m_indexAt < kKeyWaitMost) return std::nullopt;
         m_said = index;
         return index;
     }
@@ -269,5 +277,39 @@ namespace da::picture
         m_holding = false;
         m_heldAt = 0.0;
         m_said = -1;
+        m_index = -1;
+        m_indexAt = 0.0;
+    }
+
+    void Due::Set(double now, bool awaitPrompt)
+    {
+        m_pending = true;
+        m_awaitPrompt = awaitPrompt;
+        m_at = now;
+    }
+
+    bool Due::Ready(double now, double promptAt, bool keyHeld)
+    {
+        if (!m_pending) return false;
+        if (m_awaitPrompt)
+        {
+            const bool prompted = promptAt >= m_at && now - promptAt >= kPromptSettle;
+            if (!prompted && now - m_at < kLookPromptWaitMost) return false;
+        }
+        if (WaitsForKey(now, keyHeld)) return false;
+        m_pending = false;
+        return true;
+    }
+
+    bool Due::WaitsForKey(double now, bool keyHeld) const
+    {
+        return m_pending && keyHeld && now - m_at < kKeyWaitMost;
+    }
+
+    void Due::Reset()
+    {
+        m_pending = false;
+        m_awaitPrompt = false;
+        m_at = 0.0;
     }
 }

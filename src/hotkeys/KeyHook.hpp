@@ -46,4 +46,11 @@ namespace da::keyhook
 
     // The ids of the bindings pressed since the last call, in order.
     std::vector<int> TakePresses();
+
+    // Whether the key the player last pressed for the game (one the mod let go on to the screen reader
+    // and the game) is still held. Windows repeats the key last pressed for as long as it is held, and
+    // a screen reader given each repeat may stop what it is saying at every one: NVDA's "speech
+    // interrupt for typed characters", on by default, stops speech at any key it is given. Once that
+    // key is let go no key repeats, though another may still be down. Asked from any thread.
+    bool KeyRepeating();
 }

@@ -404,8 +404,9 @@ namespace da::features
         // taken as said with it.
         constexpr double kBarWithPage = 1.5;
         constexpr double kBarBeforePage = 1.0;
-        // When each of the bar's lines was last said (prompt::NotSaidWithin).
+        // When each of the bar's lines was last said (prompt::NotSaidWithin), and when the bar last said any.
         std::map<std::wstring, double> g_barSaidAt;
+        double g_lastBarAt = -1000.0;
 
         std::wstring Line(const ui::Prompt& p)
         {
@@ -457,6 +458,7 @@ namespace da::features
             if (g_barSaidAt.size() > 64) std::erase_if(g_barSaidAt, [&](const auto& said) { return now - said.second > 120.0; });
             for (const auto& line : fresh)
                 g_barSaidAt[line] = now;
+            g_lastBarAt = now;
             speech::Announce(text);
         }
 
@@ -716,6 +718,11 @@ namespace da::features
     double LastInteractionPromptAt()
     {
         return g_lastQuestionAt;
+    }
+
+    double LastPromptSaidAt()
+    {
+        return std::max(g_lastQuestionAt, g_lastBarAt);
     }
 
     std::wstring LastInteractionPromptActions()

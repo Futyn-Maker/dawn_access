@@ -212,6 +212,82 @@ TEST_CASE("pictures: the prologue's camera says its photo after the game's promp
     CHECK(said[4] == std::pair<double, int>{44.175, 4});
 }
 
+TEST_CASE("pictures: a picture's words come after the game's prompt and once the player's key is let go: Dr. Hill's card, 2026-11-11")
+{
+    // research/sessions/s68-play.log, 01:03:36: the card came face up at .254 as D still turned it, its
+    // words said at once and cut by the reader at the key's repeats; "Назад: Backspace" came on the bar
+    // at .452.
+    const double shown = 36.254;
+    const double prompt = 36.452;
+    // The key let go before the prompt has settled: the words come kPromptSettle after the prompt.
+    {
+        picture::Due due;
+        due.Set(shown, true);
+        std::optional<double> said;
+        for (double now = shown; now < 38.0 && !said; now += 1.0 / 30.0)
+        {
+            if (due.Ready(now, now >= prompt ? prompt : 10.0, now < 36.40)) said = now;
+        }
+        REQUIRE(said.has_value());
+        CHECK(*said >= prompt + picture::kPromptSettle);
+        CHECK(*said < prompt + picture::kPromptSettle + 0.04);
+        CHECK_FALSE(due.Pending());
+        CHECK_FALSE(due.Ready(38.0, prompt, false));
+    }
+    // The key held on past the prompt: the words wait for it to be let go.
+    {
+        picture::Due due;
+        due.Set(shown, true);
+        CHECK_FALSE(due.Ready(37.0, prompt, true));
+        CHECK(due.WaitsForKey(37.0, true));
+        CHECK(due.Ready(37.1, prompt, false));
+    }
+    // Held on and on: said once kKeyWaitMost has gone.
+    {
+        picture::Due due;
+        due.Set(shown, true);
+        CHECK_FALSE(due.Ready(shown + picture::kKeyWaitMost - 0.01, prompt, true));
+        CHECK(due.Ready(shown + picture::kKeyWaitMost, prompt, true));
+    }
+    // No prompt with it (the map's were said as it was taken down, before): kLookPromptWaitMost.
+    {
+        picture::Due due;
+        due.Set(shown, true);
+        const double earlier = shown - 4.0;
+        CHECK_FALSE(due.Ready(shown + picture::kLookPromptWaitMost - 0.01, earlier, false));
+        CHECK(due.Ready(shown + picture::kLookPromptWaitMost, earlier, false));
+    }
+    // A spread turned to waits for no prompt, the key alone.
+    {
+        picture::Due due;
+        due.Set(shown, false);
+        CHECK_FALSE(due.Ready(shown, -1.0, true));
+        CHECK(due.Ready(shown + 0.1, -1.0, false));
+    }
+    // Nothing set, nothing due.
+    picture::Due idle;
+    CHECK_FALSE(idle.Pending());
+    CHECK_FALSE(idle.Ready(1.0, 0.5, false));
+}
+
+TEST_CASE("pictures: the camera's photo waits for the key that paged to it to be let go")
+{
+    picture::PhotoPager pager;
+    // Raised, its prompt said and settled: the first photo, the key up.
+    CHECK_FALSE(pager.Update(true, 0, 1.0, -1.0, false).has_value());
+    CHECK(pager.Update(true, 0, 1.6, 1.3, false) == 0);
+    // D down, the page turned: the photo waits while D is held.
+    CHECK_FALSE(pager.Update(true, 1, 2.0, 1.3, true).has_value());
+    CHECK_FALSE(pager.Update(true, 2, 2.3, 1.3, true).has_value());
+    // Let go on the third photo: that one, the second never.
+    CHECK(pager.Update(true, 2, 2.4, 1.3, false) == 2);
+    CHECK_FALSE(pager.Update(true, 2, 2.5, 1.3, false).has_value());
+    // A key held on and on: the photo once kKeyWaitMost has gone from its page.
+    CHECK_FALSE(pager.Update(true, 3, 3.0, 1.3, true).has_value());
+    CHECK_FALSE(pager.Update(true, 3, 3.0 + picture::kKeyWaitMost - 0.01, 1.3, true).has_value());
+    CHECK(pager.Update(true, 3, 3.0 + picture::kKeyWaitMost, 1.3, true) == 3);
+}
+
 TEST_CASE("pictures: a long film is said in parts as it plays, the part it stands in once, none while static shows")
 {
     // The events of the past, as the game plays them unlocked in part: a part shows, static, then the

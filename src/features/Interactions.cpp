@@ -19,6 +19,7 @@
 #include "core/Symbols.hpp"
 #include "hooks/HookDispatcher.hpp"
 #include "hotkeys/Hotkeys.hpp"
+#include "hotkeys/KeyHook.hpp"
 #include "input/InputNames.hpp"
 #include "locale/GameText.hpp"
 #include "locale/Locale.hpp"
@@ -77,21 +78,31 @@ namespace da::features
         // texture it shows.
 
         std::optional<picture::LookPlan> g_look; // the plan for the interaction in use, if any
-        bool g_lookSaid = false;
-        std::wstring g_lookWords; // what was said for it, for the screen's readout
-        int g_lookPage = 0;       // the spread said last, for a book read spread by spread
+        bool g_lookSaid = false;                 // its moment has come
+        std::wstring g_lookWords;                // the words of the picture shown now, for the screen's readout
+        std::wstring g_lookSpoken;               // the words last given to speech, which a spread turned cuts short
+        int g_lookPage = 0;                      // the spread shown last, for a book read spread by spread
+        picture::Due g_lookDue;                  // the words waiting for the game's prompt and the player's key
+        std::wstring g_lookDueWords;
+        std::wstring g_lookDueName; // what they describe, for the log
+        bool g_lookKeyLogged = false;
 
         picture::PhotoPager g_photos;
         std::wstring g_photoWords; // the photo's words said last, which a page turned cuts short
+        bool g_photoKeyLogged = false;
 
         // The picture's plan, by every name the game gives the interaction (picture::PlanFor): its core
         // name, its name in the level's actor database, its class. The names go to the log, so that the
-        // next session's log shows which the game gives where nothing is described.
+        // next session's log shows which the game gives where nothing is described. A picture whose words
+        // still wait as the interaction ends is not described.
         void PlanLook(UObject* bound)
         {
             g_lookSaid = false;
             g_lookWords.clear();
+            g_lookSpoken.clear();
             g_lookPage = 0;
+            g_lookDue.Reset();
+            g_lookDueWords.clear();
             g_photos.Reset();
             g_photoWords.clear();
             g_look.reset();
@@ -102,16 +113,50 @@ namespace da::features
                       g_look ? L"its picture is described as \"" + g_look->key + L"\"" : std::wstring(L"no picture of it is described"));
         }
 
+        // A picture's words, due now, said once the game's prompt and the player's key let them
+        // (picture::Due).
+        void DueLook(const std::wstring& words, const std::wstring& name, bool awaitPrompt)
+        {
+            g_lookDue.Set(gamethread::NowSeconds(), awaitPrompt);
+            g_lookDueWords = words;
+            g_lookDueName = name;
+            g_lookKeyLogged = false;
+        }
+
         void SayLook(const wchar_t* why)
         {
             if (!g_look || g_lookSaid) return;
             g_lookSaid = true;
             const auto key = picture::LookKey(g_look->key);
             const bool described = locale::Has(key);
-            log::Info(L"interactions: the picture of {} is shown ({}); {}", g_look->key, why, described ? L"its words are said" : L"no words for it");
+            log::Info(L"interactions: the picture of {} is shown ({}); {}", g_look->key, why,
+                      described ? L"its words wait for the game's prompt and the player's key" : L"no words for it");
             if (!described) return;
             g_lookWords = Words(key);
-            speech::Announce(g_lookWords);
+            DueLook(g_lookWords, g_look->key, true);
+        }
+
+        void PollLookDue(double now)
+        {
+            if (!g_lookDue.Pending()) return;
+            const bool keyHeld = keyhook::KeyRepeating();
+            const double promptAt = LastPromptSaidAt();
+            if (!g_lookDue.Ready(now, promptAt, keyHeld))
+            {
+                if (g_lookDue.WaitsForKey(now, keyHeld) && !g_lookKeyLogged)
+                {
+                    g_lookKeyLogged = true;
+                    log::Info(L"interactions: the picture of {} waits for the player's key to be let go", g_lookDueName);
+                }
+                return;
+            }
+            log::Info(L"interactions: the picture of {} is said {:.2f} s after it was shown{}", g_lookDueName, now - g_lookDue.Since(),
+                      promptAt >= g_lookDue.Since() ? std::format(L", {:.2f} s after the game's prompt", now - promptAt) : std::wstring(L", no prompt with it"));
+            if (g_lookSpoken.empty())
+                speech::Announce(g_lookDueWords);
+            else
+                speech::Replace(g_lookSpoken, g_lookDueWords);
+            g_lookSpoken = g_lookDueWords;
         }
 
         // How many photos the camera holds (CameraPictures, set on the level's camera), and the texture
@@ -150,8 +195,18 @@ namespace da::features
             const auto* holding = static_cast<const bool*>(sym::MemberOf(camera, L"ABatesInteractionCamera.bIsHoldingCamera"));
             const auto* index = static_cast<const int32_t*>(sym::MemberOf(camera, L"ABatesInteractionCamera.CurrentlySelectedPicture"));
             if (!holding || !index) return;
-            const auto shown = g_photos.Update(*holding, *index, gamethread::NowSeconds(), LastInteractionPromptAt());
-            if (!shown) return;
+            const bool keyHeld = keyhook::KeyRepeating();
+            const auto shown = g_photos.Update(*holding, *index, gamethread::NowSeconds(), LastPromptSaidAt(), keyHeld);
+            if (!shown)
+            {
+                if (keyHeld && *holding && *index >= 0 && *index != g_photos.Said() && !g_photoKeyLogged)
+                {
+                    g_photoKeyLogged = true;
+                    log::Info(L"interactions: the camera's photo {} waits for the player's key to be let go", *index + 1);
+                }
+                return;
+            }
+            g_photoKeyLogged = false;
             int count = 0;
             const std::wstring texture = ShownPhoto(camera, *shown, count);
             const auto key = picture::PictureKey(texture);
@@ -172,7 +227,9 @@ namespace da::features
         }
 
         // A book read spread by spread: the spread one of its graphs has come to, said as it comes and
-        // cutting short the spread before (picture::PageOf); nothing while a page turns.
+        // cutting short the spread before (picture::PageOf); nothing while a page turns. The first
+        // spread waits for the prompt the book is opened with, the later ones for the player's key
+        // alone (picture::Due).
         void SayPage(const std::vector<std::wstring>& states)
         {
             if (!g_look || g_look->moment != picture::Moment::Pages) return;
@@ -181,17 +238,15 @@ namespace da::features
                 const auto page = picture::PageOf(state);
                 if (!page) continue;
                 if (*page == g_lookPage) return;
+                const bool first = g_lookPage == 0;
                 g_lookPage = *page;
                 const auto key = picture::PageKey(g_look->key, *page);
                 const bool described = locale::Has(key);
-                log::Info(L"interactions: {} shows its spread {} ({}); {}", g_look->key, *page, state, described ? L"its words are said" : L"no words for it");
+                log::Info(L"interactions: {} shows its spread {} ({}); {}", g_look->key, *page, state,
+                          described ? L"its words wait for the player's key" : L"no words for it");
                 if (!described) return;
-                const std::wstring words = Words(key);
-                if (g_lookWords.empty())
-                    speech::Announce(words);
-                else
-                    speech::Replace(g_lookWords, words);
-                g_lookWords = words;
+                g_lookWords = Words(key);
+                DueLook(g_lookWords, std::format(L"{}, spread {}", g_look->key, *page), first);
                 return;
             }
         }
@@ -1315,6 +1370,7 @@ namespace da::features
             if (!g_interaction || !obj::IsSame(g_interactionKey)) return;
             // Standing still with the world: nothing is sounded.
             if (gamestate::Paused() || watch::CurrentScreen()) return;
+            PollLookDue(now);
             if (obj::IsA(g_interaction, L"BatesInteractionComplexCameraNudge"))
                 PollFraming(g_interaction, now);
             else if (!g_examineStages.empty())

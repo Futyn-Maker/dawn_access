@@ -28,6 +28,9 @@ namespace da::features
     // The last question an interaction asked that was read (its words as said), and when.
     std::wstring LastInteractionPrompt();
     double LastInteractionPromptAt();
+    // When the game's prompts in play were last said: an interaction's question or a line of the action
+    // bar (the way back, "Назад", comes on the bar).
+    double LastPromptSaidAt();
     // The actions of that question.
     std::wstring LastInteractionPromptActions();
     // Whether an interaction's question is drawn now.

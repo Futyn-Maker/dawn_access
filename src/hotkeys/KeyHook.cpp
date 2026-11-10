@@ -28,6 +28,7 @@ namespace da::keyhook
         std::atomic<bool> g_context{false};
         std::atomic<bool> g_on{true};
         std::atomic<bool> g_gameWaitsForKey{false};
+        std::atomic<int> g_lastPassed{0}; // the key last pressed and let go on, while it is down
         // Presses waiting for the game thread, a few at most: ones that piled up while the
         // game stood still are stale, and replaying them would act on a screen that has
         // since changed.
@@ -115,6 +116,11 @@ namespace da::keyhook
                         g_down[static_cast<size_t>(vk)] = false;
                         return 1;
                     }
+                    // Let go on: the key repeats for the screen reader while it is held.
+                    if (down)
+                        g_lastPassed.store(vk, std::memory_order_relaxed);
+                    else if (g_lastPassed.load(std::memory_order_relaxed) == vk)
+                        g_lastPassed.store(0, std::memory_order_relaxed);
                 }
             }
             return CallNextHookEx(nullptr, code, wParam, lParam);
@@ -216,5 +222,12 @@ namespace da::keyhook
         std::vector<int> presses = std::move(g_presses);
         g_presses.clear();
         return presses;
+    }
+
+    bool KeyRepeating()
+    {
+        const int vk = g_lastPassed.load(std::memory_order_relaxed);
+        // Its going up may have come while another window had the keyboard: the key's own state says.
+        return vk != 0 && GameInForeground() && (GetAsyncKeyState(vk) & 0x8000) != 0;
     }
 }

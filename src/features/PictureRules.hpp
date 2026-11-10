@@ -118,20 +118,69 @@ namespace da::picture
     // photo is described as the camera is raised and each time the page turns to another, never
     // twice in a row for the same photo. The first waits for the game's own prompt (the stick or the
     // keys to page with, and the way back), said as the camera comes up: the photo then, after it
-    // (Andrey, 2026-11-10), or by itself once kPromptWaitMost has gone without one.
+    // (Andrey, 2026-11-10), or by itself once kPromptWaitMost has gone without one. Every photo waits
+    // for the player's key to be let go (Due), at most kKeyWaitMost from the page it shows.
     constexpr double kPromptSettle = 0.25;   // after the prompt, for the action bar's line said with it
     constexpr double kPromptWaitMost = 2.0;  // from the camera raised
     class PhotoPager
     {
     public:
         // The camera's state at a poll: held or not, and the photo it shows (its index; -1 unknown);
-        // `promptAt` when the game's prompt was last said (-1 never). Returns the index to describe now.
-        std::optional<int> Update(bool holding, int index, double now, double promptAt);
+        // `promptAt` when the game's prompt was last said (-1 never); `keyHeld` the key the player last
+        // pressed still down (keyhook::KeyRepeating). Returns the index to describe now.
+        std::optional<int> Update(bool holding, int index, double now, double promptAt, bool keyHeld = false);
         void Reset();
+        // The photo described last while the camera is held (-1 none).
+        int Said() const
+        {
+            return m_said;
+        }
 
     private:
         bool m_holding = false;
         double m_heldAt = 0.0;
         int m_said = -1;
+        int m_index = -1;      // the photo shown, said or not
+        double m_indexAt = 0.0; // since when
+    };
+
+    // A picture's words, once its moment has come (a card turned, a state come to, a spread opened),
+    // wait for two things. The game's prompts drawn with it, said first (Andrey, 2026-11-11: "first
+    // the prompt, then the image", as the camera's photos): a prompt said since the moment and
+    // kPromptSettle after it, or kLookPromptWaitMost without one (a prompt said before the moment
+    // needs no waiting for: the map's were said as it was taken down); a spread turned to after the
+    // first waits for no prompt, its step's prompt said as its page turned. And the key the player last
+    // pressed, let go: Windows repeats a held key, and a screen reader given each repeat may stop what
+    // it says at every one (NVDA's speech interrupt for typed characters, on by default). Dr. Hill's
+    // card came face up as D still turned it, and its words, begun at once, were cut; "Назад:
+    // Backspace", queued 0.2 s behind them, was heard (research/sessions/s68-play.log, 01:03:36.254
+    // to .452). The key is waited for at most kKeyWaitMost: a key held on longer is not let go for it.
+    constexpr double kLookPromptWaitMost = 1.0;
+    constexpr double kKeyWaitMost = 4.0;
+    class Due
+    {
+    public:
+        // The moment has come at `now`; `awaitPrompt`: a prompt may come with it.
+        void Set(double now, bool awaitPrompt);
+        // Whether the words are to be said at this poll: once. `promptAt` when the game's prompt was
+        // last said (-1 never), `keyHeld` the player's key still down.
+        bool Ready(double now, double promptAt, bool keyHeld);
+        bool Pending() const
+        {
+            return m_pending;
+        }
+        // Since when it waits.
+        double Since() const
+        {
+            return m_at;
+        }
+        // Whether the words wait for the player's key at this poll (for the log).
+        bool WaitsForKey(double now, bool keyHeld) const;
+        void Reset();
+
+    private:
+        bool m_pending = false;
+        bool m_awaitPrompt = false;
+        double m_at = 0.0;
     };
 }
