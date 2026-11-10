@@ -32,10 +32,11 @@ namespace da::look
         return !p.cameraOk || (p.needCamera && p.characterOk) ? Lead::Camera : Lead::Character;
     }
 
-    bool GlintMissing(const Parts& p, bool insideEllipse)
+    bool GlintMissing(const Parts& p, bool insideEllipse, bool billboardInView)
     {
-        // Away because she stands outside the glint's own volume, it is hers to step into, not missing.
-        return p.byGlint && !p.glintAway && p.explorationView && p.measured && p.atHand && !p.verdict && insideEllipse && !p.onScreen;
+        // Away because she stands outside the glint's own volume, it is hers to step into, not missing;
+        // its billboard out of the picture, the camera's look is what is missing.
+        return p.byGlint && !p.glintAway && p.explorationView && p.measured && p.atHand && !p.verdict && insideEllipse && billboardInView && !p.onScreen;
     }
 
     WalkKey WalkKeyAt(bool reached, bool way, bool pressTaken, Lead missing)

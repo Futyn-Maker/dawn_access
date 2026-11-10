@@ -4,6 +4,7 @@
 // compared with. Shared by the features that lead the player through the world.
 #include "features/Vec.hpp"
 
+#include <optional>
 #include <string_view>
 
 namespace RC::Unreal
@@ -44,6 +45,10 @@ namespace da::features::world
     RC::Unreal::UObject* Pawn();
     // The camera the player sees through: where it is and which way it points.
     bool CameraLine(Vec& eye, double& pitch, double& yaw);
+    // Whether a point of the world lies in the player's picture, where the game's own projection puts
+    // it (APlayerController::ProjectWorldLocationToScreen relative to the player's viewport, against
+    // GetViewportSize): false behind the camera; nothing when it cannot be asked.
+    std::optional<bool> InView(const Vec& point);
     bool CameraYaw(double& yaw);
     // The frame the game reads the player's movement in: the controller's control rotation,
     // which the exploration camera keeps at the camera's own.

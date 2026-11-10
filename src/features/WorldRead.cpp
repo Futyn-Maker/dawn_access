@@ -130,6 +130,61 @@ namespace da::features::world
         return obj::IsLive(pawn) && obj::IsA(pawn, L"BatesCharacter") ? pawn : nullptr;
     }
 
+    std::optional<bool> InView(const Vec& point)
+    {
+        UObject* controller = Controller();
+        if (!controller) return std::nullopt;
+        auto* project = obj::FindFunction(controller, L"ProjectWorldLocationToScreen");
+        auto* size = obj::FindFunction(controller, L"GetViewportSize");
+        if (!project || !size) return std::nullopt;
+        bool projected = false, read = false;
+        double x = 0.0, y = 0.0;
+        const bool called = obj::Call(
+            controller, project,
+            [&](void* params)
+            {
+                for (auto* prop : project->ForEachProperty())
+                {
+                    if (!prop) continue;
+                    const auto name = prop->GetName();
+                    if (name == L"WorldLocation") WriteVec(obj::ValuePtrAt(params, prop), prop, point);
+                    else if (name == L"bPlayerViewportRelative") obj::WriteBoolAt(params, prop, true);
+                }
+            },
+            [&](void* params)
+            {
+                for (auto* prop : project->ForEachProperty())
+                {
+                    if (!prop) continue;
+                    const auto name = prop->GetName();
+                    if (name == L"ReturnValue") obj::ReadBoolAt(params, prop, projected);
+                    else if (name == L"ScreenLocation")
+                    {
+                        void* at = obj::ValuePtrAt(params, prop);
+                        read = obj::ReadFloatAt(at, obj::StructMember(prop, L"X"), x) && obj::ReadFloatAt(at, obj::StructMember(prop, L"Y"), y);
+                    }
+                }
+            });
+        if (!called || !read) return std::nullopt;
+        if (!projected) return false;
+        int64_t width = 0, height = 0;
+        if (!obj::Call(
+                controller, size, [](void*) {},
+                [&](void* params)
+                {
+                    for (auto* prop : size->ForEachProperty())
+                    {
+                        if (!prop) continue;
+                        const auto name = prop->GetName();
+                        if (name == L"SizeX") obj::ReadIntAt(params, prop, width);
+                        else if (name == L"SizeY") obj::ReadIntAt(params, prop, height);
+                    }
+                }) ||
+            width <= 0 || height <= 0)
+            return std::nullopt;
+        return x >= 0.0 && y >= 0.0 && x <= static_cast<double>(width) && y <= static_cast<double>(height);
+    }
+
     bool CameraLine(Vec& eye, double& pitch, double& yaw)
     {
         UObject* controller = Controller();

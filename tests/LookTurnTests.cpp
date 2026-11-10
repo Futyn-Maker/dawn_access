@@ -303,20 +303,35 @@ TEST_CASE("look: the turn missing, as the glint judges it")
         look::Parts p = AtHand();
         p.explorationView = true;
         p.characterOk = true;
-        CHECK(look::GlintMissing(p, true));
+        CHECK(look::GlintMissing(p, true, true));
         // Off the ellipse, the camera is merely turned away: the look is led as ever.
-        CHECK_FALSE(look::GlintMissing(p, false));
+        CHECK_FALSE(look::GlintMissing(p, false, true));
         CHECK(look::Missing(p) == Lead::Camera);
         // On the screen, the glint is up.
         p.onScreen = true;
-        CHECK_FALSE(look::GlintMissing(p, true));
+        CHECK_FALSE(look::GlintMissing(p, true, true));
         // A fixed shot or a press the game would take is no missing glint.
         p.onScreen = false;
         p.explorationView = false;
-        CHECK_FALSE(look::GlintMissing(p, true));
+        CHECK_FALSE(look::GlintMissing(p, true, true));
         p.explorationView = true;
         p.verdict = true;
-        CHECK_FALSE(look::GlintMissing(p, true));
+        CHECK_FALSE(look::GlintMissing(p, true, true));
+    }
+    SUBCASE("inside the look's ellipse but out of the picture: the camera's look is missing, not the glint: the guidance totem by the cable car, 2026-11-11")
+    {
+        // research/sessions/s68-play.log, 01:17:25 to 01:17:48: the glint 24 degrees off across and 24
+        // down, inside the ellipse, its widget off the screen; "the game shows no glint here" was said at
+        // 01:17:32, and the camera turned to 15 degrees off, the glint came on the screen and the press
+        // was taken.
+        look::Parts p = AtHand();
+        p.explorationView = true;
+        p.characterOk = true;
+        CHECK_FALSE(look::GlintMissing(p, true, false));
+        CHECK(look::Missing(p) == Lead::Camera);
+        CHECK(look::Leads(p) == Lead::Camera);
+        // The billboard in the picture and the widget still off it: the widget is what is missing.
+        CHECK(look::GlintMissing(p, true, true));
     }
     SUBCASE("the press would be taken, or the verdict is a tick behind: nothing is missing")
     {
@@ -1131,14 +1146,14 @@ TEST_CASE("look: a glint the game has not put up for her is a step to make, not 
     CHECK_FALSE(look::CanBeLed(p));
     CHECK(look::Missing(p) == look::Lead::None);
     CHECK_FALSE(look::Arrived(p, false, true, false));
-    CHECK_FALSE(look::GlintMissing(p, true));
+    CHECK_FALSE(look::GlintMissing(p, true, true));
     // The glint put up: the camera's look is what is missing, as before.
     p.glintAway = false;
     CHECK(look::CanBeLed(p));
     CHECK(look::Missing(p) == look::Lead::Camera);
     CHECK(look::Arrived(p, false, true, false));
     // Put up but not on the screen while the camera looks at it: missing.
-    CHECK(look::GlintMissing(p, true));
+    CHECK(look::GlintMissing(p, true, true));
 }
 
 TEST_CASE("look: into the glint's volume she steps toward where its box meets the use location's")

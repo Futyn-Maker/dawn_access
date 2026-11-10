@@ -8350,6 +8350,24 @@ namespace da::features
                                visibility >= 0 ? std::format(L" (visibility {})", visibility) : std::wstring(), inside ? L"inside" : L"outside");
         }
 
+        // Whether the billboard of a use location's glint lies in the player's picture (world::InView).
+        // Where that cannot be asked, no glint is called missing: the look is led as ever.
+        bool g_inViewUnknownLogged = false;
+        bool BillboardInView(UObject* useLocation)
+        {
+            UObject* glint = GlintOf(useLocation);
+            UObject* billboard = nullptr;
+            Vec mark;
+            std::optional<bool> in;
+            if (glint && obj::ReadObject(glint, L"GlintBillboardComponent", billboard) && ComponentLocation(billboard, mark)) in = InView(mark);
+            if (!in && !g_inViewUnknownLogged)
+            {
+                g_inViewUnknownLogged = true;
+                log::Info(L"explore: where the glint of {} falls in the picture cannot be asked; no glint is said missing", obj::ObjectName(useLocation));
+            }
+            return in.value_or(false);
+        }
+
         // Whether a turn the player can make completes the look (look::CanBeLed): not on a fixed
         // shot whose picture leaves the glint out (the lodge's totem after its vision on
         // 2026-10-28: she faced it, the glint off the shot, and was told to turn toward it all the
@@ -8416,7 +8434,9 @@ namespace da::features
             // dollhouse in the cellar on 2026-11-08 kept its glint off the screen for 93 s on the
             // exploration camera whichever way the camera turned, and came back once Ashley had
             // walked away and back (research/sessions/s58-whole.log, 11:15:56 to 11:18:39).
-            const bool glintMissing = look::GlintMissing(PartsOf(g_press), g_press.insideEllipse);
+            // The billboard's place in the picture is asked only where everything else says missing.
+            bool glintMissing = look::GlintMissing(PartsOf(g_press), g_press.insideEllipse, true);
+            if (glintMissing) glintMissing = look::GlintMissing(PartsOf(g_press), g_press.insideEllipse, BillboardInView(target->actor));
             if (!glintMissing)
             {
                 g_noGlintSince = -1.0;
@@ -8428,8 +8448,8 @@ namespace da::features
             else if (!g_noGlintSaid && now - g_noGlintSince >= look::kGlintMissingAfter && !g_walking && g_motion.Still(now))
             {
                 g_noGlintSaid = true;
-                log::Info(L"explore: \"{}\" is at hand and the camera looks at it, but the game shows no glint for it ({:.1f} s): {}", target->label,
-                          now - g_noGlintSince, GlintState(pawn, target->actor));
+                log::Info(L"explore: \"{}\" is at hand and the camera looks at it, its billboard in the picture, but the game shows no glint for it ({:.1f} s): {}",
+                          target->label, now - g_noGlintSince, GlintState(pawn, target->actor));
                 speech::Announce(locale::Mod(L"explore.noglint"));
             }
             if (g_lookAgain)

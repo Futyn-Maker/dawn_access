@@ -79,14 +79,19 @@ namespace da::look
 
     // Whether the game shows no glint for a thing at hand though the camera looks at it: on the
     // exploration camera, its billboard inside the part of the screen the camera's look asks for
-    // (`insideEllipse`, the glint's own GetCameraLookIntensity), and its widget not on the screen
-    // (GetIsOnScreen: the canvas entry's place within the screen). A widget the game tracks lies on
-    // the screen wherever its billboard does, so only a glint whose widget the game has not put up
-    // (or has hidden) is off it there: no turn of the camera brings it in. Said after
+    // (`insideEllipse`, the glint's own GetCameraLookIntensity) and inside the picture
+    // (`billboardInView`, where the game's own projection puts it), and its widget not on the screen
+    // (GetIsOnScreen: the canvas entry's place within the screen, give or take the widget's own size,
+    // FCanvasEntry::IsOnScreen). A widget the game tracks lies on the screen wherever its billboard
+    // does, so only a glint whose widget the game has not put up (or has hidden) is off it there: no
+    // turn of the camera brings it in. The look's ellipse reaches past the picture's edge: at the
+    // guidance totem by the cable car on 2026-11-11 the billboard lay inside it, 24 degrees off across
+    // and off the screen, and "the game shows no glint here" was said; the camera turned 9 degrees
+    // further, the press was taken (research/sessions/s68-play.log, 01:17:25 to 01:17:48). Said after
     // kGlintMissingAfter of it, she standing still: a glint coming up takes a moment (the library's
     // guidance totem in s46 was off the screen inside the ellipse for 2.5 s before it showed), the
     // dollhouse's stayed so for 5 to 14 s at a time over 93 s.
-    bool GlintMissing(const Parts& p, bool insideEllipse);
+    bool GlintMissing(const Parts& p, bool insideEllipse, bool billboardInView);
     constexpr double kGlintMissingAfter = 5.0;
 
     // The turn the press still waits for, or None when the look is in place (or the game's
