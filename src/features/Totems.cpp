@@ -1,7 +1,9 @@
 #include "features/Totems.hpp"
 
 #include "features/Exploration.hpp"
+#include "features/Films.hpp"
 #include "features/NudgeRules.hpp"
+#include "features/PictureRules.hpp"
 #include "features/WorldRead.hpp"
 
 #include "core/GameThread.hpp"
@@ -68,26 +70,27 @@ namespace da::features
             g_onPoint = false;
         }
 
-        // A vision's film by the name the descriptions are kept under: its file's name without
-        // the folder, the extension, or the Japanese cut's suffix (the same vision with its
-        // words burnt in).
-        std::wstring VisionName(std::wstring movie)
-        {
-            if (const auto slash = movie.find_last_of(L"/\\"); slash != std::wstring::npos) movie = movie.substr(slash + 1);
-            if (const auto dot = movie.rfind(L'.'); dot != std::wstring::npos) movie = movie.substr(0, dot);
-            if (movie.size() > 3 && movie.ends_with(L"_ja")) movie.resize(movie.size() - 3);
-            return movie;
-        }
+        // The vision shown last, for the screen's readout while it plays.
+        std::wstring g_visionWords;
+        double g_visionShownAt = -100.0;
 
         // A vision is shown, in the world or replayed in the totems' menu: the film's words when
-        // the mod has them, the bare word otherwise.
+        // the mod has them (lang/totems, by the film's name: picture::VisionKeys), the bare word
+        // otherwise.
         void AnnounceVision(const std::wstring& film, const std::wstring& whose, const wchar_t* how)
         {
-            const std::wstring movie = VisionName(film);
-            const std::wstring key = L"totem." + movie;
-            const bool described = !movie.empty() && locale::Has(key);
-            log::Info(L"totems: the vision \"{}\" of {} begins ({}); {}", movie, whose, how, described ? L"its words are said" : L"no words for it yet");
-            speech::Announce(described ? locale::Mod(key) : locale::Mod(L"totem.vision"));
+            const std::wstring movie = picture::FilmName(film);
+            std::wstring words;
+            for (const auto& key : picture::VisionKeys(movie))
+            {
+                if (!locale::Has(key)) continue;
+                words = Words(key);
+                break;
+            }
+            log::Info(L"totems: the vision \"{}\" of {} begins ({}); {}", movie, whose, how, words.empty() ? L"no words for it" : L"its words are said");
+            g_visionWords = words.empty() ? locale::Mod(L"totem.vision") : words;
+            g_visionShownAt = gamethread::NowSeconds();
+            speech::Announce(g_visionWords);
         }
 
         // The vision of the totem in hand begins.
@@ -201,6 +204,7 @@ namespace da::features
         void OnVisionEnd(UObject* self, FFrame&)
         {
             log::Info(L"totems: the vision of {} ends", TotemName(self));
+            g_visionWords.clear();
         }
 
         // Where the stick has sent the totem's turn, for the log: the game adds the stick, through
@@ -492,6 +496,12 @@ namespace da::features
         hotkeys::AddContext(&PremonitionLed);
         hotkeys::OnCommand(hotkeys::Command::Beacon, &OnBeacon);
         gamethread::AddPoller(L"totems", &Poll);
+    }
+
+    void TotemsFeature::Describe(std::vector<std::wstring>& out)
+    {
+        // A vision lasts a few seconds; one replayed in the menu ends with no event of the totem's.
+        if (!g_visionWords.empty() && gamethread::NowSeconds() - g_visionShownAt <= 15.0) out.push_back(g_visionWords);
     }
 
     void TotemsFeature::Help(std::vector<std::wstring>& out)

@@ -18,6 +18,7 @@ namespace da::features
             return L"Totems";
         }
         void Install() override;
+        void Describe(std::vector<std::wstring>& out) override;
         void Help(std::vector<std::wstring>& out) override;
     };
 
