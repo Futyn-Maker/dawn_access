@@ -114,6 +114,14 @@ TEST_CASE("pictures: a photo is known by its texture, a thing in the hand by any
     CHECK(walls->state == L"examine_idle");
     CHECK(picture::PlanFor(Names{L"I_lookatmap_with_emily", L"", L"BP_Lookatmap_with_emily_C"})->state == L"inspect_idle");
     CHECK(picture::PlanFor(Names{L"I_lookatmap_without_emily", L"", L"BP_Lookatmap_without_emily_C"})->state == L"inspect_idle1");
+    // The security monitor in the lower ski-lift station, once Chris's look at it stands: its screen
+    // cuts from a bathroom to a camera above the snow, a figure there and gone (s68, 01:28:07).
+    const auto monitor = picture::PlanFor(Names{L"I_security_monitor", L"I_security_monitor", L"BP_Security_monitor_C"});
+    REQUIRE(monitor.has_value());
+    CHECK(monitor->moment == picture::Moment::State);
+    CHECK(monitor->state == L"examine_idle");
+    CHECK(monitor->key == L"i_security_monitor");
+    CHECK(picture::PlanFor(Names{L"", L"", L"BP_Security_monitor_C"})->key == L"i_security_monitor");
     // The chapter 1 graffiti is transcribed by the game itself (its reading widget); a class shared by
     // other things (the generic wall examine the walls are made from) names no picture.
     CHECK_FALSE(picture::PlanFor(Names{L"I_carved_graffiti", L"", L"BP_Examine_wall_item_left_C"}).has_value());

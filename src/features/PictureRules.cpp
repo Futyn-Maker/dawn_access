@@ -47,7 +47,7 @@ namespace da::picture
 
         // The interactions whose pictures the mod describes, and when; the moments are the game's own
         // states, as the logs of chapters 5 and 6 show them.
-        constexpr std::array<Planned, 6> kPlans = {
+        constexpr std::array<Planned, 7> kPlans = {
             // Dr. Hill's card is picked up face down and turned over with the stick (act20_1,
             // BP_PsychSession_PickUp, which no other level places: its examine stage reveals). It has no
             // core name; its activity starts it as I_psychsession_1_Interaction.
@@ -68,6 +68,13 @@ namespace da::picture
             // The words painted over the station's walls (act4_3, BP_Graffiti, whose class sets its core
             // name: a look at the wall, examine_into, then examine_idle 3 s on as the look stands).
             Planned{L"i_graffiti", L"", Moment::State, L"examine_idle"},
+            // The security monitor in the lower ski-lift station, looked at by Chris (act1_3,
+            // BP_Security_monitor, core name set in the level: examine_into, then examine_idle). Its screen
+            // (M_FlickeringMonitor's texture array TA_monitor_image, by the scalar Image) rests on a dark
+            // bathroom (0); 0.27 s into examine_idle it cuts to a camera above a snowy building with a dark
+            // figure in the snow (1), and at 1.73 s, through static, to the same without the figure (2),
+            // none of its events repeating (research/sessions/s68-play.log, 01:28:04 to 01:28:36).
+            Planned{L"i_security_monitor", L"bp_security_monitor_c", Moment::State, L"examine_idle"},
         };
     }
 
