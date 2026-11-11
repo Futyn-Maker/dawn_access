@@ -37,9 +37,12 @@ TEST_CASE("a page turned while it is being read cuts it short, and says again wh
     const std::vector<Said> stopped{{L"announce", page, 101.0}, {L"announce", L"card", 101.0}, {L"stop", L"", 101.2}};
     CHECK(speech::rules::Turn(stopped, page, 101.3).cut);
     CHECK(speech::rules::Turn(stopped, page, 101.3).kept.empty());
-    // The page not among the lines: it cuts in, nothing to keep.
-    CHECK(speech::rules::Turn(said, L"another page", 102.0).cut);
+    // The page not among the lines: the reader is not on it, and what is being said (a prompt, s71's
+    // scroll prompt at 21:04:21) is not cut; the new page waits behind it.
+    CHECK_FALSE(speech::rules::Turn(said, L"another page", 102.0).cut);
     CHECK(speech::rules::Turn(said, L"another page", 102.0).kept.empty());
+    const std::vector<Said> prompt{{L"announce", L"СКАЗКИ И МИФЫ", 110.0}, {L"announce", L"Прокрутить: правый стик вверх и вниз", 120.6}};
+    CHECK_FALSE(speech::rules::Turn(prompt, L"an older reading's page", 121.0).cut);
     // The latest time the page was said counts.
     const std::vector<Said> twice{{L"announce", page, 100.0}, {L"now", L"x", 100.5}, {L"replace", page, 101.0}, {L"announce", L"card", 101.0}};
     const auto again = speech::rules::Turn(twice, page, 101.5);
@@ -263,4 +266,23 @@ TEST_CASE("speech: silent at once as the game goes away, and nothing said after"
     speech::rules::Closing fatal;
     CHECK(fatal.Update(false, true, 0));
     CHECK(fatal.Closed());
+}
+
+TEST_CASE("a page turned drops the prompts queued behind the page it cuts, for the prompt reader to say again if still shown")
+{
+    // s71 21:06:58 to 21:07:25: the native tales book flipped page to page, each turn saying the old page's
+    // swipe behind the new page, and the new page's own swipe after it.
+    const std::wstring second = L"Знаки и символы коренных племен Коренные американские племена вырезали символы на дереве и камне.";
+    const std::vector<Said> said{
+        {L"replace", second, 58.115},
+        {L"prompt", L"Сенсорная панель (вправо)", 58.447},
+        {L"announce", L"НАЙДЕНА УЛИКА. R1", 58.5},
+    };
+    const auto plan = speech::rules::Turn(said, second, 59.602);
+    CHECK(plan.cut);
+    // The clue's card stays; the swipe, which the turn changes, is dropped.
+    REQUIRE(plan.kept.size() == 1);
+    CHECK(tests::U8(plan.kept[0]) == "НАЙДЕНА УЛИКА. R1");
+    REQUIRE(plan.dropped.size() == 1);
+    CHECK(tests::U8(plan.dropped[0]) == "Сенсорная панель (вправо)");
 }

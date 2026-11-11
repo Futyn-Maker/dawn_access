@@ -407,6 +407,8 @@ namespace da::features
         // When each of the bar's lines was last said (prompt::NotSaidWithin), and when the bar last said any.
         std::map<std::wstring, double> g_barSaidAt;
         double g_lastBarAt = -1000.0;
+        std::wstring g_lastBarText;            // the bar's prompts as last said, and their lines
+        std::vector<std::wstring> g_lastBarLines;
 
         std::wstring Line(const ui::Prompt& p)
         {
@@ -438,6 +440,15 @@ namespace da::features
                 lines.push_back(Line(p));
                 actions.push_back(p.action);
             }
+            // The bar's prompts dropped from behind a page turned before the reader got to them, and shown
+            // still: said again, once (speech::Prompt).
+            if (!g_lastBarText.empty() && speech::DroppedUnheard(g_lastBarText) &&
+                std::all_of(g_lastBarLines.begin(), g_lastBarLines.end(),
+                            [&](const std::wstring& line) { return std::find(lines.begin(), lines.end(), line) != lines.end(); }))
+            {
+                log::Info(L"prompts: action bar \"{}\" was dropped from behind a page turned and is shown still: said again", g_lastBarText);
+                speech::Prompt(g_lastBarText);
+            }
             auto fresh = g_bar.Update(now, false, lines, SoundingStagedStage(), actions);
             if (fresh.empty()) return;
             // The prompts shown again with a document's page shown again as it is being read, said with
@@ -459,7 +470,9 @@ namespace da::features
             for (const auto& line : fresh)
                 g_barSaidAt[line] = now;
             g_lastBarAt = now;
-            speech::Announce(text);
+            g_lastBarText = text;
+            g_lastBarLines = fresh;
+            speech::Prompt(text);
         }
 
         // ---- the phone's unlock swipe -------------------------------------------------------
@@ -610,6 +623,11 @@ namespace da::features
                         continue;
                     }
                 }
+                // The game changed what the prompt asks in place (a book's swipe from right to left as its
+                // page turns): what it asked before no longer stands, and a page turned behind it keeps it no
+                // longer (speech::Withdraw). Kept, it was said again behind every page flipped in session 71
+                // (21:06:58 to 21:07:25).
+                if (it->announced && !it->text.empty() && it->text != text) speech::Withdraw(it->text);
                 if (prompt::Read(*it, now, text, actions, it->glint))
                 {
                     // An activity's prompt that does not wait had its key said as it came up; a staged
@@ -634,7 +652,7 @@ namespace da::features
                         }
                         else
                         {
-                            speech::Announce(text);
+                            speech::Prompt(text);
                         }
                     }
                     if (!it->glint)
@@ -643,6 +661,13 @@ namespace da::features
                         g_lastQuestionActions = actions;
                         g_lastQuestionAt = now;
                     }
+                }
+                // Dropped from behind a page turned before the reader got to it, and shown still, as it
+                // was: said again, once (speech::Prompt).
+                else if (!it->glint && it->announced && !it->text.empty() && it->text == text && speech::DroppedUnheard(text))
+                {
+                    log::Info(L"prompts: \"{}\" was dropped from behind a page turned and is shown still: said again", text);
+                    speech::Prompt(text);
                 }
                 ++it;
             }

@@ -42,6 +42,10 @@ namespace da::speech
 
     void Focus(std::wstring_view text);
     void Announce(std::wstring_view text);
+    // A prompt the game draws, queued as Announce. A page turned before the reader got to it does not say
+    // it again behind the new page (rules::Turn): the page may have changed it, and the prompt reader says
+    // again the ones still shown (DroppedUnheard).
+    void Prompt(std::wstring_view text);
     void Now(std::wstring_view text);
     void Urgent(std::wstring_view text);
     void Replace(std::wstring_view previous, std::wstring_view text);

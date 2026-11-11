@@ -52,7 +52,14 @@ namespace da::speech::rules
             }
             if (Interrupting(said[i].policy)) return plan;
         }
-        if (from == said.size()) return plan;
+        // The page not among the lines (said by another path, or long gone): the reader is not on it, and
+        // what is being said is another's, a prompt as often as not; the new page waits behind it. A
+        // book's first page cut the transcript's scroll prompt so in session 71 (21:04:21).
+        if (from == said.size())
+        {
+            plan.cut = false;
+            return plan;
+        }
         // The reader past the page: nothing of it to cut.
         if (said[from].at + Speaking(said[from].text) <= now)
         {
@@ -71,6 +78,15 @@ namespace da::speech::rules
                     plan.dropped.push_back(line.text);
                     continue;
                 }
+            }
+            // A prompt queued behind the page is not said again behind the new one: the page turned may
+            // have changed it (a book's swipe from right to left), and the prompt reader says again the
+            // prompts still shown. Kept, the old page's prompts were said behind every page flipped in
+            // session 71 (21:06:58 to 21:07:25).
+            if (line.policy == L"prompt")
+            {
+                plan.dropped.push_back(line.text);
+                continue;
             }
             bool later = false;
             for (size_t j = i + 1; j < said.size() && !later; ++j)

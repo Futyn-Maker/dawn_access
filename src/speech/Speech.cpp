@@ -190,6 +190,15 @@ namespace da::speech
         OutputNow(text, false, L"announce");
     }
 
+    void Prompt(std::wstring_view raw)
+    {
+        const std::wstring text = Clean(raw);
+        if (text.empty() || !Says(text)) return;
+        fault::Guard lock(g_mutex, L"speech");
+        if (KeptByHold(text, L"prompt")) return;
+        OutputNow(text, false, L"prompt");
+    }
+
     void Hold(std::wstring_view owner)
     {
         fault::Guard lock(g_mutex, L"speech");
