@@ -78,11 +78,19 @@ namespace da::features
             obj::ObjectKey key;
             std::wstring name; // for the log
         };
-        std::map<std::wstring, std::vector<ScreenOf>> g_screens;
+        struct FilmScreens
+        {
+            std::vector<ScreenOf> screens;
+            bool found = false;       // any screen ever found for the film
+            double lookedAt = -100.0; // when the movie actors were last looked through
+        };
+        std::map<std::wstring, FilmScreens> g_screens;
 
         void FindScreens(UObject* player, const std::wstring& film)
         {
-            auto& screens = g_screens[film];
+            auto& known = g_screens[film];
+            known.lookedAt = gamethread::NowSeconds();
+            auto& screens = known.screens;
             for (UObject* movie : obj::FindAllLive(L"BatesBinkMovieBase"))
             {
                 UObject* held = nullptr;
@@ -107,6 +115,7 @@ namespace da::features
                 const auto key = obj::KeyOf(screen);
                 if (std::any_of(screens.begin(), screens.end(), [&](const ScreenOf& s) { return s.key == key; })) continue;
                 screens.push_back(ScreenOf{key, obj::ObjectName(movie) + L" on " + obj::ObjectName(screen)});
+                known.found = true;
                 log::Info(L"films: \"{}\" is drawn by {} on {}; described while it is drawn", film, obj::ObjectName(movie), obj::ObjectName(screen));
             }
         }
@@ -139,12 +148,16 @@ namespace da::features
             return drawn;
         }
 
-        // The film's screen as the player has it now (picture::Screen).
-        picture::Screen ScreenNow(const std::wstring& film)
+        // The film's screen as the player has it now (picture::ScreenOf): its screens gone with their
+        // levels let go, and looked for again while none is left.
+        picture::Screen ScreenNow(const std::wstring& film, UObject* player)
         {
-            const auto it = g_screens.find(film);
-            if (it == g_screens.end() || it->second.empty()) return picture::Screen::Unknown;
-            return std::any_of(it->second.begin(), it->second.end(), Drawn) ? picture::Screen::Drawn : picture::Screen::Hidden;
+            auto& known = g_screens[film];
+            std::erase_if(known.screens, [](const ScreenOf& s) { return !obj::IsSame(s.key); });
+            if (known.screens.empty() && known.found && player && gamethread::NowSeconds() - known.lookedAt >= picture::kScreensAgain)
+                FindScreens(player, film);
+            const bool drawn = std::any_of(known.screens.begin(), known.screens.end(), Drawn);
+            return picture::ScreenOf(known.found, known.screens.size(), drawn);
         }
 
         // The film described last and still playing, for the screen's readout.
@@ -236,7 +249,9 @@ namespace da::features
         // a showing (picture::Sight).
         void PollSight(Player& p)
         {
-            const auto screen = ScreenNow(p.film);
+            // Nothing is said over the game's pause; what waits is said back in play, if then seen.
+            if (gamestate::Paused()) return;
+            const auto screen = ScreenNow(p.film, p.key.object);
             if (screen != p.screen)
             {
                 if (screen != picture::Screen::Unknown)
@@ -281,13 +296,15 @@ namespace da::features
             if (!g_scanned) Scan();
             std::erase_if(g_players, [](const Player& p) { return !obj::IsSame(p.key); });
             const double nowSeconds = gamethread::NowSeconds();
-            std::erase_if(g_showings,
-                          [&](const auto& showing)
-                          {
-                              if (!showing.second.Over(nowSeconds)) return false;
-                              g_screens.erase(showing.first);
-                              return true;
-                          });
+            // The game's pause stops time for a showing: a projector the pause stops is not taken for a
+            // film over and begun anew however long the pause lasts (the dialogue history, read line by
+            // line, can hold it for minutes).
+            if (gamestate::Paused())
+            {
+                for (auto& showing : g_showings)
+                    showing.second.Playing(nowSeconds);
+            }
+            std::erase_if(g_showings, [&](const auto& showing) { return showing.second.Over(nowSeconds); });
             for (auto& p : g_players)
             {
                 UObject* player = p.key.object;
@@ -396,6 +413,8 @@ namespace da::features
         g_players.clear();
         g_scanned = false;
         g_screens.clear();
+        // A map loaded anew shows its films anew.
+        g_showings.clear();
         g_nowPlayer = {};
         g_nowWords.clear();
     }

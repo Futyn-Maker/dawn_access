@@ -84,6 +84,12 @@ namespace da::picture
         };
     }
 
+    Screen ScreenOf(bool everFound, size_t live, bool anyDrawn)
+    {
+        if (live == 0) return everFound ? Screen::Hidden : Screen::Unknown;
+        return anyDrawn ? Screen::Drawn : Screen::Hidden;
+    }
+
     std::wstring FilmName(std::wstring_view url)
     {
         std::wstring name(url);

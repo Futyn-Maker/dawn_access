@@ -115,6 +115,15 @@ namespace da::picture
         Hidden,
     };
 
+    // The film's screen from what the mod knows of its screens: none found for it ever (Unknown: a
+    // full-screen film, a screen the game feeds by its own blueprint), one of them drawn, or none drawn,
+    // those it had gone with their levels included: a film whose screen the world has let go is not
+    // seen. Its screens are looked for again while it has none left (kScreensAgain), so that a level
+    // streamed back, or another of the game's movie actors, shows it again (found by an independent
+    // review: a screen that had gone left its film unseen for good, its words never said).
+    constexpr double kScreensAgain = 2.0;
+    Screen ScreenOf(bool everFound, size_t live, bool anyDrawn);
+
     // What of a film in the world is seen: a film is described only while its screen is drawn; one
     // whose screen is not drawn as it begins has its words wait until it is, within its showing. The
     // F6 readout reads it only while it is seen. Session 71: act4_3's CCTV monitor, shown by the act's

@@ -441,3 +441,15 @@ TEST_CASE("pictures: a film in the world is described only while its screen is d
     CHECK_FALSE(parts.Update(picture::Screen::Drawn));
     CHECK(parts.Seen());
 }
+
+TEST_CASE("pictures: a film's screen gone with its level leaves it unseen until a screen is found again")
+{
+    // No screen ever found for it (a full-screen film): seen while it plays, as before.
+    CHECK(picture::ScreenOf(false, 0, false) == picture::Screen::Unknown);
+    // Its screen drawn, or not.
+    CHECK(picture::ScreenOf(true, 1, true) == picture::Screen::Drawn);
+    CHECK(picture::ScreenOf(true, 2, false) == picture::Screen::Hidden);
+    // Its screens all gone with a level the game let go: not seen, though once found; found again as the
+    // level streams back, drawn or not as the engine says.
+    CHECK(picture::ScreenOf(true, 0, false) == picture::Screen::Hidden);
+}
