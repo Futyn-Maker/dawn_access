@@ -7319,14 +7319,16 @@ namespace da::features
             {
                 Vec here;
                 const bool placed = pawn && ActorLocation(pawn, here);
+                bool crossed = false;
                 if (beam)
                 {
                     log::Info(L"explore: {} walks {}: the stick moves her only within {:.0f} degrees of where she faces", obj::ObjectName(pawn),
                               obj::ObjectName(beam), look::kBeamCone);
                     if (placed) g_beamFrom = here;
-                    speech::Announce(locale::Mod(L"explore.beam"));
                     // A walk to the volume that puts her on it goes on along it (ways::BeamWay): the
-                    // way on is over the beam, and the beam alone moves her there.
+                    // way on is over the beam, and the beam alone moves her there. Said so, and its end
+                    // said, as every walk says how it ends: in session 71 Mike was carried over in
+                    // silence after "На балке." and a ping, and Andrey could not tell what to do.
                     UObject* volume = nullptr;
                     for (const auto& [v, b] : g_beamOf)
                     {
@@ -7340,12 +7342,14 @@ namespace da::features
                         g_beamWalk = true;
                         log::Info(L"explore: the walk onto {} goes on along it", obj::ObjectName(beam));
                     }
+                    speech::Announce(locale::Mod(walkedOnto ? L"explore.beam.walk" : L"explore.beam"));
                 }
                 else
                 {
                     log::Info(L"explore: the beam lets the character go");
                     // Over it, the beam leads back: it is no way on afterwards (ways::BeamCrossed).
-                    if (g_onBeam && placed && ways::BeamCrossed(g_beamFrom, here))
+                    crossed = g_onBeam && placed && ways::BeamCrossed(g_beamFrom, here);
+                    if (crossed)
                     {
                         g_beamsCrossed.insert(g_onBeam);
                         log::Info(L"explore: {} carried her over, {:.0f} cm from where it took her", obj::ObjectName(g_onBeam), FlatDistance(g_beamFrom, here));
@@ -7356,7 +7360,8 @@ namespace da::features
                 {
                     g_beamWalk = false;
                     input::ReleaseWalkKeys();
-                    log::Info(L"explore: the walk along the beam ends with it");
+                    log::Info(L"explore: the walk along the beam ends with it{}", crossed ? L", over it" : L" short of its end");
+                    if (crossed) speech::Announce(locale::Mod(L"explore.beam.end"));
                 }
             }
             if (!g_onBeam) return;
