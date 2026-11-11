@@ -186,4 +186,9 @@ namespace da::nudge
         aim.behind = s.depth > 10.0 && std::fabs(s.lateral) < 4.0;
         return aim;
     }
+
+    bool SayLookKey(bool gameAsksLook, bool keyKnown)
+    {
+        return !gameAsksLook && keyKnown;
+    }
 }

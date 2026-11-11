@@ -317,4 +317,14 @@ namespace da::lines
         bool m_opening = false;
         bool m_cardSeen = false;
     };
+
+    // A drawn line names the key the game draws bare beside it, as a hint of one line with a stick next to
+    // "Walk around the kitchen" does, only where it has words: a line of digits names nothing.
+    bool NamesBareKey(const std::wstring& line);
+
+    // Whether the texts a widget draws are the screen's furniture, not words to read: the selfie's camera
+    // (WBP_CameraOverlay) draws a "3" by a stopwatch, beside its flash and contrast marks, which nothing
+    // ever changes (the shot's own countdown is a ring of one second), and it was read joined to the
+    // shot's R2 as "3: R2" (research/sessions/s70-play.log, 12:13:53). Its prompts are read all the same.
+    bool FurnitureOnly(const std::wstring& widgetClass);
 }

@@ -3,6 +3,7 @@
 #include "core/Strings.hpp"
 
 #include <algorithm>
+#include <cwctype>
 #include <set>
 
 namespace da::lines
@@ -246,5 +247,15 @@ namespace da::lines
         m_due = false;
         step.say = m_current;
         return step;
+    }
+
+    bool NamesBareKey(const std::wstring& line)
+    {
+        return std::any_of(line.begin(), line.end(), [](wchar_t ch) { return std::iswalpha(ch) != 0; });
+    }
+
+    bool FurnitureOnly(const std::wstring& widgetClass)
+    {
+        return widgetClass == L"WBP_CameraOverlay_C";
     }
 }

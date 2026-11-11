@@ -239,4 +239,13 @@ namespace da::nudge
         double m_xx = 0.0, m_xLateral = 0.0, m_yy = 0.0, m_yVertical = 0.0;
         int m_wayX = 1, m_wayY = 1;
     };
+
+    // Whether the mod names the key the view is turned with as a framing is led: only where the game's
+    // own question names none. The chapter 1 telescope draws "правый стик" itself (its interaction asks
+    // for IA_Looking); the selfie with Jessica draws only the shot's R2 on its camera's screen, and
+    // Andrey heard the aim sound with no word of which stick turned the view, until his shot was
+    // taken framed badly (research/sessions/s70-play.log, 12:13:52 to 12:14:02). Weighed once,
+    // kLookKeyAfter after the framing's box is read, so that the game's own question has come up.
+    constexpr double kLookKeyAfter = 0.6;
+    bool SayLookKey(bool gameAsksLook, bool keyKnown);
 }

@@ -357,6 +357,8 @@ namespace da::features
             bool inside = false;
             shoot::Cadence blips;
             double loggedAt = 0.0;
+            double since = 0.0;    // when its box was read
+            bool keyAsked = false; // whether the look's key has been weighed for saying (nudge::SayLookKey)
         };
         Framing g_framing;
         double g_framingLookedAt = -100.0;
@@ -394,6 +396,7 @@ namespace da::features
                     g_framing.on = true;
                     g_framing.holder = instance;
                     g_framing.box = box;
+                    g_framing.since = now;
                     log::Info(L"interactions: {} waits for the view to rest on a framing: CameraYaw {:.2f} to {:.2f}, CameraPitch {:.2f} to {:.2f} ({})",
                               obj::ObjectName(interaction), box.yawMin, box.yawMax, box.pitchMin, box.pitchMax, obj::ClassName(instance));
                     break;
@@ -412,6 +415,19 @@ namespace da::features
                 g_framingTaken = true;
                 StopFraming(L"the press was made, and the game has judged the framing");
                 return;
+            }
+            // The key the view is turned with, where the game draws none (nudge::SayLookKey): asked once
+            // the game's own question has had a moment to come up.
+            if (!f.keyAsked && now - f.since >= nudge::kLookKeyAfter)
+            {
+                f.keyAsked = true;
+                const bool asks = InteractionAsks(L"IA_Looking");
+                const std::wstring key = input::KeyForAction(L"IA_Looking");
+                if (nudge::SayLookKey(asks, !key.empty()))
+                {
+                    log::Info(L"interactions: the game names no key to turn the view with; the mod names it: {}", key);
+                    speech::Announce(key);
+                }
             }
             if (f.maxYaw <= 0.0 && !NudgeLimits(f.maxYaw, f.maxPitch)) return;
             nudge::View view;

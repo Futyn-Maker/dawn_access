@@ -84,11 +84,13 @@ namespace da::features
         // minutes, colon and seconds), then the prompts of its key caps, one line each.
         std::vector<std::wstring> Lines(UObject* widget)
         {
-            auto lines = ui::DrawnRows(widget);
+            // A screen whose texts are its furniture (the selfie camera's "3" by a stopwatch) is read
+            // by its prompts alone (lines::FurnitureOnly).
+            auto lines = lines::FurnitureOnly(obj::ClassName(widget)) ? std::vector<std::wstring>{} : ui::DrawnRows(widget);
             const auto prompts = ui::PromptsIn(widget);
             // A hint of one line with a bare key beside it (a stick next to "Walk around the
-            // kitchen") is one prompt: the line names the key.
-            if (lines.size() == 1 && !prompts.empty() &&
+            // kitchen") is one prompt: the line names the key, where it has words (lines::NamesBareKey).
+            if (lines.size() == 1 && lines::NamesBareKey(lines.front()) && !prompts.empty() &&
                 std::all_of(prompts.begin(), prompts.end(), [](const ui::Prompt& p) { return p.label.empty() && !p.key.empty(); }))
             {
                 return {lines.front() + L": " + ui::PromptLines(prompts)};

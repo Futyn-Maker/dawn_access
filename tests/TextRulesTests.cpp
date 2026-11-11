@@ -599,3 +599,18 @@ TEST_CASE("lines: words over a film that are no one's speech are told from its s
     CHECK_FALSE(lines::OnScreenText(L"ЛОС-АНДЖЕЛЕС", onScreen));
     CHECK(std::size(lines::kOnScreenTextKeys) == 5);
 }
+
+TEST_CASE("lines: the selfie camera's screen is read by its prompt alone, its \"3\" no name of the shot's key, 2026-11-11")
+{
+    // research/sessions/s70-play.log, 12:13:53: WBP_CameraOverlay drew a "3" by a stopwatch (TextBlock_79,
+    // never changed) and the shot's R2 bare, and the HUD read them as one hint, "3: R2".
+    CHECK(lines::FurnitureOnly(L"WBP_CameraOverlay_C"));
+    CHECK_FALSE(lines::FurnitureOnly(L"WBP_Sidebar_C"));
+    CHECK_FALSE(lines::FurnitureOnly(L"WBP_StatusUpdate_C"));
+    // A line of digits names no key beside it; a hint of words does.
+    CHECK_FALSE(lines::NamesBareKey(L"3"));
+    CHECK_FALSE(lines::NamesBareKey(L"20:00"));
+    CHECK(lines::NamesBareKey(L"Walk around the kitchen"));
+    CHECK(lines::NamesBareKey(L"Осмотреться"));
+    CHECK(lines::NamesBareKey(L"ピントを合わせる"));
+}

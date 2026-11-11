@@ -396,3 +396,15 @@ TEST_CASE("nudge: the totem's lead is clear a few centimetres from the point, wh
     CHECK(aim.pan == doctest::Approx(0.0));
     CHECK(aim.level == doctest::Approx(0.5));
 }
+
+TEST_CASE("nudge: a framing whose game names no key to turn the view with has the mod name it: the selfie, 2026-11-11")
+{
+    // The chapter 1 telescope draws "правый стик" itself (research/sessions/s39.log, 10:20:57): nothing
+    // more is said. The selfie with Jessica draws only the shot's R2 (s70-play.log, 12:13:52 to 12:14:02).
+    CHECK_FALSE(nudge::SayLookKey(true, true));
+    CHECK(nudge::SayLookKey(false, true));
+    // No key bound to look with in the scheme: nothing to name.
+    CHECK_FALSE(nudge::SayLookKey(false, false));
+    CHECK(nudge::kLookKeyAfter > 0.0);
+    CHECK(nudge::kLookKeyAfter < 1.5);
+}
