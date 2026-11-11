@@ -40,6 +40,7 @@ add_executable(tests
     ChoiceRulesTests.cpp
     PromptRulesTests.cpp
     TextRulesTests.cpp
+    SaveCopyRulesTests.cpp
     MenuRulesTests.cpp
     ShootingRulesTests.cpp
     NudgeRulesTests.cpp
@@ -84,7 +85,8 @@ add_executable(tests
     "${DA_SRC}/input/KeyChoice.cpp"
     "${DA_SRC}/features/CreditsRules.cpp"
     "${DA_SRC}/features/PictureRules.cpp"
-    "${DA_SRC}/features/AchievementRules.cpp")
+    "${DA_SRC}/features/AchievementRules.cpp"
+    "${DA_SRC}/diag/SaveCopyRules.cpp")
 
 target_include_directories(tests PRIVATE "${DA_SRC}" "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(tests PRIVATE doctest::doctest)

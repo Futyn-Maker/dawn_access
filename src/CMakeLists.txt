@@ -20,7 +20,7 @@ target_include_directories(${TARGET}
     PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}"
             "${DA_PRISM_DIR}/include")
 
-target_link_libraries(${TARGET} PUBLIC UE4SS PRIVATE winmm ole32)
+target_link_libraries(${TARGET} PUBLIC UE4SS PRIVATE winmm ole32 shell32)
 
 target_compile_definitions(${TARGET} PRIVATE
     DA_VERSION_STRING="${DA_VERSION}"

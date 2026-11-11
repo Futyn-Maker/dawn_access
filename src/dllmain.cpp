@@ -8,6 +8,7 @@
 #include "core/Strings.hpp"
 #include "diag/Audit.hpp"
 #include "diag/Diagnostics.hpp"
+#include "diag/SaveCopies.hpp"
 #include "features/Achievements.hpp"
 #include "features/Choices.hpp"
 #include "features/Credits.hpp"
@@ -153,6 +154,7 @@ public:
         da::diag::InstallFrameTimer();
         da::diag::InstallFirstLaunch();
         da::diag::InstallUnreadAudit();
+        da::diag::InstallSaveCopies();
         // The features are registered now and installed once the greeting has been said, so
         // that nothing of the screen is read before it.
         da::features::Register(std::make_unique<da::features::MenusFeature>());
@@ -178,11 +180,13 @@ public:
             [](Unreal::Hook::TCallbackIterationData<bool>&, Unreal::UEngine*, Unreal::FWorldContext&, Unreal::FURL url, Unreal::UPendingNetGame*,
                Unreal::FString&)
             {
-                (void)url;
+                // The map's path names the act, for the copies of the game's saves (diag::NoteMap).
+                std::wstring map = url.Map.Len() > 0 && *url.Map ? std::wstring(*url.Map, static_cast<size_t>(url.Map.Len())) : std::wstring();
                 da::gamethread::Post(
-                    []()
+                    [map]()
                     {
                         da::log::Info(L"map loaded; resetting caches");
+                        da::diag::NoteMap(map);
                         da::obj::ResetCaches();
                         da::watch::Reset();
                         da::features::ResetMenus();
