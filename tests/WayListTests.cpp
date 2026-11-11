@@ -2652,3 +2652,16 @@ TEST_CASE("ways: the beacon leads to the corner ahead of her, never one she walk
     // On no stretch: nothing; a new map gives the road from where she stands.
     CHECK_FALSE(ways::LeadCorner(turn, turn.size(), {2000, 2000, 0}, 150.0, ways::kStretchRise));
 }
+
+TEST_CASE("walks: a thing found closed off by a map begun during the walk ends the walk")
+{
+    // s71 23:28:57: ten levels streamed in, the new map found the danger totem closed off behind a
+    // spline wall; the walk went on into the wall.
+    CHECK(ways::WalkLosesTarget(false, true, false));
+    // Closed off already as the player chose it: the player's choice stands, the walk goes on.
+    CHECK_FALSE(ways::WalkLosesTarget(false, true, true));
+    // Still reached: the walk goes on.
+    CHECK_FALSE(ways::WalkLosesTarget(false, false, false));
+    // A way on is not judged by the rooms.
+    CHECK_FALSE(ways::WalkLosesTarget(true, true, false));
+}

@@ -1219,3 +1219,25 @@ TEST_CASE("look: held to a path and level with a thing not offered, the walk wai
     // Never longer than its last wait.
     CHECK(look::PathLevelGivesUp(look::kPathLevelWaitMost, false));
 }
+
+TEST_CASE("last stretch: given up out of the place, the walk steps back along its way and walks in again")
+{
+    // The bathroom door (s71 23:35): the way came along x and turned toward the door's place.
+    const std::vector<look::Vec> route{{3715, -9425, 3388}, {3687, -9431, 3386}, {3567, -9431, 3386}, {3567, -9411, 3386}};
+    // 150 cm back from the way's end: past its last two legs (20 + 120 cm), 10 cm along the first.
+    const auto back = look::BackOffPoint(route, 150.0);
+    REQUIRE(back);
+    CHECK(back->x == doctest::Approx(3687.0 + 28.0 * 10.0 / std::hypot(28.0, 6.0)).epsilon(0.001));
+    CHECK(back->y == doctest::Approx(-9431.0 + 6.0 * 10.0 / std::hypot(28.0, 6.0)).epsilon(0.001));
+    // A way shorter than the step back (169 cm against 200): its start.
+    const auto start = look::BackOffPoint(route);
+    REQUIRE(start);
+    CHECK(start->x == doctest::Approx(3715.0));
+    CHECK(start->y == doctest::Approx(-9425.0));
+    // Within the last leg.
+    const auto near = look::BackOffPoint(route, 10.0);
+    REQUIRE(near);
+    CHECK(near->y == doctest::Approx(-9421.0));
+    // No way: nothing to step back along.
+    CHECK_FALSE(look::BackOffPoint({}));
+}

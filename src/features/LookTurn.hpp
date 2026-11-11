@@ -8,6 +8,7 @@
 
 #include <deque>
 #include <optional>
+#include <vector>
 #include <utility>
 
 namespace da::look
@@ -235,6 +236,23 @@ namespace da::look
     // `sinceBegun`: the last stretch's time so far; `sinceLastPush`: the time since its last push;
     // `still`: she reads still (Motion).
     bool GivesUp(double sinceBegun, double sinceLastPush, bool still);
+
+    // A last stretch that gives up out of the place is tried once more from farther off, as a player
+    // tries: the walk steps back kBackOff along the way it came (BackOffPoint), then walks in again
+    // with its own speed, letting go where her slide ends. Close in, no push of the stick steps her a
+    // little: the game's walk start (BP_LocoInputHandler_Into) wants 0.16 s of a full push and then
+    // runs a metre, and it is refused, and only a single step offered, where something stands within
+    // a metre ahead, as by the furniture a thing is used at; a shorter push only turns her on the spot,
+    // and only where the way lies more than 23 degrees off her facing. Over every session's last
+    // stretches one-frame flicks moved her 18 times of 426 and held pushes 6 times of 38. In session
+    // 71 Sam stood 36 cm from the bathroom door's place, a held push ran her 145 cm past it, and the
+    // walk said it could not get there; walked to again from 3 m, she was in it at once (23:35:32 to
+    // 23:35:57).
+    constexpr double kBackOff = 200.0;
+    constexpr double kBackOffReached = 50.0; // that near the point stepped back to, the walk turns in again
+    // The point kBack along `route` (the way the walk came, its end at the place) from its end; its
+    // start where the way is shorter. Nothing for no way.
+    std::optional<Vec> BackOffPoint(const std::vector<Vec>& route, double back = kBackOff);
 
     // Held to a path, level with a thing the game has not offered: the walk lets the stick go and
     // gives up only once she has come to rest, at least kPathLevelSettle after it let go, or

@@ -512,6 +512,15 @@ namespace da::ways
     // back to it.
     bool WalkGoesOn(const void* walkFor, const void* chosen);
 
+    // Whether a walk ends because a map begun since it set off proves its thing closed off: the thing
+    // the player chose stays listed though a map finds it closed off, so that a doubtful map is not the
+    // last word, but a verdict that comes during the walk is a new fact of the world. In act4_3 on
+    // 2026-11-11 ten levels streamed in as Matt walked to the danger totem, a new map found it and five
+    // other things closed off behind a spline wall, and the walk pushed into that wall for twenty seconds
+    // and said it could not get there; the list dropped them all a moment after (s71, 23:28:44 to 23:29:24).
+    // `isWay`: a way on, which the rooms do not judge.
+    bool WalkLosesTarget(bool isWay, bool closedOffNow, bool closedOffAtStart);
+
     // What a walk to a way on goes on to when the way leaves the list for a thing beside it that
     // stands for it now (LeftForThing: `twin`, the way's twin, null for none): that thing, the way's
     // place being its place; else nothing, and the walk ends saying its target is gone. On the stairs

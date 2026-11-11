@@ -405,6 +405,11 @@ namespace da::ways
         return walkFor != nullptr && chosen == walkFor;
     }
 
+    bool WalkLosesTarget(bool isWay, bool closedOffNow, bool closedOffAtStart)
+    {
+        return !isWay && closedOffNow && !closedOffAtStart;
+    }
+
     bool MovedFromMap(double fromOrigin)
     {
         return fromOrigin > kMovedFromMap;

@@ -168,6 +168,25 @@ namespace da::look
         return offered || ((begun || wayLeft < letGoAt) && fromSpot <= kStretchReach);
     }
 
+    std::optional<Vec> BackOffPoint(const std::vector<Vec>& route, double back)
+    {
+        if (route.empty()) return std::nullopt;
+        double left = back;
+        for (size_t i = route.size() - 1; i > 0; --i)
+        {
+            const Vec& a = route[i];
+            const Vec& b = route[i - 1];
+            const double leg = std::hypot(b.x - a.x, b.y - a.y);
+            if (leg >= left && leg > 0.0)
+            {
+                const double share = left / leg;
+                return Vec{a.x + (b.x - a.x) * share, a.y + (b.y - a.y) * share, a.z + (b.z - a.z) * share};
+            }
+            left -= leg;
+        }
+        return route.front();
+    }
+
     bool GivesUp(double sinceBegun, double sinceLastPush, bool still)
     {
         if (sinceBegun <= kArriveMost) return false;

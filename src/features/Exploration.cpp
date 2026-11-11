@@ -444,6 +444,7 @@ namespace da::features
         bool g_walking = false;
         look::Slide g_slide; // how far she slides on once the walk lets go (look::Slide)
         UObject* g_walkFor = nullptr; // the target the walk was begun for
+        bool g_walkForApart = false;  // ... which the map had already found closed off as it set off (ways::WalkLosesTarget)
         std::wstring g_walkForLabel;
         double g_walkStartedAt = 0.0;
         // Whether she moves, by where she stands (look::Motion), sampled every frame for the
@@ -456,6 +457,8 @@ namespace da::features
         bool g_walkBlockLogged = false;
         double g_walkBestWay = 1e9;
         double g_walkBestWayAt = 0.0;
+        bool g_backedOff = false;     // this walk has stepped back once to walk in again (look::BackOffPoint)
+        bool g_backOffActive = false; // ... and is on its way back now, its detour the point stepped back to
         std::tuple<int, double> g_walkMeasure{0, 0.0}; // how the way still to go is measured, and the way felt out it is measured on
         double g_walkLeanedAt = 0.0;
         double g_walkLoggedAt = 0.0;
@@ -5912,6 +5915,16 @@ namespace da::features
         // on is the one to walk to; strayed from it, or without one, it is felt out anew.
         void FollowGrid(UObject* pawn, const Vec& here, Target& t, double now, bool request)
         {
+            // Stepped back far enough (look::BackOffPoint): the walk turns in again along its road.
+            if (g_backOffActive && t.detour.size() == 1 && FlatDistance(here, t.detour.front()) < look::kBackOffReached)
+            {
+                log::Info(L"explore: the walk to \"{}\" has stepped back; it walks in again", t.label);
+                t.detour.clear();
+                g_backOffActive = false;
+                g_walkMovingAt = now;
+                g_walkBestWay = 1e9;
+                g_walkBestWayAt = now;
+            }
             // A way round another character in the walk's way is followed while she keeps to it.
             if (!t.detour.empty())
             {
@@ -6802,6 +6815,7 @@ namespace da::features
         {
             if (!g_walking) return;
             g_walking = false;
+            g_backOffActive = false;
             g_lastWalkFor = g_walkFor;
             g_lastWalkEndedAt = gamethread::NowSeconds();
             g_walkFor = nullptr;
@@ -6959,6 +6973,7 @@ namespace da::features
         unsigned long long g_flickFrame = 0; // the frame a flick's push was given on
         double g_lastPushAt = -1.0;          // when the last stretch last pushed her (look::GivesUp)
         bool g_settleLogged = false;         // its time up, the wait for her to settle is logged
+        bool g_stretchRechecked = false;     // the stretch's pushes moved her nowhere: the ground ahead was asked again
         double g_levelSince = -1.0;          // held to a path, since when she is level with a thing not offered (look::PathLevelGivesUp)
         std::wstring g_arriveLogged;
 
@@ -7066,6 +7081,7 @@ namespace da::features
                 g_arriveLogged.clear();
                 g_lastPushAt = now;
                 g_settleLogged = false;
+                g_stretchRechecked = false;
                 if (!t.inside)
                 {
                     log::Info(L"explore: the walk's last stretch to \"{}\" begins {:.0f} cm from a spot of its place the ground carries her to", t.label,
@@ -7145,6 +7161,30 @@ namespace da::features
                     g_flicker.Hold(now, facing);
                     input::ReleaseWalkKeys();
                     return true;
+                }
+                // Out of the place, it is tried once more from farther off (look::BackOffPoint): the walk
+                // steps back along the way it came and walks in again with its own speed.
+                if (!p.inside && !g_backedOff)
+                {
+                    const bool fresh = !t.gridCorners.empty() && FlatDistance(Aim(t), t.gridGoal) < 50.0;
+                    const auto back = look::BackOffPoint(fresh ? t.gridCorners : std::vector<Vec>{});
+                    if (back && FlatDistance(*back, here) > look::kBackOffReached)
+                    {
+                        g_backedOff = true;
+                        g_backOffActive = true;
+                        t.detour = {*back};
+                        g_arriveSince = -1.0;
+                        g_walkMeasure = {0, 0.0};
+                        g_walkMovingAt = now;
+                        g_walkLeanedAt = now;
+                        g_walkBestWay = 1e9;
+                        g_walkBestWayAt = now;
+                        g_slide.Spoiled();
+                        log::Info(L"explore: the walk to \"{}\" got her no nearer in its last stretch ({}); it steps back to ({:.0f}, {:.0f}) along its way "
+                                  L"and walks in again",
+                                  t.label, PressTestText(p), back->x, back->y);
+                        return false;
+                    }
                 }
                 log::Info(L"explore: the walk to \"{}\" ends without the press taken: {}", t.label, PressTestText(p));
                 // Inside, a look of the player's is what is missing, and the guidance says so once she
@@ -7230,6 +7270,16 @@ namespace da::features
                                       : L"step her toward her spot",
                           p.characterTurn, here.x, here.y, fromSpot, spot.x, spot.y,
                           g_flicker.Dead() > 0 ? std::format(L"; {} flick(s) before it did nothing", g_flicker.Dead()) : std::wstring());
+            // Pushes toward her spot that move her nowhere: something the ground felt out does not hold
+            // may stand there now (a drawer the game has slid out, s71's death certificate at 22:46): the
+            // ground between her and the spot is asked again, once a stretch.
+            if (step && !p.inside && g_flicker.Dead() >= look::kDeadFlicks && !g_stretchRechecked)
+            {
+                g_stretchRechecked = true;
+                log::Info(L"explore: the last stretch's pushes toward \"{}\" move her nowhere: the ground between her and her spot is asked again",
+                          t.label);
+                StartRecheck(here, t, now);
+            }
             if (push)
             {
                 input::HoldWalkKeys(push->forward, push->right);
@@ -7497,6 +7547,15 @@ namespace da::features
                 {
                     StopWalkSaying(locale::Mod(L"explore.walk.gone", g_walkForLabel));
                 }
+                return;
+            }
+            // A map begun since the walk set off proves its thing closed off (ways::WalkLosesTarget): the
+            // walk ends, and the thing, the player's choice no more, leaves the list as the others did.
+            if (ways::WalkLosesTarget(target->way, target->room == rooms::Verdict::Apart, g_walkForApart))
+            {
+                log::Info(L"explore: the walk to \"{}\" ends: a map begun since it set off finds it closed off", g_walkForLabel);
+                if (g_selected == target->actor) g_selected = nullptr;
+                StopWalkSaying(locale::Mod(L"explore.walk.gone", g_walkForLabel));
                 return;
             }
             // Arriving at a way on speaks for itself; at a use location the last stretch
@@ -7806,8 +7865,11 @@ namespace da::features
                 }
             }
             g_walking = true;
+            g_backedOff = false;
+            g_backOffActive = false;
             g_walkFor = target->actor;
             g_walkForLabel = target->label;
+            g_walkForApart = target->room == rooms::Verdict::Apart;
             g_arriveSince = -1.0;
             g_levelSince = -1.0;
             StraightenChosen(*target, gamethread::NowSeconds());
