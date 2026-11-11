@@ -44,6 +44,57 @@ TEST_CASE("saves: a copy is named by its time and act, and the oldest beyond the
     CHECK(savecopy::MapLabel(L"").empty());
     const std::vector<std::wstring> names{L"20261111-121500-Act2_2.sav", L"20261111-110000-act2_11.sav", L"20261111-121355-Act2_2.sav",
                                           L"20261111-120000-act2_11.sav", L"20261111-122600-Act2_2.sav"};
-    CHECK(savecopy::Pruned(names, 3) == std::vector<std::wstring>{L"20261111-110000-act2_11.sav", L"20261111-120000-act2_11.sav"});
+    // The first copy of act2_11 stays though it is older than the three kept.
+    CHECK(savecopy::Pruned(names, 3) == std::vector<std::wstring>{L"20261111-120000-act2_11.sav"});
     CHECK(savecopy::Pruned(names, 5).empty());
+}
+
+namespace
+{
+    // A tagged string property as the save writes it.
+    void PutString(std::vector<char>& out, const std::string& text)
+    {
+        const int32_t length = static_cast<int32_t>(text.size() + 1);
+        out.insert(out.end(), reinterpret_cast<const char*>(&length), reinterpret_cast<const char*>(&length) + 4);
+        out.insert(out.end(), text.begin(), text.end());
+        out.push_back('\0');
+    }
+    void PutInt(std::vector<char>& out, int32_t value)
+    {
+        out.insert(out.end(), reinterpret_cast<const char*>(&value), reinterpret_cast<const char*>(&value) + 4);
+    }
+    std::vector<char> SaveWithSection(const std::string& section, bool guid = false)
+    {
+        std::vector<char> bytes{'G', 'V', 'A', 'S'};
+        PutString(bytes, "SaveTimeStamp");
+        PutString(bytes, "StrProperty");
+        PutInt(bytes, 24);
+        PutInt(bytes, 0);
+        bytes.push_back(0);
+        PutString(bytes, "2026.11.11-23.46.32");
+        PutString(bytes, "LevelStreamingSectionName");
+        PutString(bytes, "StrProperty");
+        PutInt(bytes, static_cast<int32_t>(section.size() + 5));
+        PutInt(bytes, 0);
+        bytes.push_back(guid ? 1 : 0);
+        if (guid) bytes.insert(bytes.end(), 16, '\x7f');
+        PutString(bytes, section);
+        PutString(bytes, "None");
+        return bytes;
+    }
+}
+
+TEST_CASE("saves: a copy is named by the section the save itself stands in, and each section's first copy is kept")
+{
+    // Session 71: the game streams every act into one map, and every copy was "SingleUberLevel".
+    CHECK(savecopy::SaveLabel(SaveWithSection("lv_act_2_2_section_03")) == L"act_2_2_section_03");
+    CHECK(savecopy::SaveLabel(SaveWithSection("LV_Act_4_2_Section_05", true)) == L"Act_4_2_Section_05");
+    CHECK(savecopy::SaveLabel(SaveWithSection("")).empty());
+    CHECK(savecopy::SaveLabel(std::vector<char>{'G', 'V', 'A', 'S'}).empty());
+    // A long session: the sixty newest reached back an hour; the start of every section stays too.
+    const std::vector<std::wstring> names{L"20261111-143000-act_2_2_section_01.sav", L"20261111-143100-act_2_2_section_01.sav",
+                                          L"20261111-151000-act_2_2_section_03.sav", L"20261111-151500-act_2_2_section_03.sav",
+                                          L"20261111-230000-act_5_1_section_02.sav", L"20261111-234600-act_5_1_section_02.sav"};
+    CHECK(savecopy::Pruned(names, 2) == std::vector<std::wstring>{L"20261111-143100-act_2_2_section_01.sav", L"20261111-151500-act_2_2_section_03.sav"});
+    CHECK(savecopy::Pruned(names, 6).empty());
 }

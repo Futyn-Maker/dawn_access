@@ -52,6 +52,14 @@ namespace da::savecopy
     // that names a level's folder or the map itself, without the "LV_" prefix and "_Persistent".
     std::wstring MapLabel(const std::wstring& mapPath);
 
-    // Of the copies' names, oldest first as their stamps sort, the ones beyond the newest `keep`.
+    // The section the save stands in, from the save itself: its LevelStreamingSectionName property
+    // ("lv_act_2_2_section_03") without the "lv_" prefix, or empty when the bytes hold none. The game
+    // streams every act into one map (/Game/levels/game/SingleUberLevel), so the map names nothing: the
+    // copies of session 71 were all labelled "SingleUberLevel".
+    std::wstring SaveLabel(const std::vector<char>& bytes);
+
+    // Of the copies' names ("<yyyymmdd-hhmmss>-<label>.sav"), the ones to let go: all but the newest
+    // `keep` and the first copy of each label, so that the start of every section stays at hand after
+    // a long session (session 71's sixty newest reached back only an hour).
     std::vector<std::wstring> Pruned(std::vector<std::wstring> names, size_t keep);
 }

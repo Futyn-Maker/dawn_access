@@ -1,7 +1,10 @@
 #include "diag/SaveCopyRules.hpp"
 
 #include <algorithm>
+#include <cstring>
 #include <cwctype>
+#include <set>
+#include <string_view>
 
 namespace da::savecopy
 {
@@ -63,11 +66,67 @@ namespace da::savecopy
         return name;
     }
 
+    std::wstring SaveLabel(const std::vector<char>& bytes)
+    {
+        // A tagged property: its name and type as FStrings (int32 length with the NUL, then the
+        // characters), int32 size, int32 array index, a has-GUID byte (16 bytes of GUID after it when
+        // set), then the value, here an FString.
+        static const std::string kName = "LevelStreamingSectionName";
+        std::string marker(4, '\0');
+        const int32_t nameLength = static_cast<int32_t>(kName.size() + 1);
+        std::memcpy(marker.data(), &nameLength, 4);
+        marker += kName;
+        marker.push_back('\0');
+        const std::string_view all(bytes.data(), bytes.size());
+        const size_t at = all.find(marker);
+        if (at == std::string_view::npos) return {};
+        size_t pos = at + marker.size();
+        auto readInt = [&](int32_t& value)
+        {
+            if (pos + 4 > all.size()) return false;
+            std::memcpy(&value, all.data() + pos, 4);
+            pos += 4;
+            return true;
+        };
+        auto readAscii = [&](std::string& out)
+        {
+            int32_t length = 0;
+            if (!readInt(length) || length <= 0 || length > 256 || pos + static_cast<size_t>(length) > all.size()) return false;
+            out.assign(all.data() + pos, static_cast<size_t>(length) - 1);
+            pos += static_cast<size_t>(length);
+            return true;
+        };
+        std::string type;
+        int32_t size = 0, index = 0;
+        if (!readAscii(type) || type != "StrProperty" || !readInt(size) || !readInt(index) || pos >= all.size()) return {};
+        if (all[pos++] != 0) pos += 16;
+        std::string value;
+        if (!readAscii(value)) return {};
+        std::wstring label(value.begin(), value.end());
+        if (StartsWithNoCase(label, L"lv_")) label = label.substr(3);
+        return label;
+    }
+
     std::vector<std::wstring> Pruned(std::vector<std::wstring> names, size_t keep)
     {
         std::sort(names.begin(), names.end());
         if (names.size() <= keep) return {};
-        names.resize(names.size() - keep);
-        return names;
+        // "<yyyymmdd-hhmmss>" is fifteen characters; what follows, before ".sav", is the label.
+        auto labelOf = [](const std::wstring& name)
+        {
+            std::wstring rest = name.size() > 15 ? name.substr(15) : std::wstring();
+            if (EndsWithNoCase(rest, L".sav")) rest = rest.substr(0, rest.size() - 4);
+            if (!rest.empty() && rest.front() == L'-') rest = rest.substr(1);
+            return Lower(rest);
+        };
+        std::set<std::wstring> firstSeen;
+        std::vector<std::wstring> pruned;
+        for (size_t i = 0; i + keep < names.size(); ++i)
+        {
+            const auto label = labelOf(names[i]);
+            if (!label.empty() && firstSeen.insert(label).second) continue;
+            pruned.push_back(names[i]);
+        }
+        return pruned;
     }
 }

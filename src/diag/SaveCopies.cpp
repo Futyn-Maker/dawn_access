@@ -111,7 +111,9 @@ namespace da::diag
             std::error_code ec;
             const auto folder = std::filesystem::path(dumps) / L"saves";
             std::filesystem::create_directories(folder, ec);
-            const auto target = folder / savecopy::CopyName(TimeStamp(), g_label);
+            // Named by the section the save stands in, from the save itself (the map is one for every act).
+            const std::wstring section = savecopy::SaveLabel(bytes);
+            const auto target = folder / savecopy::CopyName(TimeStamp(), section.empty() ? g_label : section);
             {
                 std::ofstream out(target, std::ios::binary | std::ios::trunc);
                 out.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
@@ -157,6 +159,6 @@ namespace da::diag
     void NoteMap(const std::wstring& mapPath)
     {
         g_label = savecopy::MapLabel(mapPath);
-        log::Info(L"map loaded: {}; its saves are labelled \"{}\"", mapPath, g_label);
+        log::Info(L"map loaded: {}", mapPath);
     }
 }
