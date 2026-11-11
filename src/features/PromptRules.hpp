@@ -92,6 +92,14 @@ namespace da::prompt
     // out is a time's up. The prologue's shack door (BP_ShackScare's LookThroughDoorStage) runs 8 s with
     // nothing drawn, its clock timing Beth's scare: the cue had sounded at its start with no question
     // after it (research/sessions/s67-play.log, 19:10:24.912).
+    // Whether an interaction's prompt asks its question now: not a glint's, not sent away, with words,
+    // and drawn, in the viewport's widget tree or on the screen layer of its own the game draws a glint
+    // and most interactions' prompts on (by the widget's own flags), as the prompt reader reads it. Asked
+    // for the viewport's tree alone, no stage on a clock sounded its Timer cue nor said its clock run out
+    // since session 66 (s71: Jessica's phone, the death machine's lever, the psycho's door bolt), and the
+    // radio's dial never named its way to the station (s57).
+    bool Asking(bool glint, bool hidden, bool hasText, bool inTree, bool onLayer);
+
     class TimedCue
     {
     public:

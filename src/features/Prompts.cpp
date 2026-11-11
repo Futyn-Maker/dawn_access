@@ -147,15 +147,30 @@ namespace da::features
             return up;
         }
 
+        // How the game draws a prompt widget: in the viewport's widget tree, or, a glint and most
+        // interactions' prompts (on the character's wrist, by the thing), on a screen layer of their
+        // own, in no widget tree, where their own flags say whether they are drawn. The one rule the
+        // reader reads a prompt by and every question about a prompt asks (prompt::Asking).
+        struct Drawing
+        {
+            bool inTree = false;
+            bool onLayer = false;
+        };
+        Drawing DrawingOf(UObject* widget)
+        {
+            Drawing d;
+            d.inTree = obj::IsWidgetShown(widget);
+            d.onLayer = !d.inTree && ui::LayerWidgetDrawn(widget);
+            return d;
+        }
+
         // What a prompt widget says: each key cap's words with its key.
         std::wstring Readout(Shown& s, std::wstring* actions)
         {
             if (s.hidden) return {};
-            // A glint and the prompt on the character's wrist are drawn on a screen layer of
-            // their own, in no widget tree: their own flags say whether they are drawn.
-            const bool shown = obj::IsWidgetShown(s.widget);
-            const bool layer = !shown && ui::LayerWidgetDrawn(s.widget);
-            if (!shown && !layer) return {};
+            const auto drawing = DrawingOf(s.widget);
+            const bool layer = drawing.onLayer;
+            if (!drawing.inTree && !layer) return {};
             // A glint's widget is pooled and serves one glint after another, so what it showed
             // last says nothing: its prompt is read while its own flags have it up and a glint
             // spawned for the character holds it, with the name of that glint's thing.
@@ -606,7 +621,8 @@ namespace da::features
                 // next showing a new one.
                 if (it->glint && inPlay && !glintsAsked)
                 {
-                    const bool drawn = obj::IsWidgetShown(it->widget) || ui::LayerWidgetDrawn(it->widget);
+                    const auto drawing = DrawingOf(it->widget);
+                    const bool drawn = drawing.inTree || drawing.onLayer;
                     prompt::Withheld(*it, drawn && GlintPromptUp(*it) && UseLocationOfGlintWidget(it->widget));
                     ++it;
                     continue;
@@ -759,12 +775,21 @@ namespace da::features
     {
         return std::any_of(g_shown.begin(), g_shown.end(),
                            [&](const Shown& q)
-                           { return !q.glint && !q.hidden && obj::IsLive(q.widget) && obj::IsWidgetShown(q.widget) && q.actions.find(action) != std::wstring::npos; });
+                           {
+                               if (!obj::IsLive(q.widget) || q.actions.find(action) == std::wstring::npos) return false;
+                               const auto drawing = DrawingOf(q.widget);
+                               return prompt::Asking(q.glint, q.hidden, !q.text.empty(), drawing.inTree, drawing.onLayer);
+                           });
     }
 
     bool InteractionPromptShown()
     {
         return std::any_of(g_shown.begin(), g_shown.end(),
-                           [](const Shown& q) { return !q.glint && !q.hidden && !q.text.empty() && obj::IsLive(q.widget) && obj::IsWidgetShown(q.widget); });
+                           [](const Shown& q)
+                           {
+                               if (!obj::IsLive(q.widget)) return false;
+                               const auto drawing = DrawingOf(q.widget);
+                               return prompt::Asking(q.glint, q.hidden, !q.text.empty(), drawing.inTree, drawing.onLayer);
+                           });
     }
 }

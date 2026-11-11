@@ -777,3 +777,21 @@ TEST_CASE("prompt: a stage on a clock sounds its cue only once it asks; the prol
     CHECK_FALSE(bolt.Asked(2));
     CHECK(bolt.Update(3, true));
 }
+
+TEST_CASE("prompts: an interaction's prompt asks where the game draws it on a layer of its own")
+{
+    // s71 21:55:50: the death machine's R2 (WBP_Interaction_C), read by the prompt reader on its screen
+    // layer, in no widget tree: asked for the tree alone, its stage's 30 s never sounded the Timer cue,
+    // nor did Jessica's phone (21:14:48) or the bolt (23:44:45), and the clock run out went unsaid.
+    prompt::TimedCue lever;
+    CHECK_FALSE(lever.Update(0, prompt::Asking(false, false, false, false, false))); // the stage begins, nothing drawn
+    CHECK(lever.Update(0, prompt::Asking(false, false, true, false, true)));          // R2 drawn: the cue
+    CHECK(lever.Asked(0));                                                            // its 30 s run out is said
+    // Drawn in the viewport's tree: asks as well.
+    CHECK(prompt::Asking(false, false, true, true, false));
+    // Sent away, or without words, or a glint's, or drawn nowhere: asks nothing.
+    CHECK_FALSE(prompt::Asking(false, true, true, false, true));
+    CHECK_FALSE(prompt::Asking(false, false, false, false, true));
+    CHECK_FALSE(prompt::Asking(true, false, true, false, true));
+    CHECK_FALSE(prompt::Asking(false, false, true, false, false));
+}

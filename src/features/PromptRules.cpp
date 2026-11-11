@@ -88,6 +88,11 @@ namespace da::prompt
         return waited && now != atLimit;
     }
 
+    bool Asking(bool glint, bool hidden, bool hasText, bool inTree, bool onLayer)
+    {
+        return !glint && !hidden && hasText && (inTree || onLayer);
+    }
+
     bool TimedCue::Update(int64_t stage, bool asked)
     {
         if (stage != m_stage)
