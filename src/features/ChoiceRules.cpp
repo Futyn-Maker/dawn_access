@@ -130,15 +130,21 @@ namespace da::choice
         return c.announced && !c.finished && !c.options.empty();
     }
 
-    void Chosen::Set(std::wstring text, double now)
+    Taking Chosen::Take(std::wstring words, double now, bool keyRepeating)
     {
-        m_text = std::move(text);
         m_since = now;
+        m_waiting = keyRepeating;
+        m_words = keyRepeating ? std::move(words) : std::wstring();
+        if (keyRepeating) return Taking::Wait;
+        return words.empty() ? Taking::Cut : Taking::Say;
     }
 
-    std::wstring Chosen::Due(double now, bool held)
+    std::optional<std::wstring> Chosen::Due(double now, bool keyRepeating, bool promptUp)
     {
-        if (m_text.empty() || (held && now - m_since <= kChosenWait)) return {};
-        return std::exchange(m_text, std::wstring());
+        if (!m_waiting || (keyRepeating && now - m_since <= kChosenWait)) return std::nullopt;
+        m_waiting = false;
+        std::wstring words = std::exchange(m_words, std::wstring());
+        if (promptUp) words.clear();
+        return words;
     }
 }

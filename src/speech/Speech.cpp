@@ -39,9 +39,11 @@ namespace da::speech
         constexpr long long kRecentMs = 120'000;
         bool g_preferSapi = false;
 
-        // The lines kept while held, with their policies, and since when the hold stands: a
-        // hold nobody lets go of (its mechanic gone without an ending) lapses by itself.
+        // The lines kept while held, with their policies, who holds them (rules::Holders), and since
+        // when the hold stands: a hold nobody lets go of (its mechanic gone without an ending) lapses
+        // by itself.
         bool g_held = false;
+        rules::Holders g_holders;
         Clock::time_point g_heldAt{};
         std::deque<std::pair<std::wstring, std::wstring>> g_heldLines;
         constexpr long long kHoldLapseMs = 15'000;
@@ -128,6 +130,7 @@ namespace da::speech
         void FlushHeld()
         {
             g_held = false;
+            g_holders.Clear();
             while (!g_heldLines.empty())
             {
                 const auto [policy, text] = g_heldLines.front();
@@ -187,20 +190,29 @@ namespace da::speech
         OutputNow(text, false, L"announce");
     }
 
-    void Hold()
+    void Hold(std::wstring_view owner)
     {
         fault::Guard lock(g_mutex, L"speech");
-        if (g_held) return;
+        if (!g_holders.Hold(std::wstring(owner)))
+        {
+            if (g_held) log::Verbose(L"speech: {} holds what the game says by itself as well", owner);
+            return;
+        }
         g_held = true;
         g_heldAt = Clock::now();
-        log::Verbose(L"speech: what the game says by itself is held");
+        log::Verbose(L"speech: what the game says by itself is held ({})", owner);
     }
 
-    void Release()
+    void Release(std::wstring_view owner)
     {
         fault::Guard lock(g_mutex, L"speech");
+        if (!g_holders.Release(std::wstring(owner)))
+        {
+            if (g_held && g_holders.Held()) log::Verbose(L"speech: {} lets go of the hold, which others keep", owner);
+            return;
+        }
         if (!g_held) return;
-        log::Verbose(L"speech: the hold is let go, with {} line(s) kept", g_heldLines.size());
+        log::Verbose(L"speech: the hold is let go ({}), with {} line(s) kept", owner, g_heldLines.size());
         FlushHeld();
     }
 
@@ -283,6 +295,14 @@ namespace da::speech
         g_said.push_back(rules::Said{L"stop", L"", Seconds()});
         g_heldLines.clear();
         log::Info(L"speech: stopped");
+    }
+
+    void Cut(std::wstring_view why)
+    {
+        fault::Guard lock(g_mutex, L"speech");
+        outputs::Silence();
+        g_said.push_back(rules::Said{L"stop", L"", Seconds()});
+        log::Info(L"speech: cut short: {}", why);
     }
 
     void StopForKey(std::wstring_view key)

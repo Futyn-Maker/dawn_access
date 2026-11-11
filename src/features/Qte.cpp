@@ -146,7 +146,7 @@ namespace da::features
             if (!g_holding)
             {
                 g_holding = true;
-                speech::Hold();
+                speech::Hold(L"qte");
             }
             Speak(g_qtes.back(), now, true);
         }
@@ -288,12 +288,12 @@ namespace da::features
             if (hold && !g_holding)
             {
                 g_holding = true;
-                speech::Hold();
+                speech::Hold(L"qte");
             }
             else if (!hold && g_holding)
             {
                 g_holding = false;
-                speech::Release();
+                speech::Release(L"qte");
             }
         }
 

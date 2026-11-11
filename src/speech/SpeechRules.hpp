@@ -2,6 +2,7 @@
 // What the speech policies decide, worked out without the reader so that it can be tested.
 
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -74,4 +75,30 @@ namespace da::speech::rules
     // again, the page was heard to its middle and then from its start, with the prompts behind it
     // twice (research/sessions/s61-play.log, 18:59:39 to 18:59:50).
     bool StillOn(const std::vector<Said>& said, const std::wstring& page, double now);
+
+    // Who holds what the game says by itself (Hold): each owner lets go of its own, and the lines
+    // kept are said once the last lets go. A choice's side taken while its key still repeated holds
+    // the game's lines until the key is up, and the prologue starts a quick-time event at once after
+    // a choice: with one shared hold, the choice letting go would have let the game speak over the
+    // event's key, which the event's hold is there to keep quiet.
+    class Holders
+    {
+    public:
+        // An owner takes hold: true when this begins the hold.
+        bool Hold(const std::wstring& owner);
+        // An owner lets go: true when the hold ends with it, the kept lines to be said.
+        bool Release(const std::wstring& owner);
+        bool Held() const
+        {
+            return !m_owners.empty();
+        }
+        // The hold ends for every owner at once (it lapsed).
+        void Clear()
+        {
+            m_owners.clear();
+        }
+
+    private:
+        std::set<std::wstring> m_owners;
+    };
 }

@@ -79,4 +79,15 @@ namespace da::speech::rules
         }
         return plan;
     }
+
+    bool Holders::Hold(const std::wstring& owner)
+    {
+        const bool began = m_owners.empty();
+        return m_owners.insert(owner).second && began;
+    }
+
+    bool Holders::Release(const std::wstring& owner)
+    {
+        return m_owners.erase(owner) > 0 && m_owners.empty();
+    }
 }

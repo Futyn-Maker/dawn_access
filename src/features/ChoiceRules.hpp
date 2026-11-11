@@ -3,6 +3,7 @@
 // options make one choice, which choice a pooled option widget belongs to, when a hold toward an
 // option begins, when a choice is read, how it ended, and when the option taken is said.
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -117,23 +118,44 @@ namespace da::choice
     // True while a choice is up and not yet settled.
     bool InProgress(const Choice& c);
 
-    // The option taken is said once the keys are released, so that it is not cut off by the
-    // game's answer to the release; failing a release, after kChosenWait.
+    // What the player hears as a side is taken (Andrey, 2026-11-11): the taking cuts whatever is
+    // being said, at either level. The option's words, read as the hold toward it began, ran on
+    // past it, and the game's status card waited behind them, so that at the detailed level the
+    // option taken came last: "УВЕРЕННОСТЬ. Как дела?", "Статус обновлен: R1", "УВЕРЕННОСТЬ,
+    // выбрано." (research/sessions/s69-play.log, 10:43:37 to 10:43:38). Now the detailed level
+    // says "X, chosen." at once in their place, and what the game says after it follows it; the
+    // brief level falls silent, and the next thing said is the game's. A keyboard key still down
+    // for the game cuts a screen reader at every repeat (NVDA's speech interrupt for typed
+    // characters), so while one is held at the taking, the words, and everything the game says
+    // after them, wait for its release, at most kChosenWait.
     constexpr double kChosenWait = 2.0;
+    enum class Taking
+    {
+        Say,  // the words, cutting what is being said
+        Cut,  // silence: the brief level has no words for it
+        Wait, // silence; the words and what the game says after them wait for the key's release
+    };
     class Chosen
     {
     public:
-        void Set(std::wstring text, double now);
-        // Words wait to be said.
-        bool Pending() const
+        // A side taken at `now`, with the words to say (empty at the brief level) and whether a key
+        // is down for the game.
+        Taking Take(std::wstring words, double now, bool keyRepeating);
+        // A taking waits for the key's release.
+        bool Waiting() const
         {
-            return !m_text.empty();
+            return m_waiting;
         }
-        // The words due now, with every key released or not; empty when none.
-        std::wstring Due(double now, bool held);
+        // The end of the wait, once the key is let go or kChosenWait after the taking: the words to
+        // say then (empty at the brief level). Nothing while it still waits, or when none does. A
+        // quick-time event's prompt up by then has cut in over everything (the prologue starts one
+        // at once after a choice), and the words, said now, would cut its key: they are dropped,
+        // the side taken told by its tone alone.
+        std::optional<std::wstring> Due(double now, bool keyRepeating, bool promptUp);
 
     private:
-        std::wstring m_text;
+        std::wstring m_words;
         double m_since = -1.0;
+        bool m_waiting = false;
     };
 }

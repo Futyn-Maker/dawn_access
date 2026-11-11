@@ -1,6 +1,7 @@
 #include "features/Choices.hpp"
 
 #include "features/ChoiceRules.hpp"
+#include "features/Qte.hpp"
 
 #include "core/Config.hpp"
 #include "core/GameThread.hpp"
@@ -9,7 +10,7 @@
 #include "core/ParamReader.hpp"
 #include "core/Strings.hpp"
 #include "hooks/HookDispatcher.hpp"
-#include "input/InputNames.hpp"
+#include "hotkeys/KeyHook.hpp"
 #include "locale/Locale.hpp"
 #include "speech/Sounds.hpp"
 #include "speech/Speech.hpp"
@@ -26,8 +27,8 @@ namespace da::features
 
     namespace
     {
-        // The choices as the rules keep them (features/ChoiceRules), and the option taken, said
-        // once every key is released.
+        // The choices as the rules keep them (features/ChoiceRules), and the option taken, said as
+        // the side is taken, cutting what is being said (choice::Chosen).
         using choice::Choice;
         using choice::Option;
         choice::Book g_book;
@@ -149,8 +150,9 @@ namespace da::features
             if (Choice* choice = g_book.Of(self)) choice->timeout = progress;
         }
 
-        // What the game's verdict means: the side taken, with its tone and its word once the
-        // keys are released; the time run out; or an end of the stage's own, without a word.
+        // What the game's verdict means: the side taken, with its tone, cutting what is being said,
+        // and at the detailed level its word in its place (choice::Chosen); the time run out; or an
+        // end of the stage's own, without a word.
         void Finish(Choice& choice, int64_t result, const std::wstring& how)
         {
             std::wstring chosen;
@@ -160,7 +162,23 @@ namespace da::features
             if (end == choice::End::Left || end == choice::End::Right)
             {
                 sounds::Play(sounds::Cue::Confirm);
-                if (!chosen.empty()) g_chosen.Set(locale::Mod(L"choice.chosen", chosen), gamethread::NowSeconds());
+                const std::wstring words = cfg::Detailed() && !chosen.empty() ? locale::Mod(L"choice.chosen", chosen) : std::wstring();
+                switch (g_chosen.Take(words, gamethread::NowSeconds(), keyhook::KeyRepeating()))
+                {
+                case choice::Taking::Say:
+                    speech::Now(words);
+                    break;
+                case choice::Taking::Cut:
+                    speech::Cut(L"a side of the choice taken");
+                    break;
+                case choice::Taking::Wait:
+                    // The key the side was taken with still repeats, and a screen reader stops at
+                    // each repeat: the words, and what the game says after them, wait for it.
+                    speech::Cut(L"a side of the choice taken, its key still down");
+                    speech::Hold(L"choice");
+                    log::Info(L"choices: the option taken waits for the player's key to be let go");
+                    break;
+                }
             }
             else if (end == choice::End::TimedOut)
             {
@@ -183,11 +201,18 @@ namespace da::features
         void PollImpl()
         {
             const double now = gamethread::NowSeconds();
-            // The option taken is told once the keys are released (choice::Chosen); the keys are
-            // asked about only while it waits.
-            if (g_chosen.Pending())
+            // A side taken with a key still down: once it is let go, its words, then what the game
+            // said meanwhile (choice::Chosen); the key is asked about only while it waits.
+            if (g_chosen.Waiting())
             {
-                if (const auto chosen = g_chosen.Due(now, input::InputHeld()); !chosen.empty() && cfg::Detailed()) speech::Announce(chosen);
+                const bool prompt = QteInProgress();
+                if (const auto words = g_chosen.Due(now, keyhook::KeyRepeating(), prompt))
+                {
+                    log::Info(L"choices: the player's key is let go, or waited for long enough{}",
+                              prompt ? L"; a quick-time event is up, and the option taken is told by its tone alone" : L"");
+                    if (!words->empty()) speech::Now(*words);
+                    speech::Release(L"choice");
+                }
             }
             g_book.Prune([](choice::Handle widget) { return obj::IsLive(static_cast<UObject*>(widget)); });
             for (auto& choice : g_book.All())

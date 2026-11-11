@@ -217,3 +217,32 @@ TEST_CASE("the lines a turned page keeps are each kept once, and none that no lo
     const std::map<std::wstring, double> earlier{{L"Назад: круг", 40.0}};
     CHECK(speech::rules::Turn(said, page, 45.627, &earlier).kept.back() == L"Назад: круг");
 }
+
+TEST_CASE("each owner lets go of its own hold: a choice's side taken, then the prologue's quick-time event")
+{
+    speech::rules::Holders holders;
+    CHECK_FALSE(holders.Held());
+    // The side taken with its key still down holds the game's lines; the event set up at once after
+    // it holds them as well, which begins nothing.
+    CHECK(holders.Hold(L"choice"));
+    CHECK_FALSE(holders.Hold(L"qte"));
+    CHECK(holders.Held());
+    // The key let go: the choice lets go, and the event still keeps the game quiet over its key.
+    CHECK_FALSE(holders.Release(L"choice"));
+    CHECK(holders.Held());
+    // A second letting go of the same owner changes nothing.
+    CHECK_FALSE(holders.Release(L"choice"));
+    CHECK(holders.Held());
+    // The event over: the kept lines are said.
+    CHECK(holders.Release(L"qte"));
+    CHECK_FALSE(holders.Held());
+    // Held again by the one owner, the same owner's hold twice is one.
+    CHECK(holders.Hold(L"qte"));
+    CHECK_FALSE(holders.Hold(L"qte"));
+    CHECK(holders.Release(L"qte"));
+    // Lapsed: every owner's hold ends at once.
+    CHECK(holders.Hold(L"qte"));
+    holders.Clear();
+    CHECK_FALSE(holders.Held());
+    CHECK_FALSE(holders.Release(L"qte"));
+}

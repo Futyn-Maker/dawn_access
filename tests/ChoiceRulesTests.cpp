@@ -182,17 +182,58 @@ TEST_CASE("choice: options gone without a verdict end the choice; finished ones 
     CHECK(many.All().size() == choice::kChoicesKept);
 }
 
-TEST_CASE("choice: the option taken is said once every key is released, or after two seconds")
+TEST_CASE("choice: a side taken cuts what is being said, the option taken said at once in its place: Chris at the lodge, 2026-11-11")
+{
+    // research/sessions/s69-play.log, 10:43:37 to 10:43:38: R2 held toward УВЕРЕННОСТЬ, its words said
+    // as the hold began; the game took the side at 38.161, its status card came at 38.598, and the
+    // option taken waited for R2 to be let go (38.637), behind the card. Now the taking cuts in.
+    choice::Chosen chosen;
+    CHECK_FALSE(chosen.Waiting());
+    CHECK_FALSE(chosen.Due(38.0, false, false).has_value());
+    // The detailed level, the pad's trigger still held (no key repeats for the reader): said at once.
+    CHECK(chosen.Take(L"УВЕРЕННОСТЬ, выбрано.", 38.161, false) == choice::Taking::Say);
+    CHECK_FALSE(chosen.Waiting());
+    CHECK_FALSE(chosen.Due(38.598, false, false).has_value());
+    // The brief level: silence, and the card is the next thing said.
+    CHECK(chosen.Take(L"", 50.0, false) == choice::Taking::Cut);
+    CHECK_FALSE(chosen.Waiting());
+}
+
+TEST_CASE("choice: a side taken with a keyboard key still down waits for its release, at most two seconds")
 {
     choice::Chosen chosen;
-    CHECK(chosen.Due(0.0, false).empty());
-    chosen.Set(L"Leave it, chosen.", 1.0);
-    CHECK(chosen.Due(1.5, true).empty());
-    CHECK(chosen.Due(2.0, false) == L"Leave it, chosen.");
-    CHECK(chosen.Due(2.1, false).empty());
-    chosen.Set(L"Hide, chosen.", 5.0);
-    CHECK(chosen.Due(6.9, true).empty());
-    CHECK(chosen.Due(7.1, true) == L"Hide, chosen.");
+    // D held as the game takes the side: NVDA would stop at each of its repeats.
+    CHECK(chosen.Take(L"Hide, chosen.", 1.0, true) == choice::Taking::Wait);
+    CHECK(chosen.Waiting());
+    CHECK_FALSE(chosen.Due(1.5, true, false).has_value());
+    // Let go: the words, then what the game said meanwhile.
+    const auto words = chosen.Due(1.6, false, false);
+    REQUIRE(words.has_value());
+    CHECK(words->compare(L"Hide, chosen.") == 0);
+    CHECK_FALSE(chosen.Waiting());
+    CHECK_FALSE(chosen.Due(1.7, false, false).has_value());
+    // Held on: said after two seconds all the same.
+    CHECK(chosen.Take(L"Leave it, chosen.", 5.0, true) == choice::Taking::Wait);
+    CHECK_FALSE(chosen.Due(6.9, true, false).has_value());
+    const auto late = chosen.Due(7.1, true, false);
+    REQUIRE(late.has_value());
+    CHECK(late->compare(L"Leave it, chosen.") == 0);
+    // The brief level waits as well, with no words: the game's lines come once the key is up.
+    CHECK(chosen.Take(L"", 10.0, true) == choice::Taking::Wait);
+    const auto none = chosen.Due(10.3, false, false);
+    REQUIRE(none.has_value());
+    CHECK(none->empty());
+}
+
+TEST_CASE("choice: the option taken is not said over a quick-time event's key that came up while its key was down")
+{
+    // The prologue starts a quick-time event at once after a choice; its key cuts in over everything.
+    choice::Chosen chosen;
+    CHECK(chosen.Take(L"Hide, chosen.", 1.0, true) == choice::Taking::Wait);
+    const auto words = chosen.Due(1.4, false, true);
+    REQUIRE(words.has_value());
+    CHECK(words->empty());
+    CHECK_FALSE(chosen.Waiting());
 }
 
 TEST_CASE("choices: the players' share of an option is said as a whole percent, none while the game shows none")

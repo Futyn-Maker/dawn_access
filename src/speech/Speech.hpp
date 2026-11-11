@@ -17,11 +17,14 @@
 //                    after it, queued behind it, is said again before the new one. Once the
 //                    reader is past the old one, the new one waits behind what it is saying
 //                    (rules::Turn): a clue's card is cut neither with the page nor by it.
-//   Hold()         - what the game says by itself waits while such a moment lasts:
-//                    Announce lines are kept in order and said at Release(). Focus lines
-//                    answer the player's own input and are never kept; Now, Urgent and
-//                    Exclusive lines are said at once.
+//   Hold(owner)    - what the game says by itself waits while such a moment lasts:
+//                    Announce lines are kept in order and said once every owner has called
+//                    Release(owner) (a quick-time event's prompt, a choice's side taken while
+//                    a key still repeats, each let go of on its own). Focus lines answer the
+//                    player's own input and are never kept; Now, Urgent and Exclusive lines
+//                    are said at once.
 //   Exclusive(text)- non-interrupting, said even while held: the held moment's own words.
+//   Cut(why)       - silence what is being said for something the player did.
 //   Stop()         - silence everything.
 //   Repeat()       - speak the last utterance again.
 //
@@ -50,9 +53,12 @@ namespace da::speech
     // Whether a line was dropped unheard from behind a turned page (withdrawn, rules::TurnPlan) and
     // not given to the reader since: a prompt that stands again is then to be said again.
     bool DroppedUnheard(std::wstring_view text);
-    void Hold();
-    void Release();
+    void Hold(std::wstring_view owner);
+    void Release(std::wstring_view owner);
     void Exclusive(std::wstring_view text);
+    // Silences what is being said, as a key the player pressed does, for something the player did
+    // (a side of a choice taken): noted at Info with why. Lines kept by a hold stay kept.
+    void Cut(std::wstring_view why);
     void Stop();
     // Silences everything for a key the player pressed. The log notes it at Verbose only,
     // since the arrows and the D-pad come many times a minute.
