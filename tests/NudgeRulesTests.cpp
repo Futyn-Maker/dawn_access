@@ -422,3 +422,25 @@ TEST_CASE("framings: the selfie's verdict from the states the game's graph goes 
     // A name that only holds the word is no verdict.
     CHECK(nudge::FramingVerdict({L"Wellness"}) == nudge::Verdict::None);
 }
+
+TEST_CASE("nudge: the turn of an item in hand names the way its stick is pushed")
+{
+    // s71 19:22:39: the compatibility test, led right from 0.00 to its reveal at 0.95.
+    nudge::TurnLead lead;
+    lead.right = 1;
+    CHECK(nudge::PushWay(lead) == L"Right");
+    lead.right = -1;
+    CHECK(nudge::PushWay(lead) == L"Left");
+    lead.right = 0;
+    lead.up = 1;
+    CHECK(nudge::PushWay(lead) == L"Up");
+    lead.up = -1;
+    CHECK(nudge::PushWay(lead) == L"Down");
+    // Reached, or no push: nothing.
+    lead.reached = true;
+    CHECK(nudge::PushWay(lead).empty());
+    CHECK(nudge::PushWay(nudge::TurnLead{}).empty());
+    // The game's own question naming the movement keeps the mod quiet.
+    CHECK_FALSE(nudge::SayLookKey(true, true));
+    CHECK(nudge::SayLookKey(false, true));
+}

@@ -474,6 +474,7 @@ namespace da::features
         double g_turnGraphAskedAt = -100.0;
         bool g_turnUnread = false; // said once: the stage's measure cannot be read in this build
         double g_turnLoggedAt = 0.0;
+        double g_turnKeyDue = -1.0; // when the key of the turn is weighed (nudge::PushWay, nudge::SayLookKey)
         // Whether an anim class reads the reveal, asked once of each class.
         std::map<obj::ObjectKey, bool> g_graphReads;
 
@@ -1143,6 +1144,7 @@ namespace da::features
                 g_turn.reversed = inputMultiplier * evaluationMultiplier < 0.0;
                 g_turnLead = nudge::Toward(g_turn);
                 g_turnBlips.Reset();
+                g_turnKeyDue = now + nudge::kLookKeyAfter;
                 log::Info(L"interactions: the item of {} is in hand; its turn is led {} from {:.2f} to the reveal at {:.2f}, along the stick's {} axis "
                           L"(InputMultiplier {:.2f}, EvaluationMultiplier {:.2f}{}){}",
                           obj::ObjectName(interaction), PushWord(g_turnLead), g_turn.share, g_turn.threshold, g_turn.vertical ? L"Y" : L"X",
@@ -1163,6 +1165,19 @@ namespace da::features
             }
             if (!g_turnCourse.Led()) return;
             g_turnLead = nudge::Toward(g_turn);
+            // The key and the way of the turn, where the game's question names none, once it has had a
+            // moment to come up.
+            if (g_turnKeyDue >= 0.0 && now >= g_turnKeyDue)
+            {
+                g_turnKeyDue = -1.0;
+                const auto way = nudge::PushWay(g_turnLead);
+                const auto key = way.empty() ? std::wstring() : input::KeyForActionWay(L"IA_InteractionMovement", way);
+                if (nudge::SayLookKey(InteractionAsks(L"IA_InteractionMovement"), !key.empty()))
+                {
+                    log::Info(L"interactions: the game names no key to turn the item with; the mod names it: {}", key);
+                    speech::Announce(key);
+                }
+            }
             if (now - g_turnLoggedAt >= 0.5)
             {
                 g_turnLoggedAt = now;
@@ -1185,6 +1200,7 @@ namespace da::features
             g_turnBlips.Reset();
             g_turnGraph = -1;
             g_turnGraphAskedAt = -100.0;
+            g_turnKeyDue = -1.0;
         }
 
         // ---- a light the press is timed by --------------------------------------------------------

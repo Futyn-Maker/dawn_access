@@ -187,6 +187,16 @@ namespace da::nudge
         return aim;
     }
 
+    std::wstring PushWay(const TurnLead& l)
+    {
+        if (l.reached) return {};
+        if (l.right > 0) return L"Right";
+        if (l.right < 0) return L"Left";
+        if (l.up > 0) return L"Up";
+        if (l.up < 0) return L"Down";
+        return {};
+    }
+
     bool SayLookKey(bool gameAsksLook, bool keyKnown)
     {
         return !gameAsksLook && keyKnown;

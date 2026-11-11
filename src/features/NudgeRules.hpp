@@ -87,6 +87,12 @@ namespace da::nudge
         bool reached = false;   // at the point or past it, as the game's own test has it
     };
     TurnLead Toward(const Turn& t);
+    // The way the stick is pushed for the lead, as a key's direction ("Right", "Left", "Up", "Down");
+    // empty once the point is reached. Said with the key of the item's turn (IA_InteractionMovement:
+    // the left stick, W, A, S and D) where the game asks for none: the compatibility test, the
+    // photographs and the drawings of chapter 2 draw only R2 to hold the item and the way back, and
+    // Andrey turned them by the aim sound alone (session 71, 19:22:39, 19:24:08, 19:24:40).
+    std::wstring PushWay(const TurnLead& l);
     shoot::Blip BlipOf(const TurnLead& l);
     double BlipInterval(const TurnLead& l);
     // What is left of the way from no turn to the point, in whole per cent: at least 1 until the
