@@ -1954,46 +1954,6 @@ namespace da::features
             std::vector<TriggerAction> actions;
         };
 
-        // A soft reference (TSoftObjectPtr) as it lies in memory, 40 bytes in this build: the weak
-        // pointer the engine fills only once something has looked the object up, then the object's
-        // path, its package and asset names and the path under them.
-        constexpr int32_t kSoftPointerSize = 40;
-
-        // The path a soft reference names ("/Game/Pkg.Asset:PersistentLevel.Actor"); empty if none.
-        std::wstring SoftPath(const uint8_t* at)
-        {
-            if (!at) return {};
-            const auto& package = *reinterpret_cast<const RC::Unreal::FName*>(at + 8);
-            const auto& asset = *reinterpret_cast<const RC::Unreal::FName*>(at + 16);
-            const auto& sub = *reinterpret_cast<const RC::Unreal::FString*>(at + 24);
-            const std::wstring packageName = package.ToString();
-            if (packageName.empty() || packageName == L"None") return {};
-            std::wstring path = packageName + L"." + asset.ToString();
-            const int32_t length = sub.Len();
-            if (length > 0 && length < 512 && *sub) path += L":" + std::wstring(*sub, static_cast<size_t>(length));
-            return path;
-        }
-
-        // The object a soft reference names: the weak pointer's, else the object found by the path;
-        // null while it is not loaded.
-        UObject* SoftObjectAt(const uint8_t* at)
-        {
-            if (!at) return nullptr;
-            if (UObject* weak = reinterpret_cast<const RC::Unreal::FWeakObjectPtr*>(at)->Get(); obj::IsLive(weak)) return weak;
-            const std::wstring path = SoftPath(at);
-            if (path.empty()) return nullptr;
-            UObject* found = obj::FindObject(path);
-            return obj::IsLive(found) ? found : nullptr;
-        }
-
-        // The object a soft reference property of an object names.
-        UObject* SoftObject(UObject* object, std::wstring_view property)
-        {
-            auto* prop = obj::FindProperty(object, property);
-            if (!prop || prop->GetElementSize() != kSoftPointerSize) return nullptr;
-            return SoftObjectAt(static_cast<const uint8_t*>(obj::ValuePtr(object, prop)));
-        }
-
         // The actions that move the scene on: a sequence, an activity, an interaction, the
         // stairs, a walk of the game's own, a message to the level's script, a companion's
         // order, or a line of dialogue the game holds essential. Lessons, looks, items taken
@@ -2007,7 +1967,7 @@ namespace da::features
             {
                 const auto key = obj::KeyOf(action);
                 if (const auto known = g_sequenceStory.find(key); known != g_sequenceStory.end() && obj::IsSame(known->first)) return known->second;
-                UObject* activity = SoftObject(action, L"SequenceToStart");
+                UObject* activity = obj::SoftObject(action, L"SequenceToStart");
                 if (!obj::IsLive(activity)) return true;
                 bool background = false, performance = false;
                 obj::ReadBool(activity, L"bIsBackgroundActivity", background);
@@ -2354,7 +2314,7 @@ namespace da::features
             std::vector<std::wstring> lines;
             for (UObject* beam : g_beams)
             {
-                UObject* volume = SoftObject(beam, L"ActivationVolume");
+                UObject* volume = obj::SoftObject(beam, L"ActivationVolume");
                 if (obj::IsLive(volume)) g_beamOf[volume] = beam;
                 lines.push_back(obj::ObjectName(beam) + L" by " + (obj::IsLive(volume) ? obj::ObjectName(volume) : std::wstring(L"no volume found")));
             }
@@ -3675,7 +3635,7 @@ namespace da::features
             auto* mapProp = static_cast<RC::Unreal::FMapProperty*>(prop);
             const int32_t stride = mapProp->GetMapLayout().SetLayout.Size;
             FProperty* keyProp = mapProp->GetKeyProp();
-            const bool soft = keyProp && obj::PropertyTypeName(keyProp) == L"SoftObjectProperty" && keyProp->GetElementSize() == kSoftPointerSize;
+            const bool soft = keyProp && obj::PropertyTypeName(keyProp) == L"SoftObjectProperty" && keyProp->GetElementSize() == obj::kSoftPointerSize;
             const auto* map = static_cast<const uint8_t*>(obj::ValuePtr(interaction, prop));
             if (!map || stride <= 0 || stride > 0x400) return props;
             const auto* elements = *reinterpret_cast<const uint8_t* const*>(map);
@@ -3689,7 +3649,7 @@ namespace da::features
                 if ((bits[i / 32] & (1u << (i % 32))) == 0) continue; // a free slot
                 const auto* key = elements + static_cast<size_t>(i) * static_cast<size_t>(stride);
                 BoundProp bound;
-                if (soft) bound.path = SoftPath(key);
+                if (soft) bound.path = obj::SoftPath(key);
                 UObject* weak = reinterpret_cast<const RC::Unreal::FWeakObjectPtr*>(key)->Get();
                 UObject* byPath = nullptr;
                 UObject* byName = nullptr;

@@ -607,6 +607,37 @@ namespace da::obj
         return UObjectGlobals::StaticFindObject<UObject*>(nullptr, nullptr, RC::StringType(fullPath));
     }
 
+    std::wstring SoftPath(const uint8_t* at)
+    {
+        if (!at) return {};
+        const auto& package = *reinterpret_cast<const RC::Unreal::FName*>(at + 8);
+        const auto& asset = *reinterpret_cast<const RC::Unreal::FName*>(at + 16);
+        const auto& sub = *reinterpret_cast<const RC::Unreal::FString*>(at + 24);
+        const std::wstring packageName = package.ToString();
+        if (packageName.empty() || packageName == L"None") return {};
+        std::wstring path = packageName + L"." + asset.ToString();
+        const int32_t length = sub.Len();
+        if (length > 0 && length < 512 && *sub) path += L":" + std::wstring(*sub, static_cast<size_t>(length));
+        return path;
+    }
+
+    UObject* SoftObjectAt(const uint8_t* at)
+    {
+        if (!at) return nullptr;
+        if (UObject* weak = reinterpret_cast<const RC::Unreal::FWeakObjectPtr*>(at)->Get(); IsLive(weak)) return weak;
+        const std::wstring path = SoftPath(at);
+        if (path.empty()) return nullptr;
+        UObject* found = FindObject(path);
+        return IsLive(found) ? found : nullptr;
+    }
+
+    UObject* SoftObject(UObject* object, std::wstring_view property)
+    {
+        auto* prop = FindProperty(object, property);
+        if (!prop || prop->GetElementSize() != kSoftPointerSize) return nullptr;
+        return SoftObjectAt(static_cast<const uint8_t*>(ValuePtr(object, prop)));
+    }
+
     std::vector<UObject*> FindAllLive(std::wstring_view className)
     {
         std::vector<UObject*> all;

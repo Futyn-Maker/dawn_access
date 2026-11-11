@@ -90,6 +90,18 @@ namespace da::obj
     // Diagnostic formatting of any property value ("true", "12", "text", "Class Name", "<struct>").
     std::wstring ValueToString(FProperty* property, void* valuePtr, int depth = 0);
 
+    // A soft reference (TSoftObjectPtr) as it lies in memory, 40 bytes in this build: the weak
+    // pointer the engine fills only once something has looked the object up, then the object's
+    // path, its package and asset names and the path under them.
+    constexpr int32_t kSoftPointerSize = 40;
+    // The path a soft reference names ("/Game/Pkg.Asset:PersistentLevel.Actor"); empty if none.
+    std::wstring SoftPath(const uint8_t* at);
+    // The object a soft reference names: the weak pointer's, else the object found by the path;
+    // null while it is not loaded.
+    UObject* SoftObjectAt(const uint8_t* at);
+    // The object a soft reference property of an object names.
+    UObject* SoftObject(UObject* object, std::wstring_view property);
+
     // Functions
     UFunction* FindFunction(UObject* object, std::wstring_view name);
     UFunction* FindFunctionByFullName(std::wstring_view fullName); // "/Script/Pkg.Class:Func"

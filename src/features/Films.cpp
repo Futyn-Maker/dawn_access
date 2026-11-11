@@ -36,6 +36,9 @@ namespace da::features
             picture::PartTracker said;
             bool onKey = false;     // its parts are said on the player's key (picture::OnKey)
             double keyDueAt = -1.0; // when the key is named, once the page over the film has been read
+            bool inWorld = false;   // a film of the world's own (picture::FilmOwner::Films), asked where it is seen
+            picture::Sight sight;   // whether its screen is drawn, and its words waiting for it
+            picture::Screen screen = picture::Screen::Unknown; // as last polled, for the log
         };
 
         // Where the film stands, in seconds (UBinkMediaPlayer::GetTime, a timespan of 100 ns ticks).
@@ -63,6 +66,86 @@ namespace da::features
         std::vector<Player> g_players;
         bool g_scanned = false;
         std::map<std::wstring, picture::Showing> g_showings; // each film's showing, whichever player shows it
+
+        // The thing a film of the world is drawn on, by the game's movie actor that plays it
+        // (ABatesBinkMovieBase): the static mesh actor of the level it puts the film on
+        // (ABatesBinkMovieStaticMesh::Object), asked as an actor, or its widget in the world
+        // (ABatesBinkMovieProjected::InWorldWidgetComponent), asked as a component; a widget drawn
+        // in screen space has no place in the scene and is not taken. Kept per film, whichever player
+        // plays it (the cinema's screen and projector both play "smg_sting").
+        struct ScreenOf
+        {
+            obj::ObjectKey key;
+            std::wstring name; // for the log
+        };
+        std::map<std::wstring, std::vector<ScreenOf>> g_screens;
+
+        void FindScreens(UObject* player, const std::wstring& film)
+        {
+            auto& screens = g_screens[film];
+            for (UObject* movie : obj::FindAllLive(L"BatesBinkMovieBase"))
+            {
+                UObject* held = nullptr;
+                if (!obj::ReadObject(movie, L"BinkMediaPlayer", held) || held != player) continue;
+                UObject* screen = nullptr;
+                if (obj::IsA(movie, L"BatesBinkMovieStaticMesh"))
+                {
+                    screen = obj::SoftObject(movie, L"Object");
+                }
+                else if (obj::IsA(movie, L"BatesBinkMovieProjected"))
+                {
+                    UObject* widget = nullptr;
+                    int64_t space = -1; // EWidgetSpace: World 0, Screen 1
+                    if (obj::ReadObject(movie, L"InWorldWidgetComponent", widget) && obj::IsLive(widget) && obj::ReadInt(widget, L"Space", space) && space == 0)
+                        screen = widget;
+                }
+                if (!screen || !obj::IsLive(screen) || !obj::FindFunction(screen, L"WasRecentlyRendered"))
+                {
+                    log::Info(L"films: {} plays \"{}\" on nothing the mod can ask whether it is drawn", obj::ObjectName(movie), film);
+                    continue;
+                }
+                const auto key = obj::KeyOf(screen);
+                if (std::any_of(screens.begin(), screens.end(), [&](const ScreenOf& s) { return s.key == key; })) continue;
+                screens.push_back(ScreenOf{key, obj::ObjectName(movie) + L" on " + obj::ObjectName(screen)});
+                log::Info(L"films: \"{}\" is drawn by {} on {}; described while it is drawn", film, obj::ObjectName(movie), obj::ObjectName(screen));
+            }
+        }
+
+        // Whether the engine drew the screen on the player's screen within the last fifth of a second
+        // (AActor::WasRecentlyRendered, UPrimitiveComponent::WasRecentlyRendered).
+        bool Drawn(const ScreenOf& s)
+        {
+            if (!obj::IsSame(s.key)) return false;
+            UObject* screen = s.key.object;
+            auto* fn = obj::FindFunction(screen, L"WasRecentlyRendered");
+            if (!fn) return false;
+            bool drawn = false;
+            obj::Call(
+                screen, fn,
+                [&](void* params)
+                {
+                    for (auto* prop : fn->ForEachProperty())
+                    {
+                        if (prop && prop->GetName() == L"Tolerance") *static_cast<float*>(obj::ValuePtrAt(params, prop)) = 0.2f;
+                    }
+                },
+                [&](void* params)
+                {
+                    for (auto* prop : fn->ForEachProperty())
+                    {
+                        if (prop && prop->GetName() == L"ReturnValue") drawn = *static_cast<const bool*>(obj::ValuePtrAt(params, prop));
+                    }
+                });
+            return drawn;
+        }
+
+        // The film's screen as the player has it now (picture::Screen).
+        picture::Screen ScreenNow(const std::wstring& film)
+        {
+            const auto it = g_screens.find(film);
+            if (it == g_screens.end() || it->second.empty()) return picture::Screen::Unknown;
+            return std::any_of(it->second.begin(), it->second.end(), Drawn) ? picture::Screen::Drawn : picture::Screen::Hidden;
+        }
 
         // The film described last and still playing, for the screen's readout.
         obj::ObjectKey g_nowPlayer;
@@ -110,6 +193,11 @@ namespace da::features
         {
             p.parts.clear();
             p.said.Reset();
+            p.onKey = false;
+            p.keyDueAt = -1.0;
+            p.inWorld = false;
+            p.screen = picture::Screen::Unknown;
+            p.sight = picture::Sight{};
             const auto owner = picture::OwnerOf(p.film);
             if (owner != picture::FilmOwner::Films)
             {
@@ -124,11 +212,13 @@ namespace da::features
             p.parts = picture::PartsOf(p.film);
             p.onKey = !p.parts.empty() && picture::OnKey(p.film);
             p.keyDueAt = p.onKey ? gamethread::NowSeconds() + kKeyAfter : -1.0;
+            p.inWorld = !p.onKey;
             if (p.onKey)
             {
                 log::Info(L"films: {} of {} plays \"{}\"; its {} parts are said on the key", obj::ObjectName(player), OwnerName(player), p.film, p.parts.size());
                 return;
             }
+            FindScreens(player, p.film);
             if (!p.parts.empty())
             {
                 log::Info(L"films: {} of {} plays \"{}\"; it is described in {} parts as it plays", obj::ObjectName(player), OwnerName(player), p.film,
@@ -136,10 +226,28 @@ namespace da::features
                 return;
             }
             const std::wstring words = FilmWords(p.film);
-            const bool fresh = g_showings[p.film].Says(-1);
+            const bool fresh = !words.empty() && !g_showings[p.film].Said(-1);
+            p.sight.Begin(fresh);
             log::Info(L"films: {} of {} plays \"{}\"; {}", obj::ObjectName(player), OwnerName(player), p.film,
-                      words.empty() ? L"no words for it" : (fresh ? L"its words are said" : L"its words were said in this showing already"));
-            if (!words.empty() && fresh) Say(p, words);
+                      words.empty() ? L"no words for it" : (fresh ? L"its words are said as it is seen" : L"its words were said in this showing already"));
+        }
+
+        // A film of the world as its screen is drawn or not: its waiting words said once it is seen, once
+        // a showing (picture::Sight).
+        void PollSight(Player& p)
+        {
+            const auto screen = ScreenNow(p.film);
+            if (screen != p.screen)
+            {
+                if (screen != picture::Screen::Unknown)
+                    log::Info(L"films: the screen of \"{}\" {}", p.film, screen == picture::Screen::Drawn ? L"is drawn" : L"is not drawn");
+                p.screen = screen;
+            }
+            if (!p.sight.Update(screen)) return;
+            if (!g_showings[p.film].Says(-1)) return;
+            const std::wstring words = FilmWords(p.film);
+            log::Info(L"films: \"{}\" is seen; its words are said", p.film);
+            if (!words.empty()) Say(p, words);
         }
 
         // A long film's part, as the film comes to it.
@@ -173,7 +281,13 @@ namespace da::features
             if (!g_scanned) Scan();
             std::erase_if(g_players, [](const Player& p) { return !obj::IsSame(p.key); });
             const double nowSeconds = gamethread::NowSeconds();
-            std::erase_if(g_showings, [&](const auto& showing) { return showing.second.Over(nowSeconds); });
+            std::erase_if(g_showings,
+                          [&](const auto& showing)
+                          {
+                              if (!showing.second.Over(nowSeconds)) return false;
+                              g_screens.erase(showing.first);
+                              return true;
+                          });
             for (auto& p : g_players)
             {
                 UObject* player = p.key.object;
@@ -197,9 +311,11 @@ namespace da::features
                 p.film = film;
                 if (playing) g_showings[film].Playing(gamethread::NowSeconds());
                 if (began) Began(p, player);
-                // Nothing of a film is said while the game is paused; back in play, the part it stands in
-                // then is said, those it passed meanwhile are not (picture::PartTracker).
-                if (playing && !p.parts.empty() && !gamestate::Paused()) PollParts(p, player);
+                if (playing && p.inWorld && picture::OwnerOf(p.film) == picture::FilmOwner::Films) PollSight(p);
+                // Nothing of a film is said while the game is paused, nor while its screen is not drawn; back
+                // in play, or in sight, the part it stands in then is said, those it passed meanwhile are not
+                // (picture::PartTracker).
+                if (playing && !p.parts.empty() && !gamestate::Paused() && p.sight.Seen()) PollParts(p, player);
                 if (playing && p.onKey && p.keyDueAt >= 0.0 && gamethread::NowSeconds() >= p.keyDueAt)
                 {
                     p.keyDueAt = -1.0;
@@ -279,6 +395,7 @@ namespace da::features
     {
         g_players.clear();
         g_scanned = false;
+        g_screens.clear();
         g_nowPlayer = {};
         g_nowWords.clear();
     }
@@ -304,7 +421,13 @@ namespace da::features
             if (!words.empty()) out.push_back(words);
             return;
         }
-        if (!g_nowWords.empty() && obj::IsSame(g_nowPlayer)) out.push_back(g_nowWords);
+        if (g_nowWords.empty() || !obj::IsSame(g_nowPlayer)) return;
+        // A film of the world only while its screen is drawn (picture::Sight).
+        for (const auto& p : g_players)
+        {
+            if (p.key == g_nowPlayer && !p.sight.Seen()) return;
+        }
+        out.push_back(g_nowWords);
     }
 
     void FilmsFeature::Help(std::vector<std::wstring>& out)

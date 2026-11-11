@@ -407,3 +407,37 @@ TEST_CASE("films: each part of a showing is said once, whichever player shows it
     CHECK_FALSE(showing.Over(185.0));
     CHECK(showing.Over(191.0));
 }
+
+TEST_CASE("pictures: a film in the world is described only while its screen is drawn")
+{
+    // s71 23:12:38: act4_3's CCTV film begins as the act's opening shot shows the Stranger's monitor:
+    // said at once.
+    picture::Sight cctv;
+    cctv.Begin(true);
+    CHECK(cctv.Update(picture::Screen::Drawn));
+    CHECK(cctv.Seen());
+    CHECK_FALSE(cctv.Update(picture::Screen::Drawn)); // once
+    // 23:19:59: Matt at the cable car station's map, the monitor far off and not drawn: the read-screen
+    // key leaves it out.
+    CHECK_FALSE(cctv.Update(picture::Screen::Hidden));
+    CHECK_FALSE(cctv.Seen());
+    // A film that begins on a screen out of view: its words wait, and come once it is drawn.
+    picture::Sight later;
+    later.Begin(true);
+    CHECK_FALSE(later.Update(picture::Screen::Hidden));
+    CHECK(later.Waiting());
+    CHECK_FALSE(later.Update(picture::Screen::Hidden));
+    CHECK(later.Update(picture::Screen::Drawn));
+    CHECK_FALSE(later.Waiting());
+    CHECK_FALSE(later.Update(picture::Screen::Drawn));
+    // A film whose screen the mod finds none of is seen while it plays, as before.
+    picture::Sight unknown;
+    unknown.Begin(true);
+    CHECK(unknown.Update(picture::Screen::Unknown));
+    CHECK(unknown.Seen());
+    // A film said in parts waits for nothing as it begins; its parts go by what is seen.
+    picture::Sight parts;
+    parts.Begin(false);
+    CHECK_FALSE(parts.Update(picture::Screen::Drawn));
+    CHECK(parts.Seen());
+}

@@ -89,6 +89,10 @@ namespace da::picture
         {
             return m_said.insert(part).second;
         }
+        bool Said(int part) const
+        {
+            return m_said.count(part) != 0;
+        }
         bool Over(double now) const
         {
             return m_playedAt >= 0.0 && now - m_playedAt > kShowingGap;
@@ -97,6 +101,53 @@ namespace da::picture
     private:
         std::set<int> m_said;
         double m_playedAt = -1.0;
+    };
+
+    // Where the screen a film in the world plays on stands for the player: the thing the game's movie
+    // actor puts it on (ABatesBinkMovieBase: a static mesh actor of the level, a widget in the world)
+    // drawn on the player's screen now or not (the engine's WasRecentlyRendered), or no such screen
+    // found (a full-screen film, a television a scene's blueprint feeds), which is taken as seen while
+    // it plays.
+    enum class Screen
+    {
+        Unknown,
+        Drawn,
+        Hidden,
+    };
+
+    // What of a film in the world is seen: a film is described only while its screen is drawn; one
+    // whose screen is not drawn as it begins has its words wait until it is, within its showing. The
+    // F6 readout reads it only while it is seen. Session 71: act4_3's CCTV monitor, shown by the act's
+    // opening shot at 23:12:38, played on in the Stranger's room for the rest of the act, and its words
+    // came with the map's at 23:19:59 on the read-screen key, Matt far off at the cable car station.
+    class Sight
+    {
+    public:
+        // The film begins; `words` when it has words of its own to say as it is seen.
+        void Begin(bool words)
+        {
+            m_waiting = words;
+        }
+        // The screen as polled; true at the poll its waiting words are to be said.
+        bool Update(Screen screen)
+        {
+            m_screen = screen;
+            if (!m_waiting || screen == Screen::Hidden) return false;
+            m_waiting = false;
+            return true;
+        }
+        bool Seen() const
+        {
+            return m_screen != Screen::Hidden;
+        }
+        bool Waiting() const
+        {
+            return m_waiting;
+        }
+
+    private:
+        Screen m_screen = Screen::Unknown;
+        bool m_waiting = false;
     };
 
     // Whether a film a player plays again goes on from where it stood rather than begins anew: the same
