@@ -130,6 +130,30 @@ TEST_CASE("pictures: a photo is known by its texture, a thing in the hand by any
     CHECK(portrait->state == L"examine_idle");
     CHECK(portrait->key == L"i_family_portrait");
     CHECK(picture::PlanFor(Names{L"", L"", L"BP_Family_portrait_C"})->key == L"i_family_portrait");
+    // The things of session 71, by the names the logs give them: the pinboard once Sam lifts the
+    // invitation (19:27:30), the dollhouse by its name alone (its class is also I_look_at_picture's), the
+    // headless doll turned to its reveal (no core name, 20:22:43), the cable car desk once the look stands
+    // (23:18:02).
+    const auto board = picture::PlanFor(Names{L"I_pinboard_hannah_room", L"I_pinboard_hannah_room", L"BP_Pinboard_hannah_room_C"});
+    REQUIRE(board.has_value());
+    CHECK(board->moment == picture::Moment::State);
+    CHECK(board->state == L"lift_paper_idle");
+    CHECK(picture::PlanFor(Names{L"I_look_at_dollshouse", L"I_look_at_dollshouse", L"BP_Look_at_picture_C"})->state == L"examine_idle");
+    CHECK_FALSE(picture::PlanFor(Names{L"I_look_at_picture", L"I_look_at_picture", L"BP_Look_at_picture_C"}).has_value());
+    const auto doll = picture::PlanFor(Names{L"", L"I_Headlessdoll", L"BP_Headlessdoll_C"});
+    REQUIRE(doll.has_value());
+    CHECK(doll->moment == picture::Moment::Reveals);
+    CHECK(doll->key == L"i_headlessdoll");
+    CHECK(picture::PlanFor(Names{L"I_controls_lookat", L"I_controls_lookat", L"BP_controls_lookat_C"})->state == L"examine_idle");
+    // The silent things of chapters 1 and 2, as the logs of sessions 68 to 71 name them.
+    CHECK(picture::PlanFor(Names{L"", L"I_Car_lookat", L"BP_Car_lookat_C"})->key == L"i_car_lookat");
+    CHECK(picture::PlanFor(Names{L"I_MineMap", L"I_MineMap", L"BP_Minemap_C"})->state == L"look_idle1");
+    CHECK(picture::PlanFor(Names{L"I_CigarStub", L"I_CigarStub", L"BP_Cigarstub_C"})->state == L"ik_animation_run");
+    CHECK(picture::PlanFor(Names{L"I_childsdrawing", L"I_childsdrawing", L"BP_Childsdrawing_C"})->moment == picture::Moment::Reveals);
+    CHECK(picture::PlanFor(Names{L"I_ReadNote", L"I_ReadNote", L"BP_Readnote_C"})->moment == picture::Moment::Reveals);
+    CHECK(picture::PlanFor(Names{L"I_SnowyBench", L"I_SnowyBench", L"BP_Snowybench_C"})->state == L"BenchWipe2");
+    CHECK(picture::PlanFor(Names{L"i_prom_night_photo_female", L"I_Prom_night_photo_female", L"BP_Prom_night_photo_female_C"})->key ==
+          L"i_prom_night_photo_female");
     // The chapter 1 graffiti is transcribed by the game itself (its reading widget); a class shared by
     // other things (the generic wall examine the walls are made from) names no picture.
     CHECK_FALSE(picture::PlanFor(Names{L"I_carved_graffiti", L"", L"BP_Examine_wall_item_left_C"}).has_value());

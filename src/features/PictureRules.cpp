@@ -47,7 +47,7 @@ namespace da::picture
 
         // The interactions whose pictures the mod describes, and when; the moments are the game's own
         // states, as the logs of chapters 5 and 6 show them.
-        constexpr std::array<Planned, 8> kPlans = {
+        constexpr std::array<Planned, 25> kPlans = {
             // Dr. Hill's card is picked up face down and turned over with the stick (act20_1,
             // BP_PsychSession_PickUp, which no other level places: its examine stage reveals). It has no
             // core name; its activity starts it as I_psychsession_1_Interaction.
@@ -81,6 +81,38 @@ namespace da::picture
             // A painting on a static mesh (SM_family_portrait, its one colour texture
             // T_family_portrait_clr), the same at every look.
             Planned{L"i_family_portrait", L"bp_family_portrait_c", Moment::State, L"examine_idle"},
+            // The silent things of chapters 1 and 2, found by the audit of sessions 67 to 71 (a picture the
+            // game showed and said nothing of; research by textures decoded from the game and its own clue
+            // images), each when its look stands or its item is held to the face that shows it: Emily's
+            // things in the car at the lower station (act1_3, no core name), the hotel poster and the torn
+            // wanted poster (act1_3), the empty axe case (act2_11, act2_3), the prom and beach photos, whose
+            // photo side the game leaves unsaid as it reads their backs (act2_11; the prom photo's copy of
+            // chapter 5 too), the mine's danger map, the cigar stub's band and the painted symbol (Act2_2),
+            // the postcard's other side, Dr. Hill's painting (act2_4), the bench's carved heart on its second
+            // wipe and the pig's head note's back (act2_3).
+            Planned{L"i_car_lookat", L"bp_car_lookat_c", Moment::State, L"examine_idle"},
+            Planned{L"i_hotel_poster", L"bp_hotel_poster_c", Moment::State, L"examine_idle"},
+            Planned{L"i_wanted_poster_lookat_new", L"bp_wanted_poster_lookat_new_c", Moment::State, L"examine_idle"},
+            Planned{L"i_missing_axe", L"bp_missing_axe_c", Moment::State, L"examine_idle"},
+            Planned{L"i_prom_night_photo", L"bp_prom_night_photo_c", Moment::State, L"ik_animation"},
+            Planned{L"i_prom_night_photo_female", L"bp_prom_night_photo_female_c", Moment::State, L"ik_animation"},
+            Planned{L"i_hannah_and_beth_beach_photo", L"bp_hannah_and_beth_beach_photo_c", Moment::State, L"ik_animation"},
+            Planned{L"i_minemap", L"bp_minemap_c", Moment::State, L"look_idle1"},
+            Planned{L"i_cigarstub", L"bp_cigarstub_c", Moment::State, L"ik_animation_run"},
+            Planned{L"i_mysticalsymbols", L"bp_mysticalsymbols_c", Moment::State, L"examine_idle"},
+            Planned{L"i_childsdrawing", L"bp_childsdrawing_c", Moment::Reveals, L""},
+            Planned{L"i_snowybench", L"bp_snowybench_c", Moment::State, L"BenchWipe2"},
+            Planned{L"i_readnote", L"bp_readnote_c", Moment::Reveals, L""},
+            // Andrey's four of session 71. Hannah's pinboard (act2_4): the invitation read, Sam lifts it and
+            // a photo of Mike shows under it (lift_paper, lift_paper_idle; "О, Ханна... любовь-любовь..."),
+            // said then with the board around it, after the invitation's text as he asked. The dollhouse in
+            // the lodge's cellar (act2_4; its class is also I_look_at_picture's, so by its name alone), the
+            // headless doll behind the swing (act2_3, no core name, turned to its reveal at 0.85), and the
+            // upper cable car station's control desk (act4_3), a look with no words at all.
+            Planned{L"i_pinboard_hannah_room", L"bp_pinboard_hannah_room_c", Moment::State, L"lift_paper_idle"},
+            Planned{L"i_look_at_dollshouse", L"", Moment::State, L"examine_idle"},
+            Planned{L"i_headlessdoll", L"bp_headlessdoll_c", Moment::Reveals, L""},
+            Planned{L"i_controls_lookat", L"bp_controls_lookat_c", Moment::State, L"examine_idle"},
         };
     }
 
