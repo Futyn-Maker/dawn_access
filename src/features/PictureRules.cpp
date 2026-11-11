@@ -186,6 +186,11 @@ namespace da::picture
         m_position = -1.0;
     }
 
+    bool Resumes(const std::wstring& lastFilm, const std::wstring& film, double lastPosition, double position)
+    {
+        return !film.empty() && film == lastFilm && lastPosition >= 0.5 && position >= lastPosition - 1.0;
+    }
+
     std::vector<std::wstring> VisionKeys(std::wstring_view name)
     {
         std::vector<std::wstring> keys;

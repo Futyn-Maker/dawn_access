@@ -11,10 +11,12 @@
 #include "locale/GameText.hpp"
 #include "locale/Locale.hpp"
 #include "speech/Speech.hpp"
+#include "watch/GameState.hpp"
 
 #include <algorithm>
 #include <cstdint>
 #include <format>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -60,6 +62,7 @@ namespace da::features
 
         std::vector<Player> g_players;
         bool g_scanned = false;
+        std::map<std::wstring, picture::Showing> g_showings; // each film's showing, whichever player shows it
 
         // The film described last and still playing, for the screen's readout.
         obj::ObjectKey g_nowPlayer;
@@ -133,9 +136,10 @@ namespace da::features
                 return;
             }
             const std::wstring words = FilmWords(p.film);
+            const bool fresh = g_showings[p.film].Says(-1);
             log::Info(L"films: {} of {} plays \"{}\"; {}", obj::ObjectName(player), OwnerName(player), p.film,
-                      words.empty() ? L"no words for it" : L"its words are said");
-            if (!words.empty()) Say(p, words);
+                      words.empty() ? L"no words for it" : (fresh ? L"its words are said" : L"its words were said in this showing already"));
+            if (!words.empty() && fresh) Say(p, words);
         }
 
         // A long film's part, as the film comes to it.
@@ -153,6 +157,12 @@ namespace da::features
                 log::Info(L"films: \"{}\" comes to its part {} at {:.1f} s; said on the key", p.film, *part + 1, position);
                 return;
             }
+            if (!g_showings[p.film].Says(static_cast<int>(*part)))
+            {
+                log::Info(L"films: \"{}\" comes to its part {} at {:.1f} s on {}; said already in this showing", p.film, *part + 1, position,
+                          obj::ObjectName(player));
+                return;
+            }
             log::Info(L"films: \"{}\" comes to its part {} at {:.1f} s; {}", p.film, *part + 1, position, described ? L"its words are said" : L"no words for it");
             if (described) Say(p, Words(key));
         }
@@ -162,6 +172,8 @@ namespace da::features
             if (gamethread::FrameCount() % 6 != 0) return;
             if (!g_scanned) Scan();
             std::erase_if(g_players, [](const Player& p) { return !obj::IsSame(p.key); });
+            const double nowSeconds = gamethread::NowSeconds();
+            std::erase_if(g_showings, [&](const auto& showing) { return showing.second.Over(nowSeconds); });
             for (auto& p : g_players)
             {
                 UObject* player = p.key.object;
@@ -169,11 +181,25 @@ namespace da::features
                 obj::ReadString(player, L"URL", url);
                 const std::wstring film = picture::FilmName(url);
                 const bool playing = !film.empty() && obj::CallForBool(player, L"IsPlaying");
-                const bool began = playing && (!p.playing || film != p.film);
+                bool began = playing && (!p.playing || film != p.film);
+                // Played again where it stood, as the game's pause stops a player and starts it (the cinema's
+                // projector): it goes on, its parts not said again (picture::Resumes).
+                if (began && p.playing == false && !p.parts.empty())
+                {
+                    const double position = Position(player);
+                    if (picture::Resumes(p.film, film, p.said.Position(), position))
+                    {
+                        log::Info(L"films: {} goes on with \"{}\" at {:.1f} s", obj::ObjectName(player), film, position);
+                        began = false;
+                    }
+                }
                 p.playing = playing;
                 p.film = film;
+                if (playing) g_showings[film].Playing(gamethread::NowSeconds());
                 if (began) Began(p, player);
-                if (playing && !p.parts.empty()) PollParts(p, player);
+                // Nothing of a film is said while the game is paused; back in play, the part it stands in
+                // then is said, those it passed meanwhile are not (picture::PartTracker).
+                if (playing && !p.parts.empty() && !gamestate::Paused()) PollParts(p, player);
                 if (playing && p.onKey && p.keyDueAt >= 0.0 && gamethread::NowSeconds() >= p.keyDueAt)
                 {
                     p.keyDueAt = -1.0;

@@ -376,3 +376,34 @@ TEST_CASE("pictures: the events of the past are described on the key, the part t
     // The epilogue's film begins its first part 5.5 s in: nothing before it.
     CHECK_FALSE(picture::PartAt(picture::PartsOf(L"sam_end_credits"), 2.0, true));
 }
+
+TEST_CASE("films: played again where it stood, a film goes on; played anew, it begins again")
+{
+    // s71: the cinema's projector stopped with the game's pause at 9.4 s and went on at 9.4 s.
+    CHECK(picture::Resumes(L"smg_sting", L"smg_sting", 9.4, 9.4));
+    CHECK(picture::Resumes(L"smg_sting", L"smg_sting", 9.4, 15.0));
+    // Played from its start again, or another film: begun anew.
+    CHECK_FALSE(picture::Resumes(L"smg_sting", L"smg_sting", 69.9, 0.1));
+    CHECK_FALSE(picture::Resumes(L"smg_sting", L"another", 9.4, 9.4));
+    // Never played before: no place to go on from.
+    CHECK_FALSE(picture::Resumes(L"", L"smg_sting", -1.0, 0.1));
+    CHECK_FALSE(picture::Resumes(L"smg_sting", L"smg_sting", 0.2, 0.3));
+}
+
+TEST_CASE("films: each part of a showing is said once, whichever player shows it")
+{
+    // s71 23:39:44: the cinema's screen and its projector began "smg_sting" together.
+    picture::Showing showing;
+    showing.Playing(100.0);
+    CHECK(showing.Says(0));
+    CHECK_FALSE(showing.Says(0));
+    // The projector back from the pause in the first part still: nothing again; the next part once.
+    CHECK(showing.Says(1));
+    CHECK_FALSE(showing.Says(1));
+    // The whole film's words count apart from its parts.
+    CHECK(showing.Says(-1));
+    // Played on: the showing lasts; no player for half a minute: over.
+    showing.Playing(160.0);
+    CHECK_FALSE(showing.Over(185.0));
+    CHECK(showing.Over(191.0));
+}

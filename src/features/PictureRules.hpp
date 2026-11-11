@@ -7,6 +7,7 @@
 // the game prints them).
 
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -58,11 +59,51 @@ namespace da::picture
     public:
         std::optional<size_t> Update(const std::vector<double>& parts, double position, bool shown);
         void Reset();
+        // Where the film stood at the last update; below 0 before any.
+        double Position() const
+        {
+            return m_position;
+        }
 
     private:
         std::optional<size_t> m_said;
         double m_position = -1.0;
     };
+
+    // One showing of a film, whichever player shows it: each part is said once (the whole film's words as
+    // part -1). The cinema's screen and its projector play "smg_sting" together, the screen on through
+    // the game's pause and the projector stopped with it, and each part was said by both, the first part
+    // again at each return from the pause (session 71, 23:39:44 to 23:43:08). A showing is over once no
+    // player has played the film for kShowingGap.
+    constexpr double kShowingGap = 30.0;
+    class Showing
+    {
+    public:
+        // A player plays the film at `now`.
+        void Playing(double now)
+        {
+            m_playedAt = now;
+        }
+        // Whether the part is to be said now: not said before in this showing.
+        bool Says(int part)
+        {
+            return m_said.insert(part).second;
+        }
+        bool Over(double now) const
+        {
+            return m_playedAt >= 0.0 && now - m_playedAt > kShowingGap;
+        }
+
+    private:
+        std::set<int> m_said;
+        double m_playedAt = -1.0;
+    };
+
+    // Whether a film a player plays again goes on from where it stood rather than begins anew: the same
+    // film, past its first moment, at or past where it was. The game's pause stops the cinema's projector
+    // with the game and starts it again, and the film was described from its first part at each return
+    // (session 71, 23:40:15 and 23:42:14, the projector at 9.4 and 15.4 s).
+    bool Resumes(const std::wstring& lastFilm, const std::wstring& film, double lastPosition, double position);
 
     // A long film whose parts are said on the player's key rather than as it plays: the events of the
     // past, whose narration runs through the whole film and leaves no room between its lines for the
