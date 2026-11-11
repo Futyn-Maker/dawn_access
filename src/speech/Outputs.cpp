@@ -436,7 +436,11 @@ namespace da::outputs
                     EnsureReader();
                     switch (request.kind)
                     {
-                    case Request::Kind::Say: Deliver(request); break;
+                    // A line posted as the game was found going away, after the queue was emptied of
+                    // them, is not delivered either.
+                    case Request::Kind::Say:
+                        if (!g_closed.load()) Deliver(request);
+                        break;
                     case Request::Kind::Silence: StopAll(); break;
                     case Request::Kind::Voice:
                         g_language = request.text;
