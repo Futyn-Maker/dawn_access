@@ -23,6 +23,7 @@
 #include <climits>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <set>
 #include <string_view>
@@ -180,6 +181,26 @@ namespace da::recheck
     // "a door's leaf", and came back once he walked away (research/sessions/s61-play.log, 18:38:43 to
     // 18:40:34; the steps out of his cell refused 'D' in research/dumps/ground-20261108-181921.tsv).
     bool LeafOfDoor(bool heldItem);
+
+    // How a prop an interaction binds is found. The interaction names it in its BoundObjects by a soft
+    // reference, whose weak half the engine fills only once something has looked the object up: the
+    // interaction does so the first time it binds its props. So a door never used yet names its leaf
+    // by its path alone, and a reading of the weak half alone found no leaf for any door not opened
+    // yet (the log said "0 bound prop(s)" for every one from 2026-11-04 on): on 2026-11-11 the map
+    // swept the lodge's shut garage-vestibule door as free, listed the hall beyond it and walked
+    // Chris into the door three times (research/sessions/s69-play.log). The weak half first, then the
+    // path as the engine looks it up, then the live prop at that path; asked in that order, each only
+    // if the one before found nothing.
+    enum class BoundBy
+    {
+        None,
+        Weak,
+        Path,
+        Name,
+    };
+    BoundBy FindBound(bool weakLive, const std::function<bool()>& byPath, const std::function<bool()>& byName);
+    // The way it was found, for the log: "weak pointer", "path", "name"; "none".
+    const wchar_t* BoundByName(BoundBy by);
 
     // Whether a prop the scenes bind is a living creature, by the rig its mesh is made on (the game's
     // /Game/rigs/creatures/<kind>/, the dead and the cut-up ones, <kind>_dead and <kind>_cut, aside): a

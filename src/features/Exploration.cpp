@@ -1916,25 +1916,44 @@ namespace da::features
             std::vector<TriggerAction> actions;
         };
 
-        // The object a soft reference names (a TSoftObjectPtr property, 40 bytes in this build: the
-        // weak pointer the engine fills once it has looked the object up, then the object's path,
-        // its package and asset names and the path under them): the weak pointer's, else the object
-        // found by the path; null while it is not loaded.
-        UObject* SoftObject(UObject* object, std::wstring_view property)
+        // A soft reference (TSoftObjectPtr) as it lies in memory, 40 bytes in this build: the weak
+        // pointer the engine fills only once something has looked the object up, then the object's
+        // path, its package and asset names and the path under them.
+        constexpr int32_t kSoftPointerSize = 40;
+
+        // The path a soft reference names ("/Game/Pkg.Asset:PersistentLevel.Actor"); empty if none.
+        std::wstring SoftPath(const uint8_t* at)
         {
-            auto* prop = obj::FindProperty(object, property);
-            if (!prop || prop->GetElementSize() != 40) return nullptr;
-            const auto* at = static_cast<const uint8_t*>(obj::ValuePtr(object, prop));
-            if (!at) return nullptr;
-            if (UObject* weak = reinterpret_cast<const RC::Unreal::FWeakObjectPtr*>(at)->Get(); obj::IsLive(weak)) return weak;
+            if (!at) return {};
             const auto& package = *reinterpret_cast<const RC::Unreal::FName*>(at + 8);
             const auto& asset = *reinterpret_cast<const RC::Unreal::FName*>(at + 16);
             const auto& sub = *reinterpret_cast<const RC::Unreal::FString*>(at + 24);
-            std::wstring path = package.ToString() + L"." + asset.ToString();
+            const std::wstring packageName = package.ToString();
+            if (packageName.empty() || packageName == L"None") return {};
+            std::wstring path = packageName + L"." + asset.ToString();
             const int32_t length = sub.Len();
             if (length > 0 && length < 512 && *sub) path += L":" + std::wstring(*sub, static_cast<size_t>(length));
+            return path;
+        }
+
+        // The object a soft reference names: the weak pointer's, else the object found by the path;
+        // null while it is not loaded.
+        UObject* SoftObjectAt(const uint8_t* at)
+        {
+            if (!at) return nullptr;
+            if (UObject* weak = reinterpret_cast<const RC::Unreal::FWeakObjectPtr*>(at)->Get(); obj::IsLive(weak)) return weak;
+            const std::wstring path = SoftPath(at);
+            if (path.empty()) return nullptr;
             UObject* found = obj::FindObject(path);
             return obj::IsLive(found) ? found : nullptr;
+        }
+
+        // The object a soft reference property of an object names.
+        UObject* SoftObject(UObject* object, std::wstring_view property)
+        {
+            auto* prop = obj::FindProperty(object, property);
+            if (!prop || prop->GetElementSize() != kSoftPointerSize) return nullptr;
+            return SoftObjectAt(static_cast<const uint8_t*>(obj::ValuePtr(object, prop)));
         }
 
         // The actions that move the scene on: a sequence, an activity, an interaction, the
@@ -3553,14 +3572,49 @@ namespace da::features
         std::vector<DoorLeaf> g_doorLeaves;
         std::wstring g_doorLeavesLogged;
 
-        // The props an interaction binds: the keys of its BoundObjects, a map of soft pointers to
-        // binding data whose elements the map property lays out, the soft pointer's weak half at +0.
-        std::vector<UObject*> BoundProps(UObject* interaction)
+        // A prop an interaction binds: the path its soft reference names, and the object found.
+        struct BoundProp
         {
-            std::vector<UObject*> props;
+            std::wstring path;
+            UObject* object = nullptr;
+            recheck::BoundBy by = recheck::BoundBy::None;
+        };
+
+        // The live bindable prop at a path, matched by its full name ("Class /Pkg.Asset:Sub"):
+        // the props are gathered once, and only where the engine's lookup by path finds nothing.
+        UObject* LivePropAt(const std::wstring& path, std::optional<std::vector<UObject*>>& live)
+        {
+            if (path.empty()) return nullptr;
+            if (!live) live = obj::FindAllLive(L"BatesBindableProp");
+            for (UObject* prop : *live)
+            {
+                if (!obj::IsLive(prop)) continue;
+                const std::wstring full = obj::FullName(prop);
+                const size_t space = full.find(L' ');
+                if (space != std::wstring::npos && str::EqualsNoCase(std::wstring_view(full).substr(space + 1), path)) return prop;
+            }
+            return nullptr;
+        }
+
+        // The props an interaction binds: the keys of its BoundObjects, a map of soft references
+        // (TSoftObjectPtr, at +0 of each element the map property lays out) to binding data. The
+        // engine fills a soft reference's weak half only once something has looked the object up,
+        // as the interaction does the first time it binds its props: until a door is first used, its
+        // leaf is named by its path alone. Read by the weak half only, as from 2026-11-04 on, every
+        // door not opened yet bound "0 prop(s)": from the lodge's garage on 2026-11-11 the map swept
+        // the shut door to the hall's vestibule as free, listed the hall beyond it and walked Chris
+        // into the door three times (research/sessions/s69-play.log); the leaf had only been seen
+        // read on a door already opened (s42). The path is looked up as the engine looks it up
+        // (StaticFindObject), else among the live props (recheck::FindBound).
+        std::vector<BoundProp> BoundProps(UObject* interaction, std::optional<std::vector<UObject*>>& liveProps)
+        {
+            std::vector<BoundProp> props;
             auto* prop = obj::FindProperty(interaction, L"BoundObjects");
             if (!prop || obj::PropertyTypeName(prop) != L"MapProperty") return props;
-            const int32_t stride = static_cast<RC::Unreal::FMapProperty*>(prop)->GetMapLayout().SetLayout.Size;
+            auto* mapProp = static_cast<RC::Unreal::FMapProperty*>(prop);
+            const int32_t stride = mapProp->GetMapLayout().SetLayout.Size;
+            FProperty* keyProp = mapProp->GetKeyProp();
+            const bool soft = keyProp && obj::PropertyTypeName(keyProp) == L"SoftObjectProperty" && keyProp->GetElementSize() == kSoftPointerSize;
             const auto* map = static_cast<const uint8_t*>(obj::ValuePtr(interaction, prop));
             if (!map || stride <= 0 || stride > 0x400) return props;
             const auto* elements = *reinterpret_cast<const uint8_t* const*>(map);
@@ -3572,11 +3626,27 @@ namespace da::features
             for (int32_t i = 0; i < count; ++i)
             {
                 if ((bits[i / 32] & (1u << (i % 32))) == 0) continue; // a free slot
-                const auto* weak = reinterpret_cast<const RC::Unreal::FWeakObjectPtr*>(elements + static_cast<size_t>(i) * static_cast<size_t>(stride));
-                UObject* object = weak->Get();
-                if (obj::IsLive(object) && obj::IsA(object, L"BatesBindableProp")) props.push_back(object);
+                const auto* key = elements + static_cast<size_t>(i) * static_cast<size_t>(stride);
+                BoundProp bound;
+                if (soft) bound.path = SoftPath(key);
+                UObject* weak = reinterpret_cast<const RC::Unreal::FWeakObjectPtr*>(key)->Get();
+                UObject* byPath = nullptr;
+                UObject* byName = nullptr;
+                bound.by = recheck::FindBound(
+                    obj::IsLive(weak), [&] { return !bound.path.empty() && obj::IsLive(byPath = obj::FindObject(bound.path)); },
+                    [&] { return obj::IsLive(byName = LivePropAt(bound.path, liveProps)); });
+                bound.object = bound.by == recheck::BoundBy::Weak ? weak : bound.by == recheck::BoundBy::Path ? byPath : bound.by == recheck::BoundBy::Name ? byName : nullptr;
+                props.push_back(std::move(bound));
             }
             return props;
+        }
+
+        // Whether the level a soft reference's path lies in is loaded: its world is found.
+        bool PathLevelLoaded(const std::wstring& path)
+        {
+            const size_t colon = path.find(L':');
+            if (path.empty() || colon == std::wstring::npos) return false;
+            return obj::IsLive(obj::FindObject(path.substr(0, colon)));
         }
 
         // A bone's place in the world, by the component's own GetSocketTransform.
@@ -3634,11 +3704,14 @@ namespace da::features
         }
 
         // The leaves of every door the level's use locations lead to, read as a map begins.
+        std::set<std::wstring> g_leafMissingLogged; // the doors whose named leaf was not found, said once
+
         void ReadDoorLeaves()
         {
             g_doorLeaves.clear();
             std::set<UObject*> doors;
             std::vector<std::wstring> lines;
+            std::optional<std::vector<UObject*>> liveProps; // gathered only if a path is not found
             for (auto* use : g_useLocations)
             {
                 UObject* interaction = nullptr;
@@ -3658,10 +3731,22 @@ namespace da::features
                     lines.push_back(std::format(L"{} (opened: its leaf no wall)", name));
                     continue;
                 }
-                const auto props = BoundProps(interaction);
+                const auto bound = BoundProps(interaction, liveProps);
                 bool any = false;
-                for (UObject* prop : props)
+                int found = 0;
+                for (const auto& b : bound)
                 {
+                    if (!b.object)
+                    {
+                        // The game names a leaf the mod cannot find: its doorway would stand as no
+                        // wall, which is what went unseen for a week (BoundProps). Said once a door.
+                        if (!b.path.empty() && PathLevelLoaded(b.path) && g_leafMissingLogged.insert(name + L"|" + b.path).second)
+                            log::Error(L"explore: the door {} binds {}, which is not found though its level is loaded: its doorway stands as no wall", name, b.path);
+                        continue;
+                    }
+                    ++found;
+                    UObject* prop = b.object;
+                    if (!obj::IsA(prop, L"BatesBindableProp")) continue;
                     // A thing a character carries, which the door's animation binds for her hands, is
                     // no leaf of the door's (recheck::LeafOfDoor).
                     if (!recheck::LeafOfDoor(obj::IsA(prop, L"BatesHeldItemBase")))
@@ -3675,12 +3760,12 @@ namespace da::features
                     leaf.shape = PropBodies(prop);
                     if (leaf.shape.Empty()) continue;
                     leaf.shape.Bounds(leaf.low, leaf.high);
-                    lines.push_back(std::format(L"{} ({} within ({:.0f}, {:.0f}, {:.0f}) to ({:.0f}, {:.0f}, {:.0f}))", name, obj::ObjectName(prop), leaf.low.x,
-                                                leaf.low.y, leaf.low.z, leaf.high.x, leaf.high.y, leaf.high.z));
+                    lines.push_back(std::format(L"{} ({} within ({:.0f}, {:.0f}, {:.0f}) to ({:.0f}, {:.0f}, {:.0f}), found by its {})", name, obj::ObjectName(prop),
+                                                leaf.low.x, leaf.low.y, leaf.low.z, leaf.high.x, leaf.high.y, leaf.high.z, recheck::BoundByName(b.by)));
                     g_doorLeaves.push_back(std::move(leaf));
                     any = true;
                 }
-                if (!any) lines.push_back(std::format(L"{} (no leaf of its own: {} bound prop(s))", name, props.size()));
+                if (!any) lines.push_back(std::format(L"{} (no leaf of its own: {} named, {} found)", name, bound.size(), found));
             }
             const auto text = lines.empty() ? std::wstring(L"none") : str::Join(lines, L"; ");
             if (text == g_doorLeavesLogged) return;

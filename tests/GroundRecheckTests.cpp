@@ -577,3 +577,105 @@ TEST_CASE("recheck: a prop's breath of animation held is no move: the film proje
     CHECK_FALSE(projector.Update(7.0, rest, before, after));
     CHECK_FALSE(projector.Update(9.0, rest, before, after));
 }
+
+namespace
+{
+    // The leaf of the lodge's door between the garage's vestibule and the hall's: the prop
+    // BP_Lodge_interior_door_C_0 of LV_Scene05_into_the_lodge_inside at (606.16, -8272.17, 3005.53)
+    // turned 169.65 degrees, its one body a box of 127.7 by 7.5 by 235.7 cm, its middle at
+    // (62.5, 0, 112.35) on the hinge's bone (ShapesTests, the same door on 2026-11-04).
+    recheck::Leaf GarageVestibuleDoorLeaf()
+    {
+        shapes::Pose hinge;
+        hinge.translation = recheck::Vec{606.1617, -8272.17255, 3005.53322};
+        hinge.rotation = shapes::FromRotator(0.0, 169.653537, 0.0);
+        auto box = shapes::BoxHull(recheck::Vec{62.50117974777319, 0.0, 112.35061080204551},
+                                   recheck::Vec{127.70365142822266 / 2.0, 7.5 / 2.0, 235.70169067382812 / 2.0}, shapes::Quat{});
+        for (auto& p : box.points)
+            p = shapes::Place(hinge, p);
+        recheck::Leaf leaf;
+        leaf.shape.hulls.push_back(box);
+        leaf.shape.Bounds(leaf.low, leaf.high);
+        return leaf;
+    }
+
+    // The cells of the hall's vestibule a flood reached: every row south of the door's (95 and on
+    // down; the leaf's line runs through row 98, where the doorway is).
+    int BeyondTheDoor(const grid::Flood& flood)
+    {
+        int cells = 0;
+        for (int x = -15; x <= 70; ++x)
+        {
+            for (int y = 0; y <= 95; ++y)
+            {
+                if (flood.LevelsAt(x, y)) ++cells;
+            }
+        }
+        return cells;
+    }
+}
+
+TEST_CASE("recheck: the shut door to the hall's vestibule closes the hall off once its leaf is found by its path: the lodge, 2026-11-11")
+{
+    // tests/fixtures/ground-garage-airlock-door.tsv: the ground as the session's record had it at its
+    // end, the hall's levels streamed in, cut by tools/ground/cut_ground.py from where Chris stood at
+    // the family portrait (-818, -7567) out of research/dumps/ground-20261111-104204.tsv. The door's
+    // interaction, I_garage_airlock_door3, names its leaf in its BoundObjects by a soft reference whose
+    // weak half the engine fills only as the door is first used: read by the weak half alone, the
+    // leaf was "0 bound prop(s)", the map swept the doorway free, listed the hall's things and the
+    // way back to the entrance beyond the shut door, and three walks stopped at it at (560, -8217)
+    // (research/sessions/s69-play.log, 10:54:49, 10:56:29 to 11:01:11).
+    auto record = ReadFixture("ground-garage-airlock-door.tsv");
+    const grid::Cell portrait{-51, 133, 59};
+    // As the map had it, no leaf: through the doorway into the hall's vestibule, to the way back to
+    // the entrance (475, -9240).
+    const auto open = Flood(record, portrait);
+    CHECK(open->LevelsAt(17, 94));
+    CHECK(open->LevelsAt(14, 49));
+    CHECK(BeyondTheDoor(*open) > 1000);
+    // The leaf found: every step whose sweep touches it refused, as the map refuses them ('D'), from
+    // the cells' middles as the grid lays them (20 cm cells from (184.59, -10227.39), half height 100,
+    // radius 42, step 45).
+    const recheck::Leaf leaf = GarageVestibuleDoorLeaf();
+    const double radius = 42.0, half = 100.0, step = 45.0;
+    const double sweepHalf = std::max(25.0, half - step / 2.0);
+    const auto middle = [&](const grid::Cell& c)
+    {
+        const auto floor = record.floors.find({c.x, c.y, c.level});
+        REQUIRE(floor != record.floors.end());
+        return recheck::Vec{184.59 + (c.x + 0.5) * 20.0, -10227.39 + (c.y + 0.5) * 20.0, floor->second + half + step / 2.0};
+    };
+    const auto base = record.Passable();
+    const grid::Passable shut = [&](grid::Cell from, grid::Cell& to)
+    {
+        if (!base(from, to)) return false;
+        return !recheck::LeafTouches(leaf, middle(from), middle(to), radius, sweepHalf);
+    };
+    grid::Flood closed(portrait, 200, 100000);
+    while (closed.Step(64, shut) == grid::Flood::State::Running)
+    {
+    }
+    REQUIRE(closed.Current() == grid::Flood::State::Complete);
+    // The door's own place, where the game offers it (536, -8140), and the ground up to it: reached.
+    // (The cell where Chris stood pressed against the door, (18, 100), lies within his capsule's
+    // reach of the leaf's box and is refused; the one a step back is not.)
+    CHECK(closed.LevelsAt(17, 104));
+    CHECK(closed.LevelsAt(18, 101));
+    // The doorway itself (columns 16 to 18, rows 96 to 100), passed without the leaf: not.
+    CHECK(open->LevelsAt(17, 97));
+    CHECK_FALSE(closed.LevelsAt(17, 97));
+    // Nothing beyond it: the hall's vestibule, the way back to the entrance, the hall are another room's.
+    CHECK_FALSE(closed.LevelsAt(17, 94));
+    CHECK_FALSE(closed.LevelsAt(14, 49));
+    CHECK(BeyondTheDoor(closed) == 0);
+    // And the leaf is found though the weak half is empty: by its path as the engine looks it up, else
+    // by the live prop at that path; each asked only if the one before found nothing.
+    int asked = 0;
+    CHECK(recheck::FindBound(false, [&] { ++asked; return true; }, [&] { ++asked; return true; }) == recheck::BoundBy::Path);
+    CHECK(asked == 1);
+    CHECK(recheck::FindBound(false, [] { return false; }, [] { return true; }) == recheck::BoundBy::Name);
+    CHECK(recheck::FindBound(true, [&] { ++asked; return true; }, [] { return true; }) == recheck::BoundBy::Weak);
+    CHECK(asked == 1);
+    CHECK(recheck::FindBound(false, [] { return false; }, [] { return false; }) == recheck::BoundBy::None);
+    CHECK(std::wstring(recheck::BoundByName(recheck::BoundBy::Path)) == L"path");
+}

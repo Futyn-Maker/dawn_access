@@ -120,6 +120,30 @@ namespace da::recheck
         return !heldItem;
     }
 
+    BoundBy FindBound(bool weakLive, const std::function<bool()>& byPath, const std::function<bool()>& byName)
+    {
+        if (weakLive) return BoundBy::Weak;
+        if (byPath && byPath()) return BoundBy::Path;
+        if (byName && byName()) return BoundBy::Name;
+        return BoundBy::None;
+    }
+
+    const wchar_t* BoundByName(BoundBy by)
+    {
+        switch (by)
+        {
+        case BoundBy::Weak:
+            return L"weak pointer";
+        case BoundBy::Path:
+            return L"path";
+        case BoundBy::Name:
+            return L"name";
+        case BoundBy::None:
+            break;
+        }
+        return L"none";
+    }
+
     bool LivingCreature(std::wstring_view meshPath)
     {
         std::wstring path(meshPath);
