@@ -418,6 +418,10 @@ namespace da::features
         // per script asset, and the game asking them as its scenes run (scripts::Waits).
         std::map<UObject*, std::vector<scripts::Poll>> g_pollsByAsset;
         std::map<UObject*, std::vector<scripts::MoveWait>> g_moveWaitsByAsset;
+        std::map<UObject*, std::vector<scripts::EndWait>> g_endWaitsByAsset; // the waits for a scene to be done
+        std::map<UObject*, std::vector<scripts::Leading>> g_leadsByAsset;    // where a companion leads the player
+        std::vector<scripts::Leading> g_leads;
+        std::wstring g_leadingLogged; // the companions leading the player, as last logged
         scripts::Waits g_waits;
         // The scenes' switches of the player's character and the waits that follow them
         // (scripts::Switch), read from the same scripts with the numbers they keep in gVariables.
@@ -1566,12 +1570,16 @@ namespace da::features
                 obj::ReadString(asset, L"Script", script);
                 g_pollsByAsset[asset] = scripts::ParsePolls(script, obj::FullName(asset));
                 g_moveWaitsByAsset[asset] = scripts::ParseMoveWaits(script, obj::FullName(asset));
+                g_endWaitsByAsset[asset] = scripts::ParseEndWaits(script, obj::FullName(asset));
+                g_leadsByAsset[asset] = scripts::ParseLeads(script, obj::FullName(asset));
                 g_scriptByAsset[asset] = std::move(script);
                 pollsChanged = true;
             }
             pollsChanged |=
                 std::erase_if(g_pollsByAsset, [&](const auto& item) { return std::find(level.begin(), level.end(), item.first) == level.end(); }) > 0;
             std::erase_if(g_moveWaitsByAsset, [&](const auto& item) { return std::find(level.begin(), level.end(), item.first) == level.end(); });
+            std::erase_if(g_endWaitsByAsset, [&](const auto& item) { return std::find(level.begin(), level.end(), item.first) == level.end(); });
+            std::erase_if(g_leadsByAsset, [&](const auto& item) { return std::find(level.begin(), level.end(), item.first) == level.end(); });
             if (pollsChanged)
             {
                 g_moveWaits.clear();
@@ -1618,6 +1626,32 @@ namespace da::features
                 std::vector<scripts::Poll> all;
                 for (const auto& [asset, polls] : g_pollsByAsset)
                     all.insert(all.end(), polls.begin(), polls.end());
+                // A scene's end moves the story on where the level waits for it to be done.
+                std::vector<scripts::EndWait> ends;
+                std::vector<std::wstring> endLines;
+                for (const auto& [asset, waits] : g_endWaitsByAsset)
+                {
+                    for (const auto& w : waits)
+                    {
+                        endLines.push_back(std::format(L"{} {} for {}{}", w.machine, w.state, w.awaited, w.story ? L"; goes on with the story" : L""));
+                        ends.push_back(w);
+                    }
+                }
+                log::Info(L"explore: the scenes wait for others to be done: {}", endLines.empty() ? L"none" : str::Join(endLines, L"; "));
+                const size_t ended = scripts::WeighEnds(all, ends);
+                // Where a companion leads the player on, a scene's wait for her is the player's way too.
+                g_leads.clear();
+                std::vector<std::wstring> leadLines;
+                for (const auto& [asset, leads] : g_leadsByAsset)
+                {
+                    for (const auto& l : leads)
+                    {
+                        leadLines.push_back(std::format(L"{} by {} {}", l.character, l.machine, l.state));
+                        g_leads.push_back(l);
+                    }
+                }
+                log::Info(L"explore: the scenes' companions lead the player on while their machines stand in: {}", leadLines.empty() ? L"none" : str::Join(leadLines, L"; "));
+                if (ended > 0) log::Info(L"explore: {} question(s) end a scene the level waits for, and move the story on", ended);
                 // A companion sent on moves the scene on only where the level waits for that companion.
                 const size_t demoted = scripts::WeighCompanions(all);
                 std::vector<std::wstring> lines;
@@ -2416,7 +2450,16 @@ namespace da::features
                 // A scene's machine asking at every update whether she stands in it, and moving
                 // on once she does (scripts::Waits).
                 using Kind = scripts::Waits::Kind;
-                const auto waited = name.empty() ? scripts::Waits::Verdict{} : g_waits.Judge(g_playClock, name, character, ScenesMachines());
+                const auto* machines = ScenesMachines();
+                // The companions leading the player now (scripts::LeadingNow): a scene's wait for one of them is
+                // the player's way on too.
+                const std::set<std::wstring> leading = machines ? scripts::LeadingNow(g_leads, *machines) : std::set<std::wstring>{};
+                if (const std::wstring leadText = str::Join(std::vector<std::wstring>(leading.begin(), leading.end()), L", "); leadText != g_leadingLogged)
+                {
+                    g_leadingLogged = leadText;
+                    log::Info(L"explore: the companions leading the player on now: {}", leadText.empty() ? L"none" : leadText);
+                }
+                const auto waited = name.empty() ? scripts::Waits::Verdict{} : g_waits.Judge(g_playClock, name, character, machines, &leading);
                 const bool pollStory = waited.kind == Kind::Waiting || waited.kind == Kind::NotNow || waited.kind == Kind::Met;
                 // Waited on a while ago and not walked into since: still a way on (scripts::HeldWaits).
                 const bool held = !name.empty() && waited.kind == Kind::NotNow && g_heldWaits.Held(name);

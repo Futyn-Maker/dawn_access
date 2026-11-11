@@ -2017,6 +2017,333 @@ gRegisteredStatemachines.Scene03_gotomine = {
   }
 )lua";
 
+    // Act2_2's walk to the cabin (scene02_walkingtothecabin.lua): after the scream it waits for Mike in
+    // T_Jessica_Move_To_Mine_Entrance and ends; the main flow (MainFlow.lua) runs the mine's scene once
+    // it is done; the dialogue's machine (dialogue_control.lua) plays a line in T_mine_approachjessica,
+    // and ends itself only once the vista's scene is done.
+    const std::wstring kWalkToCabin = LR"lua(
+function Scene02_walkingtothecabin_State_2(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 1003)
+  --If there was anything after the following End-command in the statemachine, that
+  --was dropped since it is not allowed in lua to have anything after a return
+  SF_End(sm, {statemachine = nil})
+  return
+end
+
+function Scene02_walkingtothecabin_State_3(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 1005)
+  if SF_IsInTrigger(sm, {gameObjects = "Mike",
+      trigger = "T_scaryscream"}) then
+    -- Auto-generated JumpToState(), since the condition has a link
+    M_JumpToState(sm,6)
+    return
+  end
+end
+
+function Scene02_walkingtothecabin_State_9(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 8591)
+  if SF_IsInTrigger(sm, {gameObjects = "Jessica",
+      trigger = "T_Jessica_PoliceTapeDialogue"}) then
+    SF_ScriptedDialogue(sm, {sentenceGroup = "act2_2_walktocabin_hannahbeth_ingame",
+        mode = "Essential"})
+    -- Auto-generated JumpToState(), since the condition has a link
+    M_JumpToState(sm,3)
+    return
+  end
+end
+
+function Scene02_walkingtothecabin_State_6(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 3933)
+  if SF_IsInTrigger(sm, {gameObjects = "Player",
+      trigger = "T_Jessica_Move_To_Mine_Entrance"}) then
+    -- Auto-generated JumpToState(), since the condition has a link
+    M_JumpToState(sm,2)
+    return
+  end
+end
+gRegisteredStatemachines.Scene02_walkingtothecabin = {
+    startState = 1,
+    name = 'Scene02_walkingtothecabin',
+    states = {
+      {nextState = nil,	func = Scene02_walkingtothecabin_State_2, 	funcList = 'End '},
+      {nextState = nil,	func = Scene02_walkingtothecabin_State_3, 	funcList = 'Is Mike In Trigger T_scaryscream'},
+      {nextState = nil,	func = Scene02_walkingtothecabin_State_6, 	funcList = 'Is Player In Trigger T_Jessica_Move_To_Mine_Entrance'},
+      {nextState = nil,	func = Scene02_walkingtothecabin_State_9, 	funcList = 'Is Jessica In Trigger T_Jessica_PoliceTapeDialogue'},
+    },
+  }
+)lua";
+
+    const std::wstring kMainFlowScenes = LR"lua(
+function Mainflow_State_11(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 497)
+  if SF_IsStatemachineDone(sm, {statemachine = "Scene02_walkingtothecabin"}) then
+    -- Auto-generated JumpToState(), since the condition has a link
+    M_JumpToState(sm,12)
+    return
+  end
+end
+
+function Mainflow_State_12(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 499)
+  SF_RunStatemachine(sm, {statemachine = "Scene03_gotomine"})
+end
+
+function Mainflow_State_13(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 501)
+  if SF_IsStatemachineDone(sm, {statemachine = "Scene03_gotomine"}) then
+    -- Auto-generated JumpToState(), since the condition has a link
+    M_JumpToState(sm,14)
+    return
+  end
+end
+
+function Mainflow_State_14(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 503)
+  SF_RunStatemachine(sm, {statemachine = "Scene04_vistaandbirdscare"})
+end
+gRegisteredStatemachines.Mainflow = {
+    startState = 1,
+    name = 'Mainflow',
+    states = {
+      {nextState = nil,	func = Mainflow_State_11, 	funcList = 'Is Statemachine Scene02_walkingtothecabin done?'},
+      {nextState = 13,	func = Mainflow_State_12, 	funcList = 'Run Statemachine Scene03_gotomine'},
+      {nextState = nil,	func = Mainflow_State_13, 	funcList = 'Is Statemachine Scene03_gotomine done?'},
+      {nextState = 15,	func = Mainflow_State_14, 	funcList = 'Run Statemachine Scene04_vistaandbirdscare'},
+    },
+  }
+)lua";
+
+    const std::wstring kDialogueEnds = LR"lua(
+function Dialogue_control_State_2(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 579)
+  --If there was anything after the following End-command in the statemachine, that
+  --was dropped since it is not allowed in lua to have anything after a return
+  SF_End(sm, {statemachine = nil})
+  return
+end
+
+function Dialogue_control_State_16(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 3679)
+  if SF_IsStatemachineDone(sm, {statemachine = "Scene04_vistaandbirdscare"}) then
+    -- Auto-generated JumpToState(), since the condition has a link
+    M_JumpToState(sm,2)
+    return
+  end
+end
+
+function Dialogue_control_State_19(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 3686)
+  if SF_IsInTrigger(sm, {gameObjects = "Player",
+      trigger = "T_mine_approachjessica"}) then
+    -- Auto-generated JumpToState(), since the condition has a link
+    M_JumpToState(sm,22)
+    return
+  end
+end
+
+function Dialogue_control_State_22(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 3958)
+  if SF_IsSentenceGroupExhausted(sm, {sentenceGroup = "act2_2_walktocabin_seerockfall"}) then
+    SF_ScriptedDialogue(sm, {sentenceGroup = "act2_2_walktocabin_approachjessica",
+        mode = "Essential"})
+    -- Auto-generated JumpToState(), since the condition has a link
+    M_JumpToState(sm,23)
+    return
+  end
+end
+
+function Dialogue_control_State_30(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 9001)
+  if SF_IsInTrigger(sm, {gameObjects = "Player",
+      trigger = "T_dialogue_last_line"}) then
+    SF_ScriptedDialogue(sm, {sentenceGroup = "act2_2_lastline",
+        mode = "Essential"})
+    -- Auto-generated JumpToState(), since the condition has a link
+    M_JumpToState(sm,2)
+    return
+  end
+end
+gRegisteredStatemachines.Dialogue_control = {
+    startState = 1,
+    name = 'Dialogue_control',
+    states = {
+      {nextState = nil,	func = Dialogue_control_State_2, 	funcList = 'End '},
+      {nextState = nil,	func = Dialogue_control_State_16, 	funcList = 'Is Statemachine Scene04_vistaandbirdscare done?'},
+      {nextState = nil,	func = Dialogue_control_State_19, 	funcList = 'Is Player In Trigger T_mine_approachjessica'},
+      {nextState = nil,	func = Dialogue_control_State_22, 	funcList = 'Is Sentence Group act2_2_walktocabin_seerockfall Exhausted'},
+      {nextState = nil,	func = Dialogue_control_State_30, 	funcList = 'Is Player In Trigger T_dialogue_last_line'},
+    },
+  }
+)lua";
+
+    // Act2_2's companion machine (aicontroller.lua) as it leads Jessica on: to the landslide, to the mine's
+    // entrance and its edge, and later to the vista, each a lead of the player ("Lead_3m", "Lead_5m");
+    // by the cart it has her escort him instead.
+    const std::wstring kJessicaLeads = LR"lua(
+function Aicontroller_State_11(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 3183)
+  if SF_IsActivityComplete(sm, {activity = "A_EnterMineChoice"}) then
+    -- Auto-generated JumpToState(), since the condition has a link
+    M_JumpToState(sm,39)
+    return
+  end
+end
+
+function Aicontroller_State_12(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 3268)
+  SF_OrderLeadTo(sm, {lead = "Player",
+      useMarkerHeading = true,
+      alterMovementStyle = true,
+      character = "Jessica",
+      allowTurningWhileWaiting = true,
+      arrivalDistance = 2,
+      willComplete = true,
+      marker = "AIMarker_Jess_Wait_Telescope",
+      moveType = "Marker",
+      movementStyle = "Lead_3m"})
+  gVariables.JessicasOrder = "LeadToVista"
+end
+
+function Aicontroller_State_13(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 3277)
+  if SF_IsInTrigger(sm, {gameObjects = "Jessica",
+      trigger = "T_SpotCabin"}) then
+    SF_SetEnableActivity(sm, {activities = "I_Telescope_Look_Only"})
+    SF_SetEnableTrigger(sm, {trigger = "T_telescope_leave"})
+    SF_SetEnableTrigger(sm, {trigger = "T_telescope_enter"})
+    -- Auto-generated JumpToState(), since the condition has a link
+    M_JumpToState(sm,22)
+    return
+  end
+end
+
+function Aicontroller_State_15(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 3331)
+  gVariables.JessicasOrder = "StandByCart"
+  gVariables.StandByCart = SF_OrderEscort(sm, {separationStyle = "Separate_10m",
+      separationTarget = "AIMarker_Mine_Teleport_01",
+      character = "Jessica",
+      useMarkerHeading = true,
+      escort = "Player",
+      separateAtPoint = true})
+end
+
+function Aicontroller_State_16(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 3349)
+  if SF_IsInTrigger(sm, {gameObjects = "Player",
+      trigger = "T_MineEntrance"}) then
+    -- Auto-generated JumpToState(), since the condition has a link
+    M_JumpToState(sm,17)
+    return
+  end
+end
+
+function Aicontroller_State_17(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 3351)
+  SF_OrderLeadTo(sm, {lead = "Player",
+      alterMovementStyle = true,
+      character = "Jessica",
+      allowTurningWhileWaiting = true,
+      useMarkerHeading = true,
+      marker = "AIMarker_Mine_Edge",
+      moveType = "Marker",
+      movementStyle = "Lead_5m"})
+end
+
+function Aicontroller_State_37(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 4143)
+  SF_OrderLeadTo(sm, {lead = "Player",
+      alterMovementStyle = true,
+      character = "Jessica",
+      allowTurningWhileWaiting = true,
+      useMarkerHeading = true,
+      marker = "AIMarker_Mine_Entrance",
+      moveType = "Marker",
+      movementStyle = "Lead_5m"})
+  gVariables.JessicasOrder = "FollowPlayer"
+end
+
+function Aicontroller_State_38(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 4146)
+  if SF_IsInTrigger(sm, {gameObjects = "Player",
+      trigger = "T_Jessica_Move_To_Mine_Entrance"}) then
+    -- Auto-generated JumpToState(), since the condition has a link
+    M_JumpToState(sm,37)
+    return
+  end
+end
+
+function Aicontroller_State_52(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 4228)
+  if SF_IsOrderComplete(sm, {character = "Jessica",
+      orderId = gVariables.StandByCart}) then
+  end
+end
+
+function Aicontroller_State_59(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 6363)
+  SF_OrderLeadTo(sm, {lead = "Player",
+      alterMovementStyle = true,
+      character = "Jessica",
+      allowTurningWhileWaiting = true,
+      useMarkerHeading = true,
+      marker = "M_JessicaLandslide",
+      moveType = "Marker",
+      movementStyle = "Lead_3m"})
+end
+
+function Aicontroller_State_60(sm)
+-- Set what the last run state is for SMED debugging
+  Debug_SetSMEDStateID(sm, 6364)
+  if SF_IsInTrigger(sm, {gameObjects = "Player",
+      trigger = "T_Jessica_Move_To_Mine_Path"}) then
+    -- Auto-generated JumpToState(), since the condition has a link
+    M_JumpToState(sm,59)
+    return
+  end
+end
+gRegisteredStatemachines.Aicontroller = {
+    startState = 1,
+    name = 'Aicontroller',
+    states = {
+      {nextState = nil,	func = Aicontroller_State_11, 	funcList = 'Is Activity A_EnterMineChoice Complete?'},
+      {nextState = 13,	func = Aicontroller_State_12, 	funcList = 'Order Jessica to Lead Player to AIMarker_Jess_Wait_Telescope using Lead_3m, *JessicasOrder = LeadToVista'},
+      {nextState = nil,	func = Aicontroller_State_13, 	funcList = 'Is Jessica In Trigger T_SpotCabin'},
+      {nextState = 52,	func = Aicontroller_State_15, 	funcList = '*JessicasOrder = StandByCart, *StandByCart = Order Jessica To Escort Player To AIMarker_Mine_Teleport_01 Using Separate_10m'},
+      {nextState = nil,	func = Aicontroller_State_16, 	funcList = 'Is Player In Trigger T_MineEntrance'},
+      {nextState = 11,	func = Aicontroller_State_17, 	funcList = 'Order Jessica to Lead Player to AIMarker_Mine_Edge using Lead_5m'},
+      {nextState = 16,	func = Aicontroller_State_37, 	funcList = 'Order Jessica to Lead Player to AIMarker_Mine_Entrance using Lead_5m, *JessicasOrder = FollowPlayer'},
+      {nextState = nil,	func = Aicontroller_State_38, 	funcList = 'Is Player In Trigger T_Jessica_Move_To_Mine_Entrance'},
+      {nextState = nil,	func = Aicontroller_State_52, 	funcList = 'Is Jessica\'s order *StandByCart complete'},
+      {nextState = 38,	func = Aicontroller_State_59, 	funcList = 'Order Jessica to Lead Player to M_JessicaLandslide using Lead_3m'},
+      {nextState = nil,	func = Aicontroller_State_60, 	funcList = 'Is Player In Trigger T_Jessica_Move_To_Mine_Path'},
+    },
+  }
+)lua";
+
     std::vector<Poll> Level(std::initializer_list<std::pair<const std::wstring*, const wchar_t*>> scripts)
     {
         std::vector<Poll> all;
@@ -2198,4 +2525,116 @@ TEST_CASE("scripts: a scene's wait whose way on turns its objective off or sets 
     scare.calls = {L"SF_SendSoundEvent", L"SF_StartActivity"};
     CHECK_FALSE(scripts::EndsObjective(scare));
     CHECK_FALSE(scripts::EndsObjective(scripts::Poll{}));
+}
+
+TEST_CASE("scripts: a scene's end the level's flow waits for moves the story on: the walk to the mine, 2026-11-11")
+{
+    // research/sessions/s70-play.log, 12:25:44 to 12:26:24: after "Обойдите завал." the list stood
+    // empty; Mike walked on through T_Jessica_Move_To_Mine_Path, T_mine_approachjessica and
+    // T_Jessica_Move_To_Mine_Entrance, whose yes ends the walk's scene, and only then was the mine's
+    // entrance a way on.
+    auto act = Level({{&kWalkToCabin, L"scene02_walkingtothecabin"}, {&kDialogueEnds, L"dialogue_control"}});
+    const Poll* entrance = Find(act, L"T_Jessica_Move_To_Mine_Entrance");
+    REQUIRE(entrance);
+    CHECK(entrance->ends);
+    CHECK(entrance->waits);
+    CHECK_FALSE(entrance->story);
+    // The main flow waits for the walk's scene, then runs the mine's: going on with the story. The
+    // dialogue's machine waits for the vista's scene only to end itself.
+    const auto flow = scripts::ParseEndWaits(kMainFlowScenes, L"mainflow");
+    REQUIRE(flow.size() == 2);
+    CHECK(flow[0].machine == L"Mainflow");
+    CHECK(flow[0].state == 11);
+    CHECK(flow[0].awaited == L"Scene02_walkingtothecabin");
+    CHECK(flow[0].story);
+    CHECK(flow[1].awaited == L"Scene03_gotomine");
+    CHECK(flow[1].story);
+    const auto dialogue = scripts::ParseEndWaits(kDialogueEnds, L"dialogue_control");
+    REQUIRE(dialogue.size() == 1);
+    CHECK(dialogue[0].awaited == L"Scene04_vistaandbirdscare");
+    CHECK_FALSE(dialogue[0].story);
+    std::vector<scripts::EndWait> ends = flow;
+    ends.insert(ends.end(), dialogue.begin(), dialogue.end());
+    // The walk's end is waited for: walking into the volume moves the story on.
+    CHECK(scripts::WeighEnds(act, ends) == 1);
+    entrance = Find(act, L"T_Jessica_Move_To_Mine_Entrance");
+    REQUIRE(entrance);
+    CHECK(entrance->story);
+    CHECK_FALSE(entrance->sentOnly);
+    // A volume that only plays a line stays out, and so does one whose line ends the dialogue's own
+    // machine, whose end no one waits for to go on.
+    const Poll* line = Find(act, L"T_mine_approachjessica");
+    REQUIRE(line);
+    CHECK_FALSE(line->story);
+    const Poll* last = Find(act, L"T_dialogue_last_line");
+    REQUIRE(last);
+    CHECK(last->ends);
+    CHECK_FALSE(last->story);
+    // The scene's questions that do not end it are weighed as ever: the police tape plays a line and
+    // goes on to the scream's wait.
+    const Poll* tape = Find(act, L"T_Jessica_PoliceTapeDialogue");
+    REQUIRE(tape);
+    CHECK_FALSE(tape->ends);
+    CHECK_FALSE(tape->story);
+    // Without the main flow's wait, nothing of it moves the story on; nor does a wait for the walk's
+    // end that only ends the machine that waits.
+    auto alone = Level({{&kWalkToCabin, L"scene02_walkingtothecabin"}});
+    CHECK(scripts::WeighEnds(alone, dialogue) == 0);
+    const std::vector<scripts::EndWait> idle{scripts::EndWait{L"dialogue_control", L"Dialogue_control", 16, L"Scene02_walkingtothecabin", false}};
+    CHECK(scripts::WeighEnds(alone, idle) == 0);
+    CHECK_FALSE(Find(alone, L"T_Jessica_Move_To_Mine_Entrance")->story);
+    // At play the wait stands while the walk's scene stands in its state 6.
+    scripts::Waits waits;
+    waits.SetPolls(act);
+    waits.Asked(10.0, L"T_Jessica_Move_To_Mine_Entrance", true);
+    waits.Asked(10.0, L"T_mine_approachjessica", true);
+    const std::vector<std::pair<std::wstring, int>> machines{{L"Scene02_walkingtothecabin", 6}, {L"Dialogue_control", 19}};
+    CHECK(waits.Judge(10.5, L"T_Jessica_Move_To_Mine_Entrance", L"Mike", &machines).kind == scripts::Waits::Kind::Waiting);
+    CHECK(waits.Judge(10.5, L"T_mine_approachjessica", L"Mike", &machines).kind == scripts::Waits::Kind::NoStory);
+}
+
+TEST_CASE("scripts: a scene's wait for a companion leading the player on is the player's way on: Jessica at the pit's edge, 2026-11-11")
+{
+    // Lead_5m (DA_BatesAIStyleData) walks Jessica up to 5 m ahead, waits once Mike is 7 m behind, and
+    // comes back for him at 10 m: once he has walked into T_MineEntrance the mine's scene waits for her at
+    // the pit's edge, and goes on only as he keeps up.
+    const auto leads = scripts::ParseLeads(kJessicaLeads, L"aicontroller");
+    const auto leadsIn = [&](int state)
+    {
+        return std::any_of(leads.begin(), leads.end(), [&](const scripts::Leading& l) { return l.machine == L"Aicontroller" && l.state == state && l.character == L"Jessica"; });
+    };
+    CHECK(leadsIn(38)); // after the lead to the landslide
+    CHECK(leadsIn(16)); // after the lead to the mine's entrance
+    CHECK(leadsIn(11)); // after the lead to the pit's edge, waiting for the choice
+    CHECK(leadsIn(13)); // after the lead to the vista
+    CHECK_FALSE(leadsIn(52)); // escorting him by the cart
+    CHECK_FALSE(leadsIn(60)); // no way in known: no order to go by
+    CHECK(scripts::LeadingNow(leads, {{L"Aicontroller", 11}}) == std::set<std::wstring>{L"Jessica"});
+    CHECK(scripts::LeadingNow(leads, {{L"Aicontroller", 52}}).empty());
+    CHECK(scripts::LeadingNow(leads, {{L"Scene03_gotomine", 11}}).empty());
+
+    // The mine's scene waits for Jessica at the edge; the player is Mike.
+    auto act = Level({{&kJessicaLeads, L"aicontroller"}, {&kGoToMine, L"scene03_gotomine"}});
+    scripts::WeighCompanions(act);
+    scripts::Waits waits;
+    waits.SetPolls(act);
+    waits.Asked(10.0, L"T_EnterMineChoice", false);
+    const std::vector<std::pair<std::wstring, int>> led{{L"Scene03_gotomine", 2}, {L"Aicontroller", 11}};
+    const auto leading = scripts::LeadingNow(leads, led);
+    // She leads him: her volume is his way on.
+    const auto verdict = waits.Judge(10.5, L"T_EnterMineChoice", L"Mike", &led, &leading);
+    CHECK(verdict.kind == scripts::Waits::Kind::Waiting);
+    REQUIRE(verdict.poll);
+    CHECK(verdict.poll->who == L"Jessica");
+    // No one leading him: the companion's volume is none of his.
+    CHECK(waits.Judge(10.5, L"T_EnterMineChoice", L"Mike", &led).kind == scripts::Waits::Kind::None);
+    const std::vector<std::pair<std::wstring, int>> escorted{{L"Scene03_gotomine", 2}, {L"Aicontroller", 52}};
+    const auto none = scripts::LeadingNow(leads, escorted);
+    CHECK(waits.Judge(10.5, L"T_EnterMineChoice", L"Mike", &escorted, &none).kind == scripts::Waits::Kind::None);
+    // The scene not asking about her now (gone on, or not yet there): nothing.
+    CHECK(waits.Judge(13.0, L"T_EnterMineChoice", L"Mike", &led, &leading).kind == scripts::Waits::Kind::None);
+    // The scene standing elsewhere: nothing.
+    const std::vector<std::pair<std::wstring, int>> elsewhere{{L"Scene03_gotomine", 4}, {L"Aicontroller", 11}};
+    waits.Asked(20.0, L"T_EnterMineChoice", false);
+    CHECK(waits.Judge(20.5, L"T_EnterMineChoice", L"Mike", &elsewhere, &leading).kind == scripts::Waits::Kind::None);
 }

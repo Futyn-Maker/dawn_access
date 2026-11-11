@@ -175,7 +175,51 @@ namespace da::scripts
         // only where the level waits for that companion (WeighCompanions).
         bool sentOnly = false;
         std::vector<std::wstring> sentOn;
+        // A yes ends its machine (SF_End on the way on): the scene is over, which moves the story on
+        // where the level waits for it to be done (WeighEnds).
+        bool ends = false;
     };
+
+    // A machine's wait for another to be done (SF_IsStatemachineDone), and whether what follows moves
+    // the story on: running the next scene's machine or the story's own calls. Act2_2's main flow runs
+    // its scenes one after another, each once the one before is done; its dialogue's machine waits for
+    // the last scene only to end itself.
+    struct EndWait
+    {
+        std::wstring source;
+        std::wstring machine; // the machine that waits
+        int state = 0;
+        std::wstring awaited; // the machine whose end it waits for
+        bool story = false;
+    };
+    std::vector<EndWait> ParseEndWaits(const std::wstring& script, const std::wstring& source);
+
+    // A companion leading the player on: the state of a machine whose every way in comes last through an
+    // order to her to lead the player (SF_OrderLeadTo with lead = "Player"), no other order for her
+    // between. A lead holds her to the player: Act2_2's "Lead_5m" (DA_BatesAIStyleData) walks Jessica up
+    // to 5 m ahead, waits once Mike is 7 m behind and comes back for him at 10 m. So where a scene waits
+    // for her to come into a volume, the story goes on only as the player keeps up: after Mike walks into
+    // T_MineEntrance the mine's scene waits for Jessica at the pit's edge (T_EnterMineChoice), and a player
+    // who walked through the entrance's strip unawares and on elsewhere had nothing listed while she
+    // waited for him (Andrey's friend, 2026-11-11).
+    struct Leading
+    {
+        std::wstring source;
+        std::wstring machine;
+        int state = 0;
+        std::wstring character;
+    };
+    std::vector<Leading> ParseLeads(const std::wstring& script, const std::wstring& source);
+    // The companions leading the player now, by where the machines stand (lua::Machines).
+    std::set<std::wstring> LeadingNow(const std::vector<Leading>& leads, const std::vector<std::pair<std::wstring, int>>& machines);
+
+    // A question whose yes ends its scene moves the story on where the level waits for that scene to be
+    // done and goes on with the story then: Act2_2's walk to the cabin ends as Mike walks into
+    // T_Jessica_Move_To_Mine_Entrance, and the main flow then runs the mine's scene. Judged nothing of
+    // the story's, the volume was never a way on: after "Обойдите завал." the list stood empty until
+    // Mike happened to walk through it (research/sessions/s70-play.log, 12:25:44 to 12:26:23). Weighed
+    // once over every question of the level's scripts; returns how many it found to move the story on.
+    size_t WeighEnds(std::vector<Poll>& polls, const std::vector<EndWait>& ends);
 
     // What a trigger's script turns on or off when she walks into the volume or out of it
     // (gEvents["EnterTrigger"] or gEvents["LeaveTrigger"], SF_SetEnableActivity): the trigger, whether
@@ -312,8 +356,10 @@ namespace da::scripts
         // (Scene03_not_alone 35) was states away (it stood in 28, 31, then 42): the asks were taken
         // for the scene's, and the volume was a way on for nine minutes
         // (research/sessions/s63-play.log, 00:19:20 to 00:28:32).
+        // `leading`, the companions leading the player now (LeadingNow): a scene's wait for one of them
+        // to come into the volume is the player's way on too, judged by the game's questions about her.
         Verdict Judge(double now, const std::wstring& trigger, const std::wstring& character,
-                      const std::vector<std::pair<std::wstring, int>>* machines = nullptr) const;
+                      const std::vector<std::pair<std::wstring, int>>* machines = nullptr, const std::set<std::wstring>* leading = nullptr) const;
 
     private:
         bool AskedNow(double now, const std::wstring& trigger, bool player) const;

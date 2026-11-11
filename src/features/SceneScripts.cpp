@@ -715,6 +715,7 @@ namespace da::scripts
                         p.leaves = leaves;
                         p.calls = path.calls;
                         p.activities = path.activities;
+                        p.ends = std::find(path.calls.begin(), path.calls.end(), L"SF_End") != path.calls.end();
                         // Turning on a thing to use once she stands there moves the scene on too: she can
                         // only bring it about by standing there.
                         const bool alone = MovesOn(path.calls, path.activities, false) || path.enables;
@@ -816,6 +817,163 @@ namespace da::scripts
             }
         }
         return polls;
+    }
+
+    std::vector<EndWait> ParseEndWaits(const std::wstring& script, const std::wstring& source)
+    {
+        std::vector<EndWait> waits;
+        if (script.find(L"SF_IsStatemachineDone") == std::wstring::npos) return waits;
+        static const std::wregex ask(LR"re((not\s+)?SF_IsStatemachineDone\s*\(\s*sm\s*,\s*\{([^}]*)\}\s*\))re");
+        static const std::wregex awaited(LR"re(statemachine\s*=\s*"([^"]*)")re");
+        const auto machines = ParseMachines(script);
+        for (const auto& [name, machine] : machines)
+        {
+            for (const auto& [number, state] : machine.states)
+            {
+                const bool waitsHere = !machine.next.count(number) || Loops(machine, number);
+                if (!waitsHere) continue;
+                const auto visit = [&](const auto& self, const std::vector<Block>& blocks) -> void
+                {
+                    for (const auto& block : blocks)
+                    {
+                        for (auto it = std::wsregex_iterator(block.condition.begin(), block.condition.end(), ask); it != std::wsregex_iterator(); ++it)
+                        {
+                            if ((*it)[1].matched || JumpsIn(block.text).empty()) continue;
+                            const std::wstring args = (*it)[2].str();
+                            std::wsmatch m;
+                            if (!std::regex_search(args, m, awaited)) continue;
+                            EndWait w;
+                            w.source = source;
+                            w.machine = name;
+                            w.state = number;
+                            w.awaited = m[1].str();
+                            const Path on = Follow(machine, number, block.text);
+                            w.story = MovesOn(on.calls, on.activities, false) ||
+                                      std::find(on.calls.begin(), on.calls.end(), L"SF_RunStatemachine") != on.calls.end();
+                            waits.push_back(std::move(w));
+                        }
+                        self(self, block.blocks);
+                    }
+                };
+                visit(visit, state.blocks);
+            }
+        }
+        return waits;
+    }
+
+    namespace
+    {
+        // The orders a text gives companions (SF_OrderLeadTo, SF_OrderEscort, SF_OrderForceIdle,
+        // SF_OrderMoveTo, ...), in order: the companion, and whether it is a lead of the player.
+        std::vector<std::pair<std::wstring, bool>> OrdersIn(const std::wstring& text)
+        {
+            static const std::wregex call(LR"re((SF_Order[A-Za-z]+)\s*\(\s*sm\s*,\s*\{([^}]*)\})re");
+            static const std::wregex character(LR"re(character\s*=\s*"([^"]*)")re");
+            static const std::wregex player(LR"re(lead\s*=\s*"Player")re");
+            std::vector<std::pair<std::wstring, bool>> orders;
+            for (auto it = std::wsregex_iterator(text.begin(), text.end(), call); it != std::wsregex_iterator(); ++it)
+            {
+                const std::wstring args = (*it)[2].str();
+                std::wsmatch m;
+                if (!std::regex_search(args, m, character)) continue;
+                orders.emplace_back(m[1].str(), (*it)[1].str() == L"SF_OrderLeadTo" && std::regex_search(args, player));
+            }
+            return orders;
+        }
+    }
+
+    std::vector<Leading> ParseLeads(const std::wstring& script, const std::wstring& source)
+    {
+        std::vector<Leading> leads;
+        if (script.find(L"SF_OrderLeadTo") == std::wstring::npos) return leads;
+        const auto machines = ParseMachines(script);
+        for (const auto& [name, machine] : machines)
+        {
+            // Each state's last order to each companion, and the ways into each state.
+            std::map<int, std::map<std::wstring, bool>> orders;
+            std::map<int, std::vector<int>> into;
+            std::set<std::wstring> companions;
+            for (const auto& [number, state] : machine.states)
+            {
+                std::wstring text = state.direct;
+                for (const auto& block : state.blocks)
+                    text += L"\n" + block.text;
+                for (const auto& [who, leadsPlayer] : OrdersIn(text))
+                {
+                    orders[number][who] = leadsPlayer;
+                    companions.insert(who);
+                }
+                if (const auto next = machine.next.find(number); next != machine.next.end()) into[next->second].push_back(number);
+                for (const auto& block : state.blocks)
+                {
+                    for (const int target : JumpsIn(block.text))
+                        into[target].push_back(number);
+                }
+            }
+            for (const auto& [number, state] : machine.states)
+            {
+                const bool waits = !machine.next.count(number) || Loops(machine, number);
+                if (!waits || state.blocks.empty()) continue;
+                for (const auto& who : companions)
+                {
+                    // Back along every way in to the last order to her: a lead on each, no other order, and
+                    // no way in from the machine's start with none.
+                    bool led = false;
+                    bool other = false;
+                    std::set<int> seen{number};
+                    std::vector<int> back = into[number];
+                    if (back.empty()) other = true;
+                    while (!back.empty() && !other)
+                    {
+                        const int at = back.back();
+                        back.pop_back();
+                        if (!seen.insert(at).second) continue;
+                        if (const auto given = orders.find(at); given != orders.end())
+                        {
+                            if (const auto order = given->second.find(who); order != given->second.end())
+                            {
+                                (order->second ? led : other) = true;
+                                continue;
+                            }
+                        }
+                        const auto& before = into[at];
+                        if (before.empty()) other = true;
+                        back.insert(back.end(), before.begin(), before.end());
+                    }
+                    if (led && !other) leads.push_back(Leading{source, name, number, who});
+                }
+            }
+        }
+        return leads;
+    }
+
+    std::set<std::wstring> LeadingNow(const std::vector<Leading>& leads, const std::vector<std::pair<std::wstring, int>>& machines)
+    {
+        std::set<std::wstring> now;
+        for (const auto& lead : leads)
+        {
+            for (const auto& [name, state] : machines)
+            {
+                if (name == lead.machine && state == lead.state) now.insert(lead.character);
+            }
+        }
+        return now;
+    }
+
+    size_t WeighEnds(std::vector<Poll>& polls, const std::vector<EndWait>& ends)
+    {
+        size_t moved = 0;
+        for (auto& p : polls)
+        {
+            if ((p.story && !p.sentOnly) || !p.ends || p.negated || !p.waits || !p.leaves) continue;
+            const bool awaited = std::any_of(ends.begin(), ends.end(), [&](const EndWait& w) { return w.story && str::EqualsNoCase(w.awaited, p.machine); });
+            if (!awaited) continue;
+            p.story = true;
+            p.sentOnly = false;
+            p.sentOn.clear();
+            ++moved;
+        }
+        return moved;
     }
 
     size_t WeighCompanions(std::vector<Poll>& polls)
@@ -948,8 +1106,48 @@ namespace da::scripts
     }
 
     Waits::Verdict Waits::Judge(double now, const std::wstring& trigger, const std::wstring& character,
-                                const std::vector<std::pair<std::wstring, int>>* machines) const
+                                const std::vector<std::pair<std::wstring, int>>* machines, const std::set<std::wstring>* leading) const
     {
+        // A machine the game's own record places elsewhere does not wait in this state now.
+        const auto placed = [&](const Poll& p)
+        {
+            bool listed = false;
+            bool there = false;
+            if (machines)
+            {
+                for (const auto& [name, state] : *machines)
+                {
+                    if (name != p.machine) continue;
+                    listed = true;
+                    there = there || state == p.state;
+                }
+            }
+            return listed ? there : !ElsewhereNow(now, p);
+        };
+        // A scene's wait for a companion leading the player on (LeadingNow): asked about her now, it is the
+        // player's way on too.
+        std::vector<const Poll*> led;
+        if (leading)
+        {
+            for (const auto& p : m_polls)
+            {
+                if (p.trigger != trigger || !p.story || p.sentOnly || p.negated || !p.waits || !p.leaves) continue;
+                if (str::EqualsNoCase(p.who, L"Player") || str::EqualsNoCase(p.who, character)) continue;
+                if (std::any_of(leading->begin(), leading->end(), [&](const std::wstring& c) { return str::EqualsNoCase(c, p.who); })) led.push_back(&p);
+            }
+        }
+        const auto ledWaiting = [&](Verdict& v)
+        {
+            if (led.empty() || !AskedNow(now, trigger, false)) return false;
+            for (const Poll* p : led)
+            {
+                if (!placed(*p)) continue;
+                v.kind = Kind::Waiting;
+                v.poll = p;
+                return true;
+            }
+            return false;
+        };
         Verdict verdict;
         std::vector<const Poll*> story;
         for (const auto& p : m_polls)
@@ -959,9 +1157,17 @@ namespace da::scripts
             // Sending a companion on moves the scene on only while a scene waits for that companion.
             if (p.story && (!p.sentOnly || CompanionAwaited(now, p, character))) story.push_back(&p);
         }
-        if (!verdict.poll) return verdict;
+        if (!verdict.poll)
+        {
+            ledWaiting(verdict);
+            return verdict;
+        }
         verdict.kind = Kind::NoStory;
-        if (story.empty()) return verdict;
+        if (story.empty())
+        {
+            ledWaiting(verdict);
+            return verdict;
+        }
         verdict.kind = Kind::NotNow;
         verdict.poll = story.front();
         // The last question about her answered yes, and the scene has asked no more since: the wait
@@ -973,33 +1179,20 @@ namespace da::scripts
             verdict.kind = Kind::Met;
             return verdict;
         }
-        if (!AskedNow(now, trigger, true)) return verdict;
+        if (!AskedNow(now, trigger, true))
+        {
+            ledWaiting(verdict);
+            return verdict;
+        }
         for (const Poll* p : story)
         {
             // The game's own record places a machine it holds: in another state, it does not wait here.
-            bool listed = false;
-            bool there = false;
-            if (machines)
-            {
-                for (const auto& [name, state] : *machines)
-                {
-                    if (name != p->machine) continue;
-                    listed = true;
-                    there = there || state == p->state;
-                }
-            }
-            if (listed)
-            {
-                if (!there) continue;
-            }
-            else if (ElsewhereNow(now, *p))
-            {
-                continue;
-            }
+            if (!placed(*p)) continue;
             verdict.kind = Kind::Waiting;
             verdict.poll = p;
             return verdict;
         }
+        ledWaiting(verdict);
         return verdict;
     }
 
