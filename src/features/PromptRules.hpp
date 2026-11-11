@@ -313,6 +313,47 @@ namespace da::prompt
     };
     InputEnd EndOf(bool inputComplete, bool timedOut, bool byInputsOutcome, bool endNamed);
 
+    // An activity's run of steps on one input: stages that go on at their end marker, each taken to
+    // the next by the input itself (the outcome its input takes names the next), with idles of the
+    // same input looping between them where a step's stretch runs out (research/mechanics/
+    // input_stages.tsv: chapter 4's mine shimmy, act3_2 A_aim_at_killer, seven steps
+    // act3_2_minechase_shimmy_step1 to 7 with TempIdle to TempIdle6; chapter 8's tunnel, act6_3
+    // A_grabbed, two). Each stage sets its prompt up anew, and a stick held walks the run through:
+    // "левый стик вправо" was said eight times in seven seconds and nothing told how far Mike had got
+    // (session 71, 21:32:56 to 21:33:03; session 49 the same). The run's prompt is said as the run
+    // begins and again only when its words change or after a pause of kRunGap; each step on sounds
+    // the steps' pitch by its place in the run (LinearProgress's, the first step none).
+    struct RunStage
+    {
+        std::wstring name;   // StageName
+        std::wstring action; // InputActionAssigned
+        std::wstring next;   // the stage the input's outcome names (OverrideStageOutcome's NextStageName)
+        bool loops = false;  // EEndMarkerReachedAction Loop: an idle that waits for the input
+    };
+    struct RunPlace
+    {
+        std::wstring head; // the run's first step, its identity; empty where the stage is in no run
+        size_t step = 0;   // the stage's step (0-based); an idle stands at the step before the one it leads to
+        size_t steps = 0;  // the run's steps
+        bool idle = false;
+    };
+    RunPlace PlaceInRun(const std::vector<RunStage>& stages, const std::wstring& name);
+
+    constexpr double kRunGap = 5.0;
+    class Run
+    {
+    public:
+        // The prompt of an activity's input stage comes up at its place: whether its words are said;
+        // `level` gets the pitch of a step on.
+        bool Prompt(const RunPlace& place, const std::wstring& text, double now, std::optional<double>& level);
+
+    private:
+        std::wstring m_head;
+        std::wstring m_said;
+        size_t m_step = 0;
+        double m_at = -1000.0;
+    };
+
     // The first question an interaction asks waits a moment for a hint the game shows with it, so
     // that the hint comes first and its keys after, whichever the game draws first: at the danger
     // totem on 2026-11-04 (on the pad) the inspection's hint came 0.4 s before its stick, at the

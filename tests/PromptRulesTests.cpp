@@ -3,6 +3,7 @@
 #include "Support.hpp"
 #include "features/PromptRules.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -794,4 +795,91 @@ TEST_CASE("prompts: an interaction's prompt asks where the game draws it on a la
     CHECK_FALSE(prompt::Asking(false, false, false, false, true));
     CHECK_FALSE(prompt::Asking(true, false, true, false, true));
     CHECK_FALSE(prompt::Asking(false, false, true, false, false));
+}
+
+namespace
+{
+    // act3_2 A_aim_at_killer's mine shimmy as the activity holds it (research/mechanics/input_stages.tsv).
+    std::vector<prompt::RunStage> MineShimmy()
+    {
+        const std::wstring right = L"IA_InteractionMovement_Right";
+        std::vector<prompt::RunStage> stages;
+        for (int i = 1; i <= 7; ++i)
+            stages.push_back({L"act3_2_minechase_shimmy_step" + std::to_wstring(i), right, L"act3_2_minechase_shimmy_step" + std::to_wstring(i + 1), false});
+        stages.push_back({L"TempIdle", right, L"act3_2_minechase_shimmy_step2", true});
+        for (int i = 1; i <= 6; ++i)
+            stages.push_back({L"TempIdle" + std::to_wstring(i), right, L"act3_2_minechase_shimmy_step" + std::to_wstring(i + 2), true});
+        // Elsewhere in the activity: a QTE's stage on another input, an aim stage.
+        stages.push_back({L"aim_idle", L"IA_SequenceAim", L"aim_shoot", true});
+        return stages;
+    }
+}
+
+TEST_CASE("prompts: an activity's run of steps on one input says its prompt once and sounds each step")
+{
+    const auto stages = MineShimmy();
+    const auto first = prompt::PlaceInRun(stages, L"act3_2_minechase_shimmy_step1");
+    CHECK(first.head == L"act3_2_minechase_shimmy_step1");
+    CHECK(first.steps == 7);
+    CHECK(first.step == 0);
+    CHECK_FALSE(first.idle);
+    CHECK(prompt::PlaceInRun(stages, L"act3_2_minechase_shimmy_step4").step == 3);
+    const auto idle = prompt::PlaceInRun(stages, L"TempIdle");
+    CHECK(idle.idle);
+    CHECK(idle.step == 0);
+    CHECK(idle.head == L"act3_2_minechase_shimmy_step1");
+    CHECK(prompt::PlaceInRun(stages, L"TempIdle6").step == 6); // it leads where the last step does
+    CHECK(prompt::PlaceInRun(stages, L"aim_idle").head.empty());
+    CHECK(prompt::PlaceInRun(stages, L"no such stage").head.empty());
+
+    // s71 21:32:56 to 21:33:03: step 1's prompt, its stretch run out to TempIdle, the push held from
+    // there through step 7. Said once; each step on a higher pitch, the last the highest.
+    prompt::Run run;
+    std::optional<double> level;
+    const std::wstring push = L"левый стик вправо";
+    CHECK(run.Prompt(prompt::PlaceInRun(stages, L"act3_2_minechase_shimmy_step1"), push, 56.78, level));
+    CHECK_FALSE(level);
+    CHECK_FALSE(run.Prompt(prompt::PlaceInRun(stages, L"TempIdle"), push, 57.92, level));
+    CHECK_FALSE(level);
+    std::vector<double> levels;
+    double at = 58.28;
+    for (int i = 2; i <= 7; ++i, at += 1.1)
+    {
+        CHECK_FALSE(run.Prompt(prompt::PlaceInRun(stages, L"act3_2_minechase_shimmy_step" + std::to_wstring(i)), push, at, level));
+        REQUIRE(level);
+        levels.push_back(*level);
+    }
+    CHECK(std::is_sorted(levels.begin(), levels.end()));
+    CHECK(levels.front() > 0.0);
+    CHECK(levels.back() == doctest::Approx(1.0));
+    // An idle sounds no step, wherever it stands.
+    CHECK_FALSE(run.Prompt(prompt::PlaceInRun(stages, L"TempIdle1"), push, at, level));
+    CHECK_FALSE(level);
+    // The prompt's words changed (another device in hand): said.
+    CHECK(run.Prompt(prompt::PlaceInRun(stages, L"act3_2_minechase_shimmy_step7"), L"D", at, level));
+    // The run begun anew after a pause (a checkpoint loaded): said again.
+    CHECK(run.Prompt(prompt::PlaceInRun(stages, L"act3_2_minechase_shimmy_step1"), L"D", at + 30.0, level));
+    // A stage in no run: said, as any prompt.
+    CHECK(run.Prompt(prompt::RunPlace{}, push, at + 31.0, level));
+    CHECK_FALSE(level);
+}
+
+TEST_CASE("prompts: chapter 8's tunnel is a run of two steps, each idle at its own")
+{
+    // act6_3 A_grabbed: step44 and step45 pause at their ends; AddativeIdle43 leads to step45,
+    // AddativeIdle45 where step45 goes on.
+    const std::wstring up = L"IA_InteractionMovement_Up";
+    const std::vector<prompt::RunStage> stages{
+        {L"act6_3_meetjack_throughtunnel_step44", up, L"act6_3_meetjack_throughtunnel_step45", false},
+        {L"act6_3_meetjack_throughtunnel_step45", up, L"act6_3_meetjack_throughtunnel_step46", false},
+        {L"AddativeIdle43", up, L"act6_3_meetjack_throughtunnel_step45", true},
+        {L"AddativeIdle45", up, L"act6_3_meetjack_throughtunnel_step46", true},
+    };
+    CHECK(prompt::PlaceInRun(stages, L"act6_3_meetjack_throughtunnel_step45").step == 1);
+    CHECK(prompt::PlaceInRun(stages, L"act6_3_meetjack_throughtunnel_step45").steps == 2);
+    CHECK(prompt::PlaceInRun(stages, L"AddativeIdle43").step == 0);
+    CHECK(prompt::PlaceInRun(stages, L"AddativeIdle45").step == 1);
+    // A single stage that goes on to a stage of another input is no run.
+    const std::vector<prompt::RunStage> lone{{L"swing1_QTE", L"IA_InteractionMovement_Right", L"swing1_to_swing2", false}};
+    CHECK(prompt::PlaceInRun(lone, L"swing1_QTE").head.empty());
 }

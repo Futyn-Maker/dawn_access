@@ -57,8 +57,13 @@ namespace da::features
             // A move of the stick drawn beside the grab, made with the grab held as the stage holds it
             // (prompt::HeldMoveOf, prompt::GrabHeld): said "Hold: R2, left stick right".
             bool held = false;
+            // The place of its activity stage in a run of steps on one input (prompt::PlaceInRun).
+            prompt::RunPlace run;
         };
         std::vector<Shown> g_shown;
+
+        // The run of steps whose prompts were said last (prompt::Run).
+        prompt::Run g_run;
 
         // The last staged stage's prompt said (prompt::SayAtStep).
         prompt::StagePrompt g_stagePrompt;
@@ -300,10 +305,42 @@ namespace da::features
         // prompt; one gone at its end marker or its clock is a quick-time event's (prompt::WindowOf):
         // the cue at once (the Timer's for a clock, else the way its action points) and its key over
         // anything being said, its words not said again as they are read.
+        // The place of an activity's input stage in a run of steps on its input (prompt::PlaceInRun),
+        // from its activity's stages.
+        prompt::RunPlace RunPlaceOf(UObject* stage)
+        {
+            UObject* activity = obj::Outer(stage);
+            std::vector<UObject*> all;
+            if (!obj::IsLive(activity) || !obj::ReadObjectArray(activity, L"Stages", all)) return {};
+            std::vector<prompt::RunStage> stages;
+            std::wstring own;
+            obj::ReadString(stage, L"StageName", own);
+            for (UObject* other : all)
+            {
+                if (!obj::IsLive(other) || !obj::IsA(other, L"BatesActivitySimpleInputStage")) continue;
+                prompt::RunStage r;
+                obj::ReadString(other, L"StageName", r.name);
+                UObject* action = nullptr;
+                if (obj::ReadObject(other, L"InputActionAssigned", action) && obj::IsLive(action)) r.action = obj::ObjectName(action);
+                UObject* outcome = nullptr;
+                if (obj::ReadObject(other, L"OverrideStageOutcome", outcome) && obj::IsLive(outcome)) obj::ReadString(outcome, L"NextStageName", r.next);
+                if (r.next == L"None") r.next.clear();
+                int64_t end = 0;
+                obj::ReadInt(other, L"EndMarkerReachedAction", end);
+                r.loops = end == 1;
+                stages.push_back(std::move(r));
+            }
+            return prompt::PlaceInRun(stages, own);
+        }
+
         void TakeInputStage(Shown& s, double now)
         {
             UObject* stage = InputStageOf(s.widget, now);
             if (!stage) return;
+            s.run = RunPlaceOf(stage);
+            if (!s.run.head.empty())
+                log::Info(L"prompts: {} is {} {} of {} of a run of steps from \"{}\"", obj::ObjectName(s.widget), s.run.idle ? L"an idle at step" : L"step",
+                          s.run.step + 1, s.run.steps, s.run.head);
             prompt::InputStage facts;
             // A stage whose end it cannot read is taken for one that waits: its prompt is read as any.
             int64_t endAction = 1;
@@ -391,6 +428,7 @@ namespace da::features
             s->saidAhead = false;
             s->inputStage = obj::ObjectKey{};
             s->window = prompt::InputWindow::Waits;
+            s->run = prompt::RunPlace{};
             if (gamestate::InPlay()) TakeInputStage(*s, now);
         }
 
@@ -651,12 +689,19 @@ namespace da::features
                     // (prompt::SayAtStep).
                     const bool ahead = it->saidAhead;
                     bool again = !it->glint && !ahead && !prompt::SayAtStep(g_stagePrompt, SoundingStagedStage(), text, actions, StagedStageInput());
+                    // A step of an activity's run of steps: its prompt said as the run begins, each step on
+                    // a pitch (prompt::Run).
+                    std::optional<double> runLevel;
+                    const bool runAgain = !it->glint && !ahead && !again && !g_run.Prompt(it->run, text, now, runLevel);
+                    if (runLevel) sounds::Tick(*runLevel);
+                    again = again || runAgain;
                     // Said before, and dropped from behind a page turned before it was begun: said now.
                     if (again && speech::DroppedUnheard(text)) again = false;
                     log::Info(L"prompts: {} {} \"{}\" [{}]{}", obj::ClassName(it->widget), obj::ObjectName(it->widget), text, actions,
-                              ahead   ? L": said as it came up"
-                              : again ? L": the same prompt again at a step of its stage, not said"
-                                      : L"");
+                              ahead      ? L": said as it came up"
+                              : runAgain ? L": the same prompt again at a step of its run, not said"
+                              : again    ? L": the same prompt again at a step of its stage, not said"
+                                         : L"");
                     // A stage on a clock asks at once, over whatever is being said, as a quick-time
                     // event's key is said: a subtitle queued before it would eat into its clock.
                     if (!ahead && !again)
@@ -736,6 +781,13 @@ namespace da::features
         const bool gesture = std::any_of(g_shown.begin(), g_shown.end(),
                                          [](const Shown& s) { return obj::IsLive(s.widget) && !s.hidden && s.actions.find(L"Gesture") != std::wstring::npos; });
         if (gesture) out.push_back(locale::Mod(L"help.gesture"));
+        // A run of steps on one input, which a stick held walks through.
+        for (const auto& s : g_shown)
+        {
+            if (!obj::IsLive(s.widget) || s.hidden || s.run.head.empty() || s.text.empty()) continue;
+            out.push_back(locale::Mod(L"help.steprun", s.text));
+            break;
+        }
         // A move of the stick drawn with the grab beside it is made with the grab held
         // (prompt::HeldMoveHelp): the lantern of chapter 3, the flare of chapter 8; where the boiler
         // of chapter 2 wanted R2 released. Not where the stage toggles the grab: it is on between two

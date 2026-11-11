@@ -264,6 +264,108 @@ namespace da::prompt
         return stage.endAction == 0 && !stage.endWaits ? InputWindow::Moment : InputWindow::Waits;
     }
 
+    RunPlace PlaceInRun(const std::vector<RunStage>& stages, const std::wstring& name)
+    {
+        const auto find = [&](const std::wstring& n) -> const RunStage*
+        {
+            if (n.empty()) return nullptr;
+            for (const auto& s : stages)
+            {
+                if (s.name == n) return &s;
+            }
+            return nullptr;
+        };
+        const RunStage* self = find(name);
+        if (!self || self->action.empty()) return {};
+        // A step of the run: a stage that goes on at its end, on the same input.
+        const auto isStep = [&](const RunStage* s) { return s && !s->loops && s->action == self->action; };
+        // The run a step is in, from its head (a step no other step leads to) on.
+        const auto runOf = [&](const RunStage* step)
+        {
+            std::vector<const RunStage*> run;
+            const RunStage* head = step;
+            for (size_t guard = 0; guard < stages.size(); ++guard)
+            {
+                const RunStage* before = nullptr;
+                for (const auto& s : stages)
+                {
+                    if (isStep(&s) && s.next == head->name && &s != head) before = &s;
+                }
+                if (!before || before == step) break;
+                head = before;
+            }
+            for (const RunStage* s = head; isStep(s) && run.size() <= stages.size(); s = find(s->next))
+            {
+                if (std::find(run.begin(), run.end(), s) != run.end()) break;
+                run.push_back(s);
+            }
+            return run;
+        };
+        RunPlace place;
+        if (!self->loops)
+        {
+            const auto run = runOf(self);
+            if (run.size() < 2) return {};
+            place.head = run.front()->name;
+            place.steps = run.size();
+            place.step = static_cast<size_t>(std::find(run.begin(), run.end(), self) - run.begin());
+            return place;
+        }
+        // An idle: it stands at the step before the one its input leads to, or at the last step where
+        // it leads where the run's last step does.
+        const RunStage* to = find(self->next);
+        if (isStep(to))
+        {
+            const auto run = runOf(to);
+            const size_t at = static_cast<size_t>(std::find(run.begin(), run.end(), to) - run.begin());
+            if (run.size() < 2 || at == 0) return {};
+            place.head = run.front()->name;
+            place.steps = run.size();
+            place.step = at - 1;
+            place.idle = true;
+            return place;
+        }
+        for (const auto& s : stages)
+        {
+            if (!isStep(&s) || self->next.empty() || s.next != self->next) continue;
+            const auto run = runOf(&s);
+            if (run.size() < 2 || run.back() != &s) continue;
+            place.head = run.front()->name;
+            place.steps = run.size();
+            place.step = run.size() - 1;
+            place.idle = true;
+            return place;
+        }
+        return {};
+    }
+
+    bool Run::Prompt(const RunPlace& place, const std::wstring& text, double now, std::optional<double>& level)
+    {
+        level.reset();
+        if (place.head.empty())
+        {
+            m_head.clear();
+            return true;
+        }
+        const bool fresh = place.head != m_head || now - m_at > kRunGap;
+        m_at = now;
+        if (fresh)
+        {
+            m_head = place.head;
+            m_said = text;
+            m_step = place.step;
+            return true;
+        }
+        const bool say = text != m_said;
+        if (say) m_said = text;
+        if (!place.idle && place.step != m_step)
+        {
+            m_step = place.step;
+            level = place.steps > 1 ? static_cast<double>(place.step) / static_cast<double>(place.steps - 1) : 1.0;
+        }
+        return say;
+    }
+
     InputEnd EndOf(bool inputComplete, bool timedOut, bool byInputsOutcome, bool endNamed)
     {
         if (inputComplete) return InputEnd::Taken;
