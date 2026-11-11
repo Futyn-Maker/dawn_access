@@ -293,7 +293,8 @@ namespace da::input
             auto* mappings = obj::FindProperty(playerInput, L"EnhancedActionMappings");
             if (!mappings) return {};
             std::wstring found;
-            obj::ForEachArrayElement(obj::ValuePtr(playerInput, mappings), mappings,
+            // The walker takes the object the array lies in, and finds the array in it itself.
+            obj::ForEachArrayElement(playerInput, mappings,
                                      [&](void* element, FProperty* inner)
                                      {
                                          if (!found.empty()) return;
