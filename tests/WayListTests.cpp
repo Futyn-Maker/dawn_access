@@ -2665,3 +2665,14 @@ TEST_CASE("walks: a thing found closed off by a map begun during the walk ends t
     // A way on is not judged by the rooms.
     CHECK_FALSE(ways::WalkLosesTarget(true, true, false));
 }
+
+TEST_CASE("ways: a way fired by walking in waits, while she stands in it already, for her to walk in anew")
+{
+    // s71 20:31:03: Matt left in the snowman's trigger by the prank's scene; "на месте" for a minute.
+    CHECK(ways::WaitsForEntry(true, false, true));
+    // Out of it: listed, and walking into it fires it.
+    CHECK_FALSE(ways::WaitsForEntry(true, false, false));
+    // A scene asking whether she stands in it: standing there answers it.
+    CHECK_FALSE(ways::WaitsForEntry(false, true, true));
+    CHECK_FALSE(ways::WaitsForEntry(true, true, true));
+}

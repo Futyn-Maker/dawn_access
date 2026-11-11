@@ -401,6 +401,7 @@ namespace da::features
         }
         std::vector<UObject*> g_waysAnnounced;
         scripts::SetOff g_setOff;          // the trigger scripts she has set off, while the level's scripts run
+        std::set<UObject*> g_standingInWay; // ways fired by walking in that she stands in already (ways::WaitsForEntry)
         obj::ObjectKey g_levelScriptGroup; // the level's script group they run in
         // The level's trigger scripts, read once per script asset.
         std::map<UObject*, LuaEvent> g_luaByAsset;
@@ -2517,6 +2518,20 @@ namespace da::features
                                   : std::wstring());
                 }
                 if (!why.empty()) continue;
+                // A way that sets its story going as she walks into it (its actions or its script fire on
+                // entering, no scene asking whether she stands in it) and that she stands in already has
+                // not fired for her: it fires only as she walks into it again. The game left Matt in the
+                // snowman's trigger after Emily's prank, and the list said "Путь дальше, на месте" for a
+                // minute until he walked out and in again (s71, 20:31:03 to 20:32:24). It is not listed
+                // while she stays in it (ways::WaitsForEntry).
+                if (ways::WaitsForEntry(nativeNow || luaLive, pollLive, Overlapping(pawn, volume)))
+                {
+                    if (g_standingInWay.insert(volume).second)
+                        log::Info(L"explore: she stands in {} already, which fires as she walks into it: not listed until she has left it",
+                                  name.empty() ? obj::ObjectName(volume) : name);
+                    continue;
+                }
+                g_standingInWay.erase(volume);
                 Target t;
                 if (!WayShape(volume, name, t)) continue;
                 if (!through.empty())

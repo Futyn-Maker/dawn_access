@@ -410,6 +410,11 @@ namespace da::ways
         return !isWay && closedOffNow && !closedOffAtStart;
     }
 
+    bool WaitsForEntry(bool firesOnEntry, bool polled, bool standingIn)
+    {
+        return firesOnEntry && !polled && standingIn;
+    }
+
     bool MovedFromMap(double fromOrigin)
     {
         return fromOrigin > kMovedFromMap;

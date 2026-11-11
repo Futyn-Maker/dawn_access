@@ -521,6 +521,13 @@ namespace da::ways
     // `isWay`: a way on, which the rooms do not judge.
     bool WalkLosesTarget(bool isWay, bool closedOffNow, bool closedOffAtStart);
 
+    // Whether a way on waits for her to walk into it anew: its story fires on entering (`firesOnEntry`:
+    // its trigger's actions or its script's Enter event), no scene asks whether she stands in it
+    // (`polled`), and she stands in it already, so that it has not fired for her. The game left Matt
+    // in the snowman's trigger after Emily's prank, and it fired only once he walked out and in again
+    // (s71, 20:31:03 to 20:32:24).
+    bool WaitsForEntry(bool firesOnEntry, bool polled, bool standingIn);
+
     // What a walk to a way on goes on to when the way leaves the list for a thing beside it that
     // stands for it now (LeftForThing: `twin`, the way's twin, null for none): that thing, the way's
     // place being its place; else nothing, and the walk ends saying its target is gone. On the stairs
