@@ -281,6 +281,70 @@ namespace da::input
             return traits;
         }
 
+        // The keyboard's key that turns a two-way action one way, as the player's input has the action
+        // mapped now (UEnhancedPlayerInput::EnhancedActionMappings, rebinding included), by its
+        // modifiers (input::WayOfKey); empty where none does.
+        std::wstring KeyboardKeyForWay(const std::wstring& action, std::wstring_view way)
+        {
+            UObject* asset = ActionByName(action);
+            UObject* controller = obj::LocalPlayerController();
+            UObject* playerInput = nullptr;
+            if (!asset || !controller || !obj::ReadObject(controller, L"PlayerInput", playerInput) || !obj::IsLive(playerInput)) return {};
+            auto* mappings = obj::FindProperty(playerInput, L"EnhancedActionMappings");
+            if (!mappings) return {};
+            std::wstring found;
+            obj::ForEachArrayElement(obj::ValuePtr(playerInput, mappings), mappings,
+                                     [&](void* element, FProperty* inner)
+                                     {
+                                         if (!found.empty()) return;
+                                         UObject* mapped = nullptr;
+                                         if (!obj::ReadObjectAt(element, obj::StructMember(inner, L"Action"), mapped) || mapped != asset) return;
+                                         FProperty* keyProp = obj::StructMember(inner, L"Key");
+                                         FProperty* keyName = keyProp ? obj::StructMember(keyProp, L"KeyName") : nullptr;
+                                         std::wstring key;
+                                         if (!keyName || !obj::ReadStringAt(obj::ValuePtrAt(element, keyProp), keyName, key) || key.empty() || key == L"None") return;
+                                         if (str::StartsWith(key, L"Gamepad_") || str::StartsWith(key, L"Mouse")) return;
+                                         std::vector<KeyModifier> modifiers;
+                                         FProperty* list = obj::StructMember(inner, L"Modifiers");
+                                         if (!list) return;
+                                         obj::ForEachArrayElement(element, list,
+                                                                  [&](void* item, FProperty* itemProp)
+                                                                  {
+                                                                      UObject* modifier = nullptr;
+                                                                      KeyModifier m;
+                                                                      if (!obj::ReadObjectAt(item, itemProp, modifier) || !obj::IsLive(modifier))
+                                                                      {
+                                                                          modifiers.push_back(m);
+                                                                          return;
+                                                                      }
+                                                                      if (obj::IsA(modifier, L"InputModifierSwizzleAxis"))
+                                                                      {
+                                                                          int64_t order = 0;
+                                                                          obj::ReadInt(modifier, L"Order", order);
+                                                                          m.kind = KeyModifier::Kind::Swizzle;
+                                                                          m.order = static_cast<int>(order);
+                                                                      }
+                                                                      else if (obj::IsA(modifier, L"InputModifierNegate"))
+                                                                      {
+                                                                          m.kind = KeyModifier::Kind::Negate;
+                                                                          obj::ReadBool(modifier, L"bX", m.x);
+                                                                          obj::ReadBool(modifier, L"bY", m.y);
+                                                                          obj::ReadBool(modifier, L"bZ", m.z);
+                                                                      }
+                                                                      // Any other modifier (a dead zone, a scale) leaves the way as it is.
+                                                                      else if (obj::IsA(modifier, L"InputModifierDeadZone") ||
+                                                                               obj::IsA(modifier, L"InputModifierScalar") ||
+                                                                               obj::IsA(modifier, L"InputModifierResponseCurveExponential"))
+                                                                      {
+                                                                          return;
+                                                                      }
+                                                                      modifiers.push_back(m);
+                                                                  });
+                                         if (WayOfKey(modifiers) == way) found = key;
+                                     });
+            return found;
+        }
+
         // ---- the key the game's prompts draw ---------------------------------------------------
         //
         // The game's UI framework works out once, per action and device, the key its prompts draw
@@ -670,6 +734,17 @@ namespace da::input
         return names;
     }
 
+    std::wstring KeyForActionWay(std::wstring_view actionName, std::wstring_view direction)
+    {
+        // On the keyboard, the key the player's own mappings turn the action that way with (the aim's D
+        // for right), before the mouse's way.
+        if (CurrentScheme() != Scheme::Gamepad)
+        {
+            if (const auto key = KeyboardKeyForWay(std::wstring(actionName), direction); !key.empty()) return KeyDisplayName(key);
+        }
+        return DirectionalKeyForAction(actionName, direction);
+    }
+
     std::wstring DirectionalKeyForAction(std::wstring_view actionName, std::wstring_view direction)
     {
         for (const auto& key : SchemeKeysCached(std::wstring(actionName), CurrentScheme()))
@@ -679,6 +754,8 @@ namespace da::input
                 stick = L"Gamepad_LeftStick_";
             else if (key == L"Gamepad_Right2D")
                 stick = L"Gamepad_RightStick_";
+            else if (key == L"Mouse2D")
+                stick = L"Mouse";
             else
                 continue;
             const auto name = KeyDisplayName(stick + std::wstring(direction));

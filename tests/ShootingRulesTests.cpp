@@ -438,3 +438,24 @@ TEST_CASE("a stage with no target that is not aimed asks nothing as it begins: t
     CHECK(shoot::Asks(0, true));        // the rifle scope, aimed only
     CHECK(shoot::Asks(1, false));
 }
+
+TEST_CASE("shooting: an aim-only stage names the way its stick turns")
+{
+    // s71 21:31:02: chapter 4's scope begins level, the turn that completes it 23 deg right.
+    shoot::Sight goal;
+    goal.placed = true;
+    goal.horizontal = 23.0;
+    goal.angle = 23.0;
+    CHECK(shoot::AimWay(goal, false) == L"Right");
+    CHECK(shoot::AimWay(goal, true) == L"Left");
+    goal.horizontal = -4.0;
+    goal.vertical = 12.0;
+    goal.angle = 12.6;
+    CHECK(shoot::AimWay(goal, false) == L"Up");
+    goal.vertical = -12.0;
+    CHECK(shoot::AimWay(goal, false) == L"Down");
+    // Reached, or no turn named: nothing.
+    goal.onTarget = true;
+    CHECK(shoot::AimWay(goal, false).empty());
+    CHECK(shoot::AimWay(shoot::Sight{}, false).empty());
+}

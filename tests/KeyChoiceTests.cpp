@@ -180,3 +180,27 @@ TEST_CASE("keys: a mouse swipe's cap lights the left button it is made with; oth
     // A quick-time event's stick direction on the mouse, IA_QTELeftStickRight: MouseRight with no chord.
     CHECK(input::CapWords(L"mouse right", L"", false, &Join) == L"mouse right");
 }
+
+TEST_CASE("keys: the way a key turns a two-way action, by its mapping's modifiers")
+{
+    using M = input::KeyModifier;
+    const M swizzle{M::Kind::Swizzle, 0};
+    const M negate{M::Kind::Negate};
+    // MC_Gameplay's aim (IA_SequenceAim) on the keyboard: W, S, A, D. Chapter 4's scope turns right:
+    // D, which the mod said nothing of (session 71, 21:31:02).
+    CHECK(input::WayOfKey({}) == L"Right");
+    CHECK(input::WayOfKey({negate}) == L"Left");
+    CHECK(input::WayOfKey({swizzle}) == L"Up");
+    CHECK(input::WayOfKey({swizzle, negate}) == L"Down");
+    // A negate of Y alone leaves X's way.
+    M negateY{M::Kind::Negate};
+    negateY.x = false;
+    negateY.z = false;
+    CHECK(input::WayOfKey({negateY}) == L"Right");
+    CHECK(input::WayOfKey({swizzle, negateY}) == L"Down");
+    // A swizzle that sends the press to Z names no way on two axes; a modifier the rule does not know,
+    // none either.
+    const M toZ{M::Kind::Swizzle, 1};
+    CHECK(input::WayOfKey({toZ}).empty());
+    CHECK(input::WayOfKey({M{}}).empty());
+}

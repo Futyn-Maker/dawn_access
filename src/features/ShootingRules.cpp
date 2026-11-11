@@ -159,6 +159,13 @@ namespace da::shoot
         }
     }
 
+    std::wstring AimWay(const Sight& goal, bool invertX)
+    {
+        if (!goal.placed || goal.onTarget || goal.angle <= 0.0) return {};
+        if (std::abs(goal.horizontal) >= std::abs(goal.vertical)) return (goal.horizontal > 0.0) != invertX ? L"Right" : L"Left";
+        return goal.vertical > 0.0 ? L"Up" : L"Down";
+    }
+
     Sight AimGoal(const std::vector<AimCondition>& conditions, double yaw, double pitch)
     {
         Sight s;

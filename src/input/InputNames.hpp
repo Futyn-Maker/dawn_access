@@ -38,9 +38,13 @@ namespace da::input
     std::vector<std::wstring> KeysForAction(std::wstring_view actionName, int count);
 
     // The spoken name of one direction of the stick an action is bound to ("left stick up"
-    // for a movement prompt drawn with the up cap alone); `direction` is Up, Down, Left or
-    // Right. Empty when the action is bound to no stick in the current scheme.
+    // for a movement prompt drawn with the up cap alone), or of the mouse ("mouse right");
+    // `direction` is Up, Down, Left or Right. Empty when the action is bound to neither in the
+    // current scheme.
     std::wstring DirectionalKeyForAction(std::wstring_view actionName, std::wstring_view direction);
+    // The key that turns a two-way action one way for the device in hand: on the keyboard the key the
+    // player's mappings give that way (input::WayOfKey), else the stick's or the mouse's direction.
+    std::wstring KeyForActionWay(std::wstring_view actionName, std::wstring_view direction);
     // The keys a key-rebind row of the settings draws in its slots, as one spoken line.
     std::wstring KeysOfRebindRow(RC::Unreal::UObject* row);
 

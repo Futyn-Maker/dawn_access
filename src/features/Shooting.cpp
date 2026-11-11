@@ -1,5 +1,7 @@
 #include "features/Shooting.hpp"
 
+#include "features/NudgeRules.hpp"
+#include "features/Prompts.hpp"
 #include "features/ShootingRules.hpp"
 #include "features/WorldRead.hpp"
 
@@ -111,6 +113,7 @@ namespace da::features
             double heldSince = -1.0;
             shoot::Cadence blips;
             double loggedAt = 0.0;
+            bool wayAsked = false; // an aim-only stage: the aim's key and way weighed (shoot::AimWay)
         };
         Stage g_stage;
         bool g_aimSound = true;
@@ -605,6 +608,23 @@ namespace da::features
                 const double aimYaw = FloatAt(s.stage, L"UBatesShootingStage.CachedYaw");
                 const double aimPitch = FloatAt(s.stage, L"UBatesShootingStage.CachedPitch");
                 s.sight = shoot::AimGoal(s.conditions, aimYaw, aimPitch);
+                // The aim's key and its way where the game's question names none.
+                if (!s.wayAsked && now - s.startedAt >= shoot::kAimWayAfter)
+                {
+                    s.wayAsked = true;
+                    const auto way = shoot::AimWay(s.sight, s.invertX);
+                    const auto key = way.empty() ? std::wstring() : input::KeyForActionWay(L"IA_SequenceAim", way);
+                    const bool asks = InteractionAsks(L"IA_SequenceAim");
+                    if (nudge::SayLookKey(asks, !key.empty()))
+                    {
+                        log::Info(L"shooting: the game names no key to aim {} with; the mod names it: {}", s.name, key);
+                        speech::Announce(key);
+                    }
+                    else
+                    {
+                        log::Info(L"shooting: {} names its aim's way itself, or the mod has none to name ({})", s.name, way.empty() ? L"no way" : way);
+                    }
+                }
                 if (now - s.loggedAt >= 0.5)
                 {
                     s.loggedAt = now;

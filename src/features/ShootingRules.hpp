@@ -135,6 +135,15 @@ namespace da::shoot
     constexpr double kAimGoalMargin = 3.0;
     Sight AimGoal(const std::vector<AimCondition>& conditions, double yaw, double pitch);
 
+    // The way the stick turns an aim-only stage toward the turn that completes it, as a key's direction
+    // ("Up", "Down", "Left", "Right"): the larger of the two turns still to make, the other way in a
+    // stage that inverts its X; none once it is reached or where no turn is named. Chapter 4's scope
+    // (act3_2 use_scope) completes 20 deg right of where it begins and draws no prompt: Andrey heard
+    // the aim sound and no word of the stick or its way (session 71, 21:31:02 to 21:31:08). Said after
+    // kAimWayAfter, where the game's own question names no key for the aim.
+    constexpr double kAimWayAfter = 0.6;
+    std::wstring AimWay(const Sight& goal, bool invertX);
+
     // The aim's blips come at the interval of how near the aim is, and at once when it comes on
     // target: chapter one's telescope took the view in the frame it came to rest on Emily and Mike,
     // 28 ms before the interval let the next blip come, and the double ping was never heard

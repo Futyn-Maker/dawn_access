@@ -93,4 +93,36 @@ namespace da::input
         }
         return back;
     }
+
+    std::wstring WayOfKey(const std::vector<KeyModifier>& modifiers)
+    {
+        double v[3] = {1.0, 0.0, 0.0};
+        for (const auto& m : modifiers)
+        {
+            if (m.kind == KeyModifier::Kind::Negate)
+            {
+                if (m.x) v[0] = -v[0];
+                if (m.y) v[1] = -v[1];
+                if (m.z) v[2] = -v[2];
+            }
+            else if (m.kind == KeyModifier::Kind::Swizzle)
+            {
+                // The new X, Y, Z take the old axes the order names.
+                static constexpr int kOrders[5][3] = {{1, 0, 2}, {2, 1, 0}, {0, 2, 1}, {1, 2, 0}, {2, 0, 1}};
+                if (m.order < 0 || m.order > 4) return {};
+                const double old[3] = {v[0], v[1], v[2]};
+                for (int i = 0; i < 3; ++i)
+                    v[i] = old[kOrders[m.order][i]];
+            }
+            else
+            {
+                return {};
+            }
+        }
+        if (v[0] > 0.0) return L"Right";
+        if (v[0] < 0.0) return L"Left";
+        if (v[1] > 0.0) return L"Up";
+        if (v[1] < 0.0) return L"Down";
+        return {};
+    }
 }

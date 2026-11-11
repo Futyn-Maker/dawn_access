@@ -53,6 +53,25 @@ namespace da::input
     // (research/sessions/s67-play.log, 18:54:35).
     int ShownKeyIndex(const std::vector<KeyTraits>& keys, IconPriority priority);
 
+    // The way a key turns a two-way action, by the modifiers its mapping gives it in order, as Enhanced
+    // Input works its value out: a key's press is +X; UInputModifierSwizzleAxis reorders the axes
+    // (EInputAxisSwizzle: YXZ 0, ZYX 1, XZY 2, YZX 3, ZXY 4), UInputModifierNegate flips those it
+    // names. The aim's W, S, A and D of MC_Gameplay: W swizzled is up, S swizzled and negated down, A
+    // negated left, D alone right. "Up", "Down", "Left" or "Right"; empty where the key turns it no
+    // single way.
+    struct KeyModifier
+    {
+        enum class Kind
+        {
+            Swizzle,
+            Negate,
+            Other,
+        } kind = Kind::Other;
+        int order = 0;              // Swizzle: EInputAxisSwizzle
+        bool x = true, y = true, z = true; // Negate: the axes it flips
+    };
+    std::wstring WayOfKey(const std::vector<KeyModifier>& modifiers);
+
     // The words of a key cap drawn with a chord (FKeyWithChord's ChordAction: the action held for the
     // key to count): the cap's picture lights the chord's key where it is a mouse button, and only
     // then (UBMUIInputActionInternalWidget::Setup sets the mouse picture's button from its
