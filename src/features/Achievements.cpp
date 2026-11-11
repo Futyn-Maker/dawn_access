@@ -6,6 +6,7 @@
 #include "core/Log.hpp"
 #include "core/ObjectUtil.hpp"
 #include "core/Strings.hpp"
+#include "locale/GameText.hpp"
 #include "locale/Locale.hpp"
 #include "speech/Speech.hpp"
 
@@ -91,6 +92,17 @@ namespace da::features
             return value ? str::Trim(str::Utf8ToWide(value)) : std::wstring();
         }
 
+        // The game's own words for an achievement, in the language the game shows its text in.
+        std::wstring GameWords(const std::string& id, achieve::Field field)
+        {
+            for (const auto& key : achieve::TextKeys(id, field))
+            {
+                auto words = str::Trim(gametext::Resolve(key));
+                if (!words.empty()) return words;
+            }
+            return {};
+        }
+
         void PollImpl()
         {
             // Once a second: an unlock is said within it, as Steam's toast comes up.
@@ -137,10 +149,14 @@ namespace da::features
             }
             for (const auto& id : fresh)
             {
-                const auto name = Attribute(stats, id, "name");
-                const auto description = Attribute(stats, id, "desc");
-                const auto words = str::JoinSentences({locale::Mod(L"achievement.unlocked", name.empty() ? str::Utf8ToWide(id) : name), description});
-                log::Info(L"achievements: {} unlocked: \"{}\"", str::Utf8ToWide(id), words);
+                // In the game's language, the mod's own (Steam's are English whatever the player's).
+                const auto gameName = GameWords(id, achieve::Field::Name);
+                const auto gameDescription = GameWords(id, achieve::Field::Description);
+                const auto name = achieve::Pick(gameName, Attribute(stats, id, "name"), str::Utf8ToWide(id));
+                const auto description = achieve::Pick(gameDescription, Attribute(stats, id, "desc"));
+                const auto words = str::JoinSentences({locale::Mod(L"achievement.unlocked", name), description});
+                log::Info(L"achievements: {} unlocked: \"{}\" ({})", str::Utf8ToWide(id), words,
+                          !gameName.empty() && !gameDescription.empty() ? L"the game's words" : L"Steam's words where the game has none");
                 speech::Announce(words);
             }
         }

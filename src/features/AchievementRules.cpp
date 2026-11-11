@@ -2,6 +2,24 @@
 
 namespace da::achieve
 {
+    std::vector<std::wstring> TextKeys(std::string_view id, Field field)
+    {
+        if (id.empty()) return {};
+        const std::wstring wide(id.begin(), id.end()); // Steam's API names are ASCII
+        const std::wstring suffix = field == Field::Name ? L"_N" : L"_D";
+        std::vector<std::wstring> keys;
+        if (wide.starts_with(L"TRP_")) keys.push_back(L"BATES_TROPHIES_ACH_" + wide.substr(4) + suffix);
+        keys.push_back(L"BATES_TROPHIES_" + wide + suffix);
+        return keys;
+    }
+
+    std::wstring Pick(std::wstring_view game, std::wstring_view steam, std::wstring_view last)
+    {
+        if (!game.empty()) return std::wstring(game);
+        if (!steam.empty()) return std::wstring(steam);
+        return std::wstring(last);
+    }
+
     std::vector<std::string> Watch::Update(const std::vector<State>& states, bool complete)
     {
         std::vector<std::string> fresh;
