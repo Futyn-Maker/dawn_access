@@ -365,6 +365,8 @@ namespace da::features
         // The press the framing was waiting for has been made (the selfie's shot is judged at the
         // press): nothing more is led in this interaction.
         bool g_framingTaken = false;
+        // The game's verdict on the shot has been sounded (nudge::FramingVerdict), once an interaction.
+        bool g_verdictSaid = false;
 
         void StopFraming(const wchar_t* why)
         {
@@ -937,6 +939,16 @@ namespace da::features
                 if (g_look && g_look->moment == picture::Moment::State && std::find(states.begin(), states.end(), g_look->state) != states.end())
                     SayLook(L"its item comes to the state that shows it");
                 SayPage(states);
+                // A framed shot judged by the game: its verdict as every outcome sounds, the word at the
+                // detailed level (Andrey, s71).
+                if (const auto verdict = nudge::FramingVerdict(states); verdict != nudge::Verdict::None && !g_verdictSaid)
+                {
+                    g_verdictSaid = true;
+                    const bool well = verdict == nudge::Verdict::Well;
+                    log::Info(L"interactions: {} judges the shot {}", obj::ObjectName(interaction), well ? L"well" : L"badly");
+                    sounds::Play(well ? sounds::Cue::Confirm : sounds::Cue::Fail);
+                    if (cfg::Detailed()) speech::Announce(locale::Mod(well ? L"result.success" : L"result.failure"));
+                }
                 if (std::find(states.begin(), states.end(), L"no_matches") != states.end())
                 {
                     log::Info(L"interactions: {} has no matches to light it", obj::ObjectName(interaction));
@@ -1348,6 +1360,7 @@ namespace da::features
                     ++g_bindings;
                     StopFraming(L"the character left the interaction");
                     g_framingTaken = false;
+                    g_verdictSaid = false;
                     ResetTurn();
                     g_lamp.Reset();
                     g_window = nullptr;

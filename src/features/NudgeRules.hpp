@@ -7,6 +7,9 @@
 #include "features/ShootingRules.hpp"
 #include "features/Vec.hpp"
 
+#include <string>
+#include <vector>
+
 namespace da::nudge
 {
     // The game's measure of a nudged view (ABatesInteractionComplexCameraNudge::UpdateInteraction):
@@ -248,4 +251,16 @@ namespace da::nudge
     // kLookKeyAfter after the framing's box is read, so that the game's own question has come up.
     constexpr double kLookKeyAfter = 0.6;
     bool SayLookKey(bool gameAsksLook, bool keyKnown);
+    // The game's verdict on a framed shot, from the states its anim graph goes to at the press: the
+    // selfie's template (ABP_Act2_2_leavinglodge_selfie_template, machine node 5) leaves Default_shot2
+    // for Well where the view is 8 to 20 deg left and level to 15 deg up, and for Badly elsewhere; the
+    // scene then cuts to A_selfie_framedwell or A_selfie_framedbad and moves JessicaLikesMikeCounter by
+    // one. Nothing for states that judge nothing.
+    enum class Verdict
+    {
+        None,
+        Well,
+        Badly
+    };
+    Verdict FramingVerdict(const std::vector<std::wstring>& states);
 }

@@ -408,3 +408,17 @@ TEST_CASE("nudge: a framing whose game names no key to turn the view with has th
     CHECK(nudge::kLookKeyAfter > 0.0);
     CHECK(nudge::kLookKeyAfter < 1.5);
 }
+
+TEST_CASE("framings: the selfie's verdict from the states the game's graph goes to at the press")
+{
+    // s71 14:32:15: after R2 the selfie stood in "Well, Well, ..." (every anim instance of the
+    // interaction); nothing was said of it, and Andrey asked for the outcome's cue.
+    CHECK(nudge::FramingVerdict({L"Well", L"Well", L"Well"}) == nudge::Verdict::Well);
+    CHECK(nudge::FramingVerdict({L"Badly", L"Badly"}) == nudge::Verdict::Badly);
+    // Before the press, and in states that judge nothing: no verdict.
+    CHECK(nudge::FramingVerdict({L"Default_shot2", L"Default_shot2"}) == nudge::Verdict::None);
+    CHECK(nudge::FramingVerdict({L"Selfie_Intro"}) == nudge::Verdict::None);
+    CHECK(nudge::FramingVerdict({}) == nudge::Verdict::None);
+    // A name that only holds the word is no verdict.
+    CHECK(nudge::FramingVerdict({L"Wellness"}) == nudge::Verdict::None);
+}

@@ -191,4 +191,14 @@ namespace da::nudge
     {
         return !gameAsksLook && keyKnown;
     }
+
+    Verdict FramingVerdict(const std::vector<std::wstring>& states)
+    {
+        for (const auto& state : states)
+        {
+            if (state == L"Well") return Verdict::Well;
+            if (state == L"Badly") return Verdict::Badly;
+        }
+        return Verdict::None;
+    }
 }
