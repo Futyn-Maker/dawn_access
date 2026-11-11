@@ -29,14 +29,21 @@ TEST_CASE("a page turned while it is being read cuts it short, and says again wh
     const auto alone = speech::rules::Turn(before, page, 101.5);
     CHECK(alone.cut);
     CHECK(alone.kept.empty());
-    // A line that cut in after the page (the player's own: a key, a repeat), or the reader silenced:
-    // the page was gone already, and with it what was queued; the new page cuts in.
+    // A line that cut in after the page (the player's own: a key, a repeat), or the reader silenced: the
+    // reader is off the page already, and what it says now (the key's answer, a prompt queued after the
+    // stop) is not cut; the new page waits behind it.
     const std::vector<Said> cut{{L"announce", page, 101.0}, {L"announce", L"card", 101.0}, {L"now", L"Путь дальше, 5 м.", 101.2}};
-    CHECK(speech::rules::Turn(cut, page, 101.3).cut);
+    CHECK_FALSE(speech::rules::Turn(cut, page, 101.3).cut);
     CHECK(speech::rules::Turn(cut, page, 101.3).kept.empty());
     const std::vector<Said> stopped{{L"announce", page, 101.0}, {L"announce", L"card", 101.0}, {L"stop", L"", 101.2}};
-    CHECK(speech::rules::Turn(stopped, page, 101.3).cut);
-    CHECK(speech::rules::Turn(stopped, page, 101.3).kept.empty());
+    CHECK_FALSE(speech::rules::Turn(stopped, page, 101.3).cut);
+    // s71 21:04:10 to 21:04:21: the tales book's title, its prompt, the cross that opened it stopping the
+    // reader, the transcript's scroll prompt, then the first page: the prompt is not cut.
+    const std::vector<Said> book{{L"announce", L"СКАЗКИ И МИФЫ КОРЕННЫХ ЖИТЕЛЕЙ АМЕРИКИ Джозеф Малик", 10.204},
+                                 {L"announce", L"крестик", 11.207},
+                                 {L"stop", L"", 18.108},
+                                 {L"prompt", L"Прокрутить: правый стик вверх и вниз", 20.814}};
+    CHECK_FALSE(speech::rules::Turn(book, L"СКАЗКИ И МИФЫ КОРЕННЫХ ЖИТЕЛЕЙ АМЕРИКИ Джозеф Малик", 21.199).cut);
     // The page not among the lines: the reader is not on it, and what is being said (a prompt, s71's
     // scroll prompt at 21:04:21) is not cut; the new page waits behind it.
     CHECK_FALSE(speech::rules::Turn(said, L"another page", 102.0).cut);
@@ -285,4 +292,20 @@ TEST_CASE("a page turned drops the prompts queued behind the page it cuts, for t
     CHECK(tests::U8(plan.kept[0]) == "НАЙДЕНА УЛИКА. R1");
     REQUIRE(plan.dropped.size() == 1);
     CHECK(tests::U8(plan.dropped[0]) == "Сенсорная панель (вправо)");
+}
+
+TEST_CASE("speech: a line dropped from behind a turned page is said again once, and not after it is said")
+{
+    speech::rules::Dropped dropped;
+    dropped.Drop(L"Назад: круг");
+    // The prompt reader finds it still shown: said again, once.
+    CHECK(dropped.Take(L"Назад: круг"));
+    CHECK_FALSE(dropped.Take(L"Назад: круг"));
+    // Dropped, then said by another path before the reader asks: nothing to say again, however long it
+    // stands afterwards (it fell out of the last lines said and was said again each time).
+    dropped.Drop(L"Скрыть расшифровку: квадрат");
+    dropped.Said(L"Скрыть расшифровку: квадрат");
+    CHECK_FALSE(dropped.Take(L"Скрыть расшифровку: квадрат"));
+    // Never dropped: nothing.
+    CHECK_FALSE(dropped.Take(L"R2"));
 }

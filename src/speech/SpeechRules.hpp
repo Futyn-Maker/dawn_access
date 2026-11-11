@@ -37,8 +37,10 @@ namespace da::speech::rules
     // 2026-11-08 and heard the stick's prompt and the way back before each page's text, and asked for
     // the text first (research/sessions/s58-whole.log, 11:23:09). Once the reader is past the page the new one cuts nothing: it waits behind what the
     // reader is saying or has yet to say. `said` is what went to the reader, oldest first; `page` the
-    // page's text as it was said. The page not among them, or a line cut in after it, the page is gone
-    // already, and the new one cuts in with nothing kept. The business card at the lodge on
+    // page's text as it was said. The page not among them, or a line cut in after it (a key's answer, a
+    // stop), the reader is off the page already: the new one cuts nothing either, and waits behind what
+    // the reader says now (session 71: the tales book's first page cut the scroll prompt queued after the
+    // cross that opened the book had stopped the reader). The business card at the lodge on
     // 2026-11-07 was turned 13 s after its front was read, as the clue's card was being said: cut in
     // and said again whole, the card was heard twice, the second cutting the first
     // (research/sessions/s56-full.log, 23:52:59).
@@ -54,6 +56,31 @@ namespace da::speech::rules
         std::vector<std::wstring> dropped; // queued, never begun, and withdrawn: dropped unheard
     };
     TurnPlan Turn(const std::vector<Said>& said, const std::wstring& page, double now, const std::map<std::wstring, double>* withdrawn = nullptr);
+
+    // The lines a turned page dropped unheard from behind the page it cut (TurnPlan::dropped): each taken
+    // once by the prompt reader, to say again where it still stands (Take), and forgotten once it is said
+    // (Said). Kept as a bare record of when each was dropped, a prompt dropped once was said again every
+    // time it fell out of the lines last said while it stood, and at every poll where it could not be said
+    // at all (the mod off, a hold), found by an independent review.
+    class Dropped
+    {
+    public:
+        void Drop(const std::wstring& text)
+        {
+            m_texts.insert(text);
+        }
+        void Said(const std::wstring& text)
+        {
+            m_texts.erase(text);
+        }
+        bool Take(const std::wstring& text)
+        {
+            return m_texts.erase(text) > 0;
+        }
+
+    private:
+        std::set<std::wstring> m_texts;
+    };
 
     // The lines a page turned gives the reader, in order, and whether each cuts in: the new page,
     // cutting the old one short where the plan cuts it, then what was kept, queued behind it.

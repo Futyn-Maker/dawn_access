@@ -50,11 +50,14 @@ namespace da::speech::rules
                 from = i;
                 break;
             }
-            if (Interrupting(said[i].policy)) return plan;
+            // A line cut in after it (the player's own key, a stop): the reader is off the page already.
+            if (Interrupting(said[i].policy)) break;
         }
-        // The page not among the lines (said by another path, or long gone): the reader is not on it, and
-        // what is being said is another's, a prompt as often as not; the new page waits behind it. A
-        // book's first page cut the transcript's scroll prompt so in session 71 (21:04:21).
+        // The page not among the lines (said by another path, or long gone), or a line cut in after it: the
+        // reader is not on it, and what is being said is another's, a prompt as often as not; the new page
+        // waits behind it. The tales book's first page cut the transcript's scroll prompt so in session 71
+        // (21:04:21): the cross that opened the book had stopped the reader (21:04:18) between its title
+        // and the prompt.
         if (from == said.size())
         {
             plan.cut = false;

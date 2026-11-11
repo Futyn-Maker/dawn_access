@@ -495,7 +495,7 @@ namespace da::features
             }
             // The bar's prompts dropped from behind a page turned before the reader got to them, and shown
             // still: said again, once (speech::Prompt).
-            if (!g_lastBarText.empty() && speech::DroppedUnheard(g_lastBarText) &&
+            if (!g_lastBarText.empty() && speech::TakeDropped(g_lastBarText) &&
                 std::all_of(g_lastBarLines.begin(), g_lastBarLines.end(),
                             [&](const std::wstring& line) { return std::find(lines.begin(), lines.end(), line) != lines.end(); }))
             {
@@ -696,7 +696,7 @@ namespace da::features
                     if (runLevel) sounds::Tick(*runLevel);
                     again = again || runAgain;
                     // Said before, and dropped from behind a page turned before it was begun: said now.
-                    if (again && speech::DroppedUnheard(text)) again = false;
+                    if (again && speech::TakeDropped(text)) again = false;
                     log::Info(L"prompts: {} {} \"{}\" [{}]{}", obj::ClassName(it->widget), obj::ObjectName(it->widget), text, actions,
                               ahead      ? L": said as it came up"
                               : runAgain ? L": the same prompt again at a step of its run, not said"
@@ -725,7 +725,7 @@ namespace da::features
                 }
                 // Dropped from behind a page turned before the reader got to it, and shown still, as it
                 // was: said again, once (speech::Prompt).
-                else if (!it->glint && it->announced && !it->text.empty() && it->text == text && speech::DroppedUnheard(text))
+                else if (!it->glint && it->announced && !it->text.empty() && it->text == text && speech::TakeDropped(text))
                 {
                     log::Info(L"prompts: \"{}\" was dropped from behind a page turned and is shown still: said again", text);
                     speech::Prompt(text);

@@ -34,7 +34,7 @@ namespace da::speech
         std::deque<std::pair<Clock::time_point, std::wstring>> g_recent; // what was said lately, for the audit
         std::deque<rules::Said> g_said;                                  // the last lines given to the reader, with their policies
         std::map<std::wstring, double> g_withdrawn;                      // when each line was last taken down (Withdraw)
-        std::map<std::wstring, double> g_dropped;                        // when a turn last dropped each, unheard
+        rules::Dropped g_dropped;                                        // what turns dropped unheard (rules::Dropped)
         constexpr size_t kSaidMost = 24;
         constexpr long long kRecentMs = 120'000;
         bool g_preferSapi = false;
@@ -96,6 +96,7 @@ namespace da::speech
             g_said.push_back(rules::Said{policy, std::wstring(text), Seconds()});
             while (g_said.size() > kSaidMost)
                 g_said.pop_front();
+            g_dropped.Said(std::wstring(text));
             if (std::wstring_view(policy) != L"now") g_lastMessage = std::wstring(text);
         }
 
@@ -256,7 +257,7 @@ namespace da::speech
         fault::Guard lock(g_mutex, L"speech");
         const auto plan = rules::Turn(std::vector<rules::Said>(g_said.begin(), g_said.end()), Clean(previous), Seconds(), &g_withdrawn);
         for (const auto& line : plan.dropped)
-            g_dropped[line] = Seconds();
+            g_dropped.Drop(line);
         for (const auto& line : rules::TurnOrder(plan, text))
             OutputNow(line.text, line.interrupt, line.policy.c_str());
     }
@@ -275,18 +276,12 @@ namespace da::speech
         }
     }
 
-    bool DroppedUnheard(std::wstring_view raw)
+    bool TakeDropped(std::wstring_view raw)
     {
         const std::wstring text = Clean(raw);
         if (text.empty()) return false;
         fault::Guard lock(g_mutex, L"speech");
-        const auto dropped = g_dropped.find(text);
-        if (dropped == g_dropped.end()) return false;
-        for (auto it = g_said.rbegin(); it != g_said.rend(); ++it)
-        {
-            if (it->text == text) return it->at < dropped->second;
-        }
-        return true;
+        return g_dropped.Take(text);
     }
 
     bool StillOn(std::wstring_view page)

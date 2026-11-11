@@ -44,7 +44,7 @@ namespace da::speech
     void Announce(std::wstring_view text);
     // A prompt the game draws, queued as Announce. A page turned before the reader got to it does not say
     // it again behind the new page (rules::Turn): the page may have changed it, and the prompt reader says
-    // again the ones still shown (DroppedUnheard).
+    // again the ones still shown (TakeDropped).
     void Prompt(std::wstring_view text);
     void Now(std::wstring_view text);
     void Urgent(std::wstring_view text);
@@ -54,9 +54,10 @@ namespace da::speech
     // A line given to the reader no longer stands (a prompt the game has taken down): a page turned
     // before the reader got to it does not keep it (rules::Turn).
     void Withdraw(std::wstring_view text);
-    // Whether a line was dropped unheard from behind a turned page (withdrawn, rules::TurnPlan) and
-    // not given to the reader since: a prompt that stands again is then to be said again.
-    bool DroppedUnheard(std::wstring_view text);
+    // Whether a line was dropped unheard from behind a turned page (withdrawn, rules::TurnPlan) and not
+    // given to the reader since: a prompt that stands still is then to be said again, once (rules::Dropped).
+    // Asking takes it.
+    bool TakeDropped(std::wstring_view text);
     void Hold(std::wstring_view owner);
     void Release(std::wstring_view owner);
     void Exclusive(std::wstring_view text);
