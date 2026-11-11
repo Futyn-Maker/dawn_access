@@ -46,6 +46,13 @@ namespace da::sym
             {L"lua_toboolean", 0x393eda0},
             {L"lua_rawgeti", 0x393e8b0},
             {L"lua_tolstring", 0x393ee10},
+            // The engine's signs that the game is going away: RequestEngineExit (0xcc22b0) sets
+            // GIsRequestingExit, from the window closed (UGameEngine::OnGameWindowClosed), the menu's
+            // quit or the console; GIsCriticalError marks a fatal error; ReportCrash (0xd40ba0) counts
+            // its calls in this int before it waits up to a minute for its reporting thread.
+            {L"GIsRequestingExit", 0x8750fda}, // bool
+            {L"GIsCriticalError", 0x8750fd4},  // bool
+            {L"ReportCrash.calls", 0x8797ed0}, // int32
         };
 
         struct Member

@@ -6,6 +6,7 @@
 #include "core/Log.hpp"
 #include "core/ObjectUtil.hpp"
 #include "core/Strings.hpp"
+#include "core/Symbols.hpp"
 #include "diag/Audit.hpp"
 #include "diag/Diagnostics.hpp"
 #include "diag/SaveCopies.hpp"
@@ -88,6 +89,20 @@ namespace
     }
 }
 
+namespace
+{
+    // The engine's signs that the game is going away, read from its globals (core/Symbols); none
+    // when the build is not the one the table describes.
+    da::outputs::ClosingSigns GameClosingSigns()
+    {
+        da::outputs::ClosingSigns signs;
+        if (const auto* exit = static_cast<const volatile bool*>(da::sym::Address(L"GIsRequestingExit"))) signs.exitRequested = *exit;
+        if (const auto* fatal = static_cast<const volatile bool*>(da::sym::Address(L"GIsCriticalError"))) signs.criticalError = *fatal;
+        if (const auto* calls = static_cast<const volatile int32_t*>(da::sym::Address(L"ReportCrash.calls"))) signs.crashReports = *calls;
+        return signs;
+    }
+}
+
 class DawnAccessMod : public CppUserModBase
 {
 public:
@@ -136,6 +151,10 @@ public:
         }
         da::speech::Init();
         da::sounds::Init(settings.soundVolume);
+        // The mod falls silent the moment the game goes away (speech::rules::Closing). The build's
+        // check is decided here, before the speech thread first asks the symbols.
+        da::sym::BuildMatches();
+        da::outputs::WatchClosing(&GameClosingSigns);
 
         // English strings first; the game's language is applied once the engine reports it.
         const std::wstring forcedLanguage = da::str::EqualsNoCase(settings.language, L"auto") ? L"" : settings.language;

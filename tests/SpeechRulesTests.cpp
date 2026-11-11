@@ -246,3 +246,21 @@ TEST_CASE("each owner lets go of its own hold: a choice's side taken, then the p
     CHECK_FALSE(holders.Held());
     CHECK_FALSE(holders.Release(L"qte"));
 }
+
+TEST_CASE("speech: silent at once as the game goes away, and nothing said after")
+{
+    speech::rules::Closing closing;
+    // Play: no sign.
+    CHECK_FALSE(closing.Update(false, false, 0));
+    CHECK_FALSE(closing.Closed());
+    // Alt+F4 (s71): the engine is asked to exit; the voices stop once.
+    CHECK(closing.Update(true, false, 0));
+    CHECK(closing.Closed());
+    CHECK_FALSE(closing.Update(true, false, 0));
+    // A crash being reported, or a fatal error, is the same moment.
+    speech::rules::Closing crash;
+    CHECK(crash.Update(false, false, 1));
+    speech::rules::Closing fatal;
+    CHECK(fatal.Update(false, true, 0));
+    CHECK(fatal.Closed());
+}

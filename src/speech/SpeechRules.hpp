@@ -101,4 +101,30 @@ namespace da::speech::rules
     private:
         std::set<std::wstring> m_owners;
     };
+
+    // The game going away: the mod falls silent at once, both voices stopped and nothing said after.
+    // SAPI speaks in the game's own process and kept on with the last line while the engine shut down
+    // after Alt+F4 (Andrey, s71); a screen reader speaks in its own, and would finish it after the game
+    // was gone. The engine's own signs, read from its globals: an exit asked for (RequestEngineExit sets
+    // GIsRequestingExit, from the window closed, the menu's quit or the console), a fatal error
+    // (GIsCriticalError), or a crash being reported (ReportCrash counts its calls, then waits up to a
+    // minute for its reporting thread with the process still running).
+    class Closing
+    {
+    public:
+        // True once: the moment to fall silent.
+        bool Update(bool exitRequested, bool criticalError, int crashReports)
+        {
+            if (m_closed) return false;
+            m_closed = exitRequested || criticalError || crashReports > 0;
+            return m_closed;
+        }
+        bool Closed() const
+        {
+            return m_closed;
+        }
+
+    private:
+        bool m_closed = false;
+    };
 }

@@ -1,5 +1,7 @@
 #include "speech/Outputs.hpp"
 
+#include "speech/SpeechRules.hpp"
+
 #include "core/Fault.hpp"
 #include "core/Log.hpp"
 #include "core/Strings.hpp"
@@ -57,6 +59,10 @@ namespace da::outputs
         HANDLE g_wake = nullptr;
         HANDLE g_ready = nullptr;
         std::atomic<bool> g_quit{false};
+        // The game going away (WatchClosing): asked by the speech thread, which alone stops the voices.
+        std::atomic<ClosingSigns (*)()> g_closingProbe{nullptr};
+        std::atomic<bool> g_closed{false};
+        speech::rules::Closing g_closing;
         std::thread g_thread;
         bool g_started = false;
         std::wstring g_dllPath;
@@ -401,7 +407,23 @@ namespace da::outputs
 
             while (!g_quit.load())
             {
-                WaitForSingleObject(g_wake, INFINITE);
+                const auto probe = g_closingProbe.load();
+                WaitForSingleObject(g_wake, probe ? 100 : INFINITE);
+                if (probe && !g_closing.Closed())
+                {
+                    const ClosingSigns signs = probe();
+                    if (g_closing.Update(signs.exitRequested, signs.criticalError, signs.crashReports))
+                    {
+                        g_closed.store(true);
+                        {
+                            fault::Guard lock(g_queueMutex, L"outputs.queue");
+                            std::erase_if(g_queue, [](const Request& waiting) { return waiting.kind == Request::Kind::Say; });
+                        }
+                        StopAll();
+                        log::Info(L"speech: the game is going away (exit asked {}, fatal error {}, crash reports {}); the mod falls silent",
+                                  signs.exitRequested, signs.criticalError, signs.crashReports);
+                    }
+                }
                 for (;;)
                 {
                     Request request;
@@ -514,9 +536,15 @@ namespace da::outputs
         Post(std::move(request));
     }
 
+    void WatchClosing(ClosingSigns (*probe)())
+    {
+        g_closingProbe.store(probe);
+        if (g_wake) SetEvent(g_wake);
+    }
+
     void Say(std::wstring_view text, bool interrupt, bool throughSapi)
     {
-        if (!g_started || text.empty()) return;
+        if (!g_started || text.empty() || g_closed.load()) return;
         Request request;
         request.kind = Request::Kind::Say;
         request.text = std::wstring(text);

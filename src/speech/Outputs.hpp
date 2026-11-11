@@ -41,4 +41,15 @@ namespace da::outputs
     void Say(std::wstring_view text, bool interrupt, bool throughSapi);
     // Stops both voices and drops what is waiting.
     void Silence();
+
+    // The engine's signs that the game is going away, as a probe reads them (speech::rules::Closing).
+    struct ClosingSigns
+    {
+        bool exitRequested = false;
+        bool criticalError = false;
+        int crashReports = 0;
+    };
+    // The speech thread asks the probe ten times a second and falls silent for good, both voices
+    // stopped and every later line dropped, the moment a sign shows.
+    void WatchClosing(ClosingSigns (*probe)());
 }
