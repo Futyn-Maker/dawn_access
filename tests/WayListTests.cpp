@@ -2,6 +2,7 @@
 // on drawn ground and replayed over the ground the mod felt out in play.
 #include "Support.hpp"
 #include "features/GroundFile.hpp"
+#include "features/LookTurn.hpp"
 #include "features/Shapes.hpp"
 #include "features/WayList.hpp"
 
@@ -2657,13 +2658,16 @@ TEST_CASE("walks: a thing found closed off by a map begun during the walk ends t
 {
     // s71 23:28:57: ten levels streamed in, the new map found the danger totem closed off behind a
     // spline wall; the walk went on into the wall.
-    CHECK(ways::WalkLosesTarget(false, true, false));
+    CHECK(ways::WalkLosesTarget(false, true, false, true));
     // Closed off already as the player chose it: the player's choice stands, the walk goes on.
-    CHECK_FALSE(ways::WalkLosesTarget(false, true, true));
+    CHECK_FALSE(ways::WalkLosesTarget(false, true, true, true));
     // Still reached: the walk goes on.
-    CHECK_FALSE(ways::WalkLosesTarget(false, false, false));
+    CHECK_FALSE(ways::WalkLosesTarget(false, false, false, true));
     // A way on is not judged by the rooms.
-    CHECK_FALSE(ways::WalkLosesTarget(true, true, false));
+    CHECK_FALSE(ways::WalkLosesTarget(true, true, false, true));
+    // A map the walk began itself, the world as it was: no new fact, the walk goes on (the morgue's
+    // certificate, found closed off by the maps after it, a step from where the game offered it).
+    CHECK_FALSE(ways::WalkLosesTarget(false, true, false, false));
 }
 
 TEST_CASE("ways: a way fired by walking in waits, while she stands in it already, for her to walk in anew")
@@ -2675,4 +2679,28 @@ TEST_CASE("ways: a way fired by walking in waits, while she stands in it already
     // A scene asking whether she stands in it: standing there answers it.
     CHECK_FALSE(ways::WaitsForEntry(false, true, true));
     CHECK_FALSE(ways::WaitsForEntry(true, true, true));
+}
+
+TEST_CASE("walks: the way back to walk in again holds the walk until the point stepped back to")
+{
+    // A last stretch that gave up by its spot, on a way that came along x and turned in at its end (the
+    // bathroom door's of s71, 23:35, so): the point stepped back to lies on the way, more than 150 cm off.
+    const std::vector<look::Vec> route{{3300, -9431, 3386}, {3567, -9431, 3386}, {3567, -9411, 3386}};
+    const look::Vec here{3567, -9415, 3386};
+    const auto back = look::BackOffPoint(route);
+    REQUIRE(back);
+    REQUIRE(std::hypot(back->x - here.x, back->y - here.y) > 150.0);
+    // The point alone was a way round the walk dropped at once: she stood more than 150 cm from it.
+    CHECK(ways::StretchOn(std::vector<look::Vec>{*back}, 1, here, 150.0, ways::kStretchRise) < 0);
+    // The line back holds her from where she gave up to the point.
+    const auto line = look::BackOffLine(here, *back);
+    CHECK(ways::StretchOn(line, line.size(), here, 150.0, ways::kStretchRise) >= 0);
+    const look::Vec halfway{(here.x + back->x) / 2.0, (here.y + back->y) / 2.0, here.z};
+    CHECK(ways::StretchOn(line, line.size(), halfway, 150.0, ways::kStretchRise) >= 0);
+    CHECK(ways::StretchOn(line, line.size(), *back, 150.0, ways::kStretchRise) >= 0);
+    // On the way back no last stretch begins, though the way left is short and the spot near; a thing
+    // offered where she stands still ends it.
+    CHECK_FALSE(look::StretchKeeps(false, false, 120.0, 30.0, 60.0, true));
+    CHECK(look::StretchKeeps(false, false, 120.0, 30.0, 60.0, false));
+    CHECK(look::StretchKeeps(true, false, 120.0, 30.0, 60.0, true));
 }

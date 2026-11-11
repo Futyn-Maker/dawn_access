@@ -518,8 +518,12 @@ namespace da::ways
     // 2026-11-11 ten levels streamed in as Matt walked to the danger totem, a new map found it and five
     // other things closed off behind a spline wall, and the walk pushed into that wall for twenty seconds
     // and said it could not get there; the list dropped them all a moment after (s71, 23:28:44 to 23:29:24).
-    // `isWay`: a way on, which the rooms do not judge.
-    bool WalkLosesTarget(bool isWay, bool closedOffNow, bool closedOffAtStart);
+    // `isWay`: a way on, which the rooms do not judge. Only a map of a world changed since the walk set
+    // off (`worldChanged`: levels streamed in or out) has a new fact to tell; a map the walk begins itself
+    // (its last stretch's map from where she stands, the ground asked again where its pushes went
+    // nowhere) can find closed off a thing the game offers a step away: after its use, the morgue's
+    // death certificate was found closed off by every map (s71, 22:53 on).
+    bool WalkLosesTarget(bool isWay, bool closedOffNow, bool closedOffAtStart, bool worldChanged);
 
     // Whether a way on waits for her to walk into it anew: its story fires on entering (`firesOnEntry`:
     // its trigger's actions or its script's Enter event), no scene asks whether she stands in it

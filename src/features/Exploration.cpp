@@ -459,7 +459,10 @@ namespace da::features
         double g_walkBestWay = 1e9;
         double g_walkBestWayAt = 0.0;
         bool g_backedOff = false;     // this walk has stepped back once to walk in again (look::BackOffPoint)
-        bool g_backOffActive = false; // ... and is on its way back now, its detour the point stepped back to
+        bool g_backOffActive = false; // ... and is on its way back now, its detour the line back to the point
+        Vec g_backOffPoint;           // the point stepped back to (look::BackOffLine)
+        double g_walkTargetSince = 0.0; // since when the walk has gone to its thing (set off, or turned to another)
+        double g_worldChangedAt = -1.0; // when the game last streamed levels in or out
         std::tuple<int, double> g_walkMeasure{0, 0.0}; // how the way still to go is measured, and the way felt out it is measured on
         double g_walkLeanedAt = 0.0;
         double g_walkLoggedAt = 0.0;
@@ -5891,7 +5894,7 @@ namespace da::features
         void FollowGrid(UObject* pawn, const Vec& here, Target& t, double now, bool request)
         {
             // Stepped back far enough (look::BackOffPoint): the walk turns in again along its road.
-            if (g_backOffActive && t.detour.size() == 1 && FlatDistance(here, t.detour.front()) < look::kBackOffReached)
+            if (g_backOffActive && FlatDistance(here, g_backOffPoint) < look::kBackOffReached)
             {
                 log::Info(L"explore: the walk to \"{}\" has stepped back; it walks in again", t.label);
                 t.detour.clear();
@@ -5919,6 +5922,8 @@ namespace da::features
                 }
                 log::Info(L"explore: the walk to \"{}\" has left its way round, and takes the road again", t.label);
                 t.detour.clear();
+                // Off the way back: the walk goes on in from where she is.
+                g_backOffActive = false;
             }
             const bool fresh = !t.gridCorners.empty() && FlatDistance(Aim(t), t.gridGoal) < 50.0;
             bool following = false;
@@ -7029,7 +7034,7 @@ namespace da::features
             const double letGoAt = look::LetGoAt(g_slide.Distance(speedNow), lastLeg, headingOff);
             if (g_slide.Update(now, here, g_motion.Still(now)))
                 log::Info(L"explore: she slid on {:.2f} s of walk after the walk let go", g_slide.LastSeconds());
-            if (t.way || !obj::IsLive(t.actor) || !look::StretchKeeps(t.inside, g_arriveSince >= 0.0, fromSpot, wayLeft, letGoAt))
+            if (t.way || !obj::IsLive(t.actor) || !look::StretchKeeps(t.inside, g_arriveSince >= 0.0, fromSpot, wayLeft, letGoAt, g_backOffActive))
             {
                 if (g_arriveSince >= 0.0 && !t.way)
                 {
@@ -7147,7 +7152,8 @@ namespace da::features
                     {
                         g_backedOff = true;
                         g_backOffActive = true;
-                        t.detour = {*back};
+                        g_backOffPoint = *back;
+                        t.detour = look::BackOffLine(here, *back);
                         g_arriveSince = -1.0;
                         g_walkMeasure = {0, 0.0};
                         g_walkMovingAt = now;
@@ -7531,7 +7537,7 @@ namespace da::features
             }
             // A map begun since the walk set off proves its thing closed off (ways::WalkLosesTarget): the
             // walk ends, and the thing, the player's choice no more, leaves the list as the others did.
-            if (ways::WalkLosesTarget(target->way, target->room == rooms::Verdict::Apart, g_walkForApart))
+            if (ways::WalkLosesTarget(target->way, target->room == rooms::Verdict::Apart, g_walkForApart, g_worldChangedAt > g_walkTargetSince))
             {
                 log::Info(L"explore: the walk to \"{}\" ends: a map begun since it set off finds it closed off", g_walkForLabel);
                 if (g_selected == target->actor) g_selected = nullptr;
@@ -7855,6 +7861,7 @@ namespace da::features
             StraightenChosen(*target, gamethread::NowSeconds());
             g_autoChosen = false; // walking to it makes it the player's choice
             g_walkStartedAt = gamethread::NowSeconds();
+            g_walkTargetSince = g_walkStartedAt;
             g_otherOffer.Reset();
             g_walkMovingAt = g_walkStartedAt;
             g_walkLeanedAt = g_walkStartedAt;
@@ -9405,6 +9412,7 @@ namespace da::features
             }
             log::Info(L"explore: the game has streamed {} level(s) in ({}) and {} out ({}); {} in all", added.size(), str::Join(added, L", "), removed.size(),
                       str::Join(removed, L", "), levels.size());
+            g_worldChangedAt = gamethread::NowSeconds();
             const auto streamed = [&](const std::vector<int>& ids)
             {
                 size_t n = 0;
@@ -9592,11 +9600,17 @@ namespace da::features
             Select(&g_targets[candidate], pawn, here, yaw, false);
             speech::Now(ScannerText(g_targets[candidate], here, yaw));
             g_autoChosen = false;
-            // A walk under way goes on to the player's new choice.
+            // A walk under way goes on to the player's new choice, which it has not stepped back from, and
+            // whose verdict as the walk turns to it is the one a later map is weighed against.
             if (g_walking)
             {
                 g_walkFor = g_targets[candidate].actor;
                 g_walkForLabel = g_targets[candidate].label;
+                g_walkForApart = g_targets[candidate].room == rooms::Verdict::Apart;
+                g_walkTargetSince = gamethread::NowSeconds();
+                g_backedOff = false;
+                g_backOffActive = false;
+                g_arriveSince = -1.0;
             }
         }
 

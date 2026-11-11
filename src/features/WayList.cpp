@@ -405,9 +405,9 @@ namespace da::ways
         return walkFor != nullptr && chosen == walkFor;
     }
 
-    bool WalkLosesTarget(bool isWay, bool closedOffNow, bool closedOffAtStart)
+    bool WalkLosesTarget(bool isWay, bool closedOffNow, bool closedOffAtStart, bool worldChanged)
     {
-        return !isWay && closedOffNow && !closedOffAtStart;
+        return !isWay && closedOffNow && !closedOffAtStart && worldChanged;
     }
 
     bool WaitsForEntry(bool firesOnEntry, bool polled, bool standingIn)

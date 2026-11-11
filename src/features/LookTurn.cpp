@@ -163,9 +163,14 @@ namespace da::look
         return measured && lookOk;
     }
 
-    bool StretchKeeps(bool offered, bool begun, double fromSpot, double wayLeft, double letGoAt)
+    bool StretchKeeps(bool offered, bool begun, double fromSpot, double wayLeft, double letGoAt, bool steppingBack)
     {
-        return offered || ((begun || wayLeft < letGoAt) && fromSpot <= kStretchReach);
+        return offered || (!steppingBack && (begun || wayLeft < letGoAt) && fromSpot <= kStretchReach);
+    }
+
+    std::vector<Vec> BackOffLine(const Vec& from, const Vec& back)
+    {
+        return {from, back};
     }
 
     std::optional<Vec> BackOffPoint(const std::vector<Vec>& route, double back)

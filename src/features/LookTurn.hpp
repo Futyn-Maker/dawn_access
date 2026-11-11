@@ -222,7 +222,10 @@ namespace da::look
     // 11 cm from the end of its way, pushed full stick toward it and ran Sam 125 cm past the door.
     constexpr double kStepWay = 60.0;
     // `letGoAt`: the way left at which the walk lets go, a step's (kStepWay) or her slide's (Slide).
-    bool StretchKeeps(bool offered, bool begun, double fromSpot, double wayLeft = 1e9, double letGoAt = kStepWay);
+    // `steppingBack`: the walk is on its way back to walk in again (BackOffLine): no last stretch
+    // begins on the way, which ends a step from the point stepped back to, kStretchReach from the spot
+    // or nearer, unless the thing is offered where she stands.
+    bool StretchKeeps(bool offered, bool begun, double fromSpot, double wayLeft = 1e9, double letGoAt = kStepWay, bool steppingBack = false);
 
     // The last stretch's own time: kArriveMost to get the press taken, then the walk gives up on it.
     // It gives up only once she is at rest and kSettleAfterPush has passed since its last push, or
@@ -253,6 +256,11 @@ namespace da::look
     // The point kBack along `route` (the way the walk came, its end at the place) from its end; its
     // start where the way is shorter. Nothing for no way.
     std::optional<Vec> BackOffPoint(const std::vector<Vec>& route, double back = kBackOff);
+    // The way back the walk follows: from where she gave up to the point stepped back to. A walk keeps
+    // to a way round only while she stands within 150 cm of it (ways::StretchOn), and the point lies
+    // kBackOff off: a way round of the point alone was dropped the moment it was set, and the walk
+    // turned in again from where it had given up.
+    std::vector<Vec> BackOffLine(const Vec& from, const Vec& back);
 
     // Held to a path, level with a thing the game has not offered: the walk lets the stick go and
     // gives up only once she has come to rest, at least kPathLevelSettle after it let go, or
