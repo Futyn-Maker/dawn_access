@@ -251,3 +251,26 @@ TEST_CASE("menus: the chapter select's question is found beside its buttons, the
     // A question the page's walk found already is not added twice.
     CHECK(menu::WithQuestion({L"Начать?", L"Внимание"}, {L"Начать?"}) == std::vector<std::wstring>{L"Начать?", L"Внимание"});
 }
+
+TEST_CASE("menus: the dialogue history is read a line at a time")
+{
+    // s71 20:09:37: the box's text, the newest line first.
+    const auto lines = menu::HistoryLines({L"(Мэтт) иду.\n(Мэтт) Ага,\r\n\n(Эмили) Проснись, Мэтт! Ты пойдешь со мной за сумкой?\n  ", L"(Джош) Хорошо."});
+    REQUIRE(lines.size() == 4);
+    CHECK(lines[0] == L"(Мэтт) иду.");
+    CHECK(lines[1] == L"(Мэтт) Ага,");
+    CHECK(lines[2] == L"(Эмили) Проснись, Мэтт! Ты пойдешь со мной за сумкой?");
+    CHECK(lines[3] == L"(Джош) Хорошо.");
+    CHECK(menu::HistoryLines({L"", L"\n\n"}).empty());
+    menu::LineCursor cursor;
+    cursor.Set(lines.size());
+    CHECK(cursor.At() == 0);
+    CHECK(cursor.Move(-1) == 0); // held at the newest
+    CHECK(cursor.Move(1) == 1);
+    CHECK(cursor.Move(1) == 2);
+    CHECK(cursor.Move(1) == 3);
+    CHECK(cursor.Move(1) == 3); // held at the oldest
+    CHECK(cursor.Move(-1) == 2);
+    menu::LineCursor none;
+    CHECK(none.Move(1) == 0);
+}

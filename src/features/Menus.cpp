@@ -7,6 +7,7 @@
 #include "core/Log.hpp"
 #include "core/ObjectUtil.hpp"
 #include "core/Strings.hpp"
+#include "hotkeys/Hotkeys.hpp"
 #include "input/InputNames.hpp"
 #include "locale/Locale.hpp"
 #include "speech/Speech.hpp"
@@ -152,8 +153,104 @@ namespace da::features
             g_value.Known(d ? d->value : std::wstring());
         }
 
+        // ---- the dialogue history, a line at a time (menu::HistoryLines) ------------------------
+
+        struct History
+        {
+            bool on = false;
+            std::vector<std::wstring> lines;
+            menu::LineCursor cursor;
+        };
+        History g_history;
+
+        bool IsHistory(UObject* page)
+        {
+            return page && obj::ClassName(page) == L"WBP_DialogueHistory_C";
+        }
+
+        std::vector<std::wstring> HistoryLinesOf(UObject* page)
+        {
+            UObject* box = nullptr;
+            std::vector<std::wstring> texts;
+            if (obj::ReadObject(page, L"Scrollbox", box) && obj::IsLive(box))
+            {
+                for (UObject* child : obj::PanelChildren(box))
+                {
+                    if (!obj::IsLive(child) || !obj::IsWidgetVisible(child)) continue;
+                    if (obj::IsA(child, L"TextBlock") || obj::IsA(child, L"RichTextBlock"))
+                        texts.push_back(obj::TextOf(child));
+                    else
+                        for (const auto& text : obj::DescendantTexts(child))
+                            texts.push_back(text);
+                }
+            }
+            return menu::HistoryLines(texts);
+        }
+
+        // The line at the place, with the place at the detailed level.
+        std::wstring HistoryLine()
+        {
+            const auto& h = g_history;
+            if (h.lines.empty() || h.cursor.At() >= h.lines.size()) return {};
+            std::vector<std::wstring> parts{h.lines[h.cursor.At()]};
+            if (cfg::Detailed()) parts.push_back(locale::Mod(L"ui.pos", std::to_wstring(h.cursor.At() + 1), std::to_wstring(h.cursor.Count())));
+            return str::JoinSentences(parts);
+        }
+
+        bool HistoryUp()
+        {
+            return g_history.on && IsHistory(watch::CurrentScreen());
+        }
+
+        bool HistoryMove(int delta)
+        {
+            if (!HistoryUp() || g_history.lines.empty()) return false;
+            g_history.cursor.Move(delta);
+            log::Verbose(L"menus: the dialogue history at line {} of {}", g_history.cursor.At() + 1, g_history.cursor.Count());
+            speech::Focus(HistoryLine());
+            return true;
+        }
+
+        bool OnHistoryNext()
+        {
+            return HistoryMove(1);
+        }
+
+        bool OnHistoryPrevious()
+        {
+            return HistoryMove(-1);
+        }
+
         void SpeakArrival(UObject* page, bool anew)
         {
+            g_history.on = false;
+            if (IsHistory(page))
+            {
+                // Its name, its first line (the newest), and its prompts; the rest a line at a time.
+                g_history.lines = HistoryLinesOf(page);
+                g_history.cursor.Set(g_history.lines.size());
+                g_history.on = true;
+                std::vector<std::wstring> parts;
+                auto title = ui::ScreenTitle(page);
+                if (title.empty()) title = narration::PageNameFor(page);
+                if (!title.empty()) parts.push_back(title);
+                g_pageName = title;
+                const auto line = HistoryLine();
+                if (!line.empty()) parts.push_back(line);
+                const auto prompts = ui::SpeakPrompts(ui::Prompts(page));
+                if (!prompts.empty()) parts.push_back(prompts);
+                const auto text = str::JoinSentences(parts);
+                log::Verbose(L"menus: arrival on the dialogue history, {} line(s), read one at a time", g_history.lines.size());
+                if (!(anew && text == g_arrivalText) && !text.empty()) speech::Focus(text);
+                g_arrivalText = text;
+                g_screen = obj::KeyOf(page);
+                g_screenGeneration = watch::DisplayGeneration();
+                g_title = ui::ScreenTitle(page);
+                RememberControl(nullptr, nullptr);
+                RememberPrompts(page);
+                RememberBody(page);
+                return;
+            }
             UObject* control = FocusedControl();
             ui::Description d;
             if (control) d = ui::Describe(control);
@@ -208,6 +305,7 @@ namespace da::features
 
         void Forget()
         {
+            g_history.on = false;
             g_screen = {};
             g_screenGeneration = 0;
             g_control = {};
@@ -341,6 +439,14 @@ namespace da::features
     void MenusFeature::Install()
     {
         gamethread::AddPoller(L"menus", &PollGuarded);
+        // The dialogue history's lines, one at a time: the target keys move along them (N or the D-pad's
+        // right the next, older line; P or its left the one before), and so do the D-pad's down and up,
+        // which scroll the game's own box with it.
+        hotkeys::AddContext(&HistoryUp);
+        hotkeys::OnCommand(hotkeys::Command::NextTarget, &OnHistoryNext);
+        hotkeys::OnCommand(hotkeys::Command::Beacon, &OnHistoryNext);
+        hotkeys::OnCommand(hotkeys::Command::PreviousTarget, &OnHistoryPrevious);
+        hotkeys::OnCommand(hotkeys::Command::Where, &OnHistoryPrevious);
     }
 
     void MenusFeature::Describe(std::vector<std::wstring>& out)
@@ -358,6 +464,8 @@ namespace da::features
         out.push_back(locale::Mod(L"help.menu", input::KeyForAction(L"IA_UI_Confirm"), input::KeyForAction(L"IA_UI_Back")));
         ui::Tab tab;
         if (ui::TabOf(page, tab)) out.push_back(locale::Mod(L"ui.prompt.tabs", input::KeyForAction(L"IA_UI_TabLeft"), input::KeyForAction(L"IA_UI_TabRight")));
+        if (HistoryUp())
+            out.push_back(locale::Mod(L"help.history", hotkeys::SpokenKey(hotkeys::Command::NextTarget), hotkeys::SpokenKey(hotkeys::Command::PreviousTarget)));
         UObject* control = FocusedControl();
         const ui::Kind kind = ui::KindOf(control);
         if (kind == ui::Kind::Selector || kind == ui::Kind::Slider)

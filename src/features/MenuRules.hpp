@@ -184,4 +184,36 @@ namespace da::menu
     // The page's texts with a question added (AsksOver), each text once by its Shape, the page's
     // first: what TextsWithFocus weighs as the focus comes to the row.
     std::vector<std::wstring> WithQuestion(std::vector<std::wstring> body, const std::vector<std::wstring>& question);
+
+    // The dialogue history (WBP_DialogueHistory, the pause menu's "Dialogue history"): one scroll box of
+    // the lines said lately, the newest first, which the game only scrolls; there is nothing on it to
+    // move a focus to. Its narration reads every line as it comes up, and so did the mod (session 71,
+    // 20:09:37, Andrey: "everything is read out all at once"). Its lines, from the texts the box holds,
+    // each split at its line breaks, empty ones left out; the mod reads them one at a time.
+    std::vector<std::wstring> HistoryLines(const std::vector<std::wstring>& texts);
+
+    // A place among a page's lines, moved one at a time and held at the ends.
+    class LineCursor
+    {
+    public:
+        void Set(size_t count)
+        {
+            m_count = count;
+            m_at = 0;
+        }
+        // Moves by `delta` (+1 the next line, -1 the one before); the line now at, the same at an end.
+        size_t Move(int delta);
+        size_t At() const
+        {
+            return m_at;
+        }
+        size_t Count() const
+        {
+            return m_count;
+        }
+
+    private:
+        size_t m_count = 0;
+        size_t m_at = 0;
+    };
 }

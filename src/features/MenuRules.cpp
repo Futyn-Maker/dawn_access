@@ -131,4 +131,30 @@ namespace da::menu
         }
         return body;
     }
+
+    std::vector<std::wstring> HistoryLines(const std::vector<std::wstring>& texts)
+    {
+        std::vector<std::wstring> lines;
+        for (const auto& text : texts)
+        {
+            size_t start = 0;
+            while (start <= text.size())
+            {
+                const size_t end = text.find_first_of(L"\r\n", start);
+                const std::wstring line = str::Trim(text.substr(start, end == std::wstring::npos ? std::wstring::npos : end - start));
+                if (!line.empty()) lines.push_back(line);
+                if (end == std::wstring::npos) break;
+                start = end + 1;
+            }
+        }
+        return lines;
+    }
+
+    size_t LineCursor::Move(int delta)
+    {
+        if (m_count == 0) return 0;
+        if (delta < 0 && m_at > 0) --m_at;
+        if (delta > 0 && m_at + 1 < m_count) ++m_at;
+        return m_at;
+    }
 }
