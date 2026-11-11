@@ -47,7 +47,7 @@ namespace da::picture
 
         // The interactions whose pictures the mod describes, and when; the moments are the game's own
         // states, as the logs of chapters 5 and 6 show them.
-        constexpr std::array<Planned, 7> kPlans = {
+        constexpr std::array<Planned, 8> kPlans = {
             // Dr. Hill's card is picked up face down and turned over with the stick (act20_1,
             // BP_PsychSession_PickUp, which no other level places: its examine stage reveals). It has no
             // core name; its activity starts it as I_psychsession_1_Interaction.
@@ -75,6 +75,12 @@ namespace da::picture
             // figure in the snow (1), and at 1.73 s, through static, to the same without the figure (2),
             // none of its events repeating (research/sessions/s68-play.log, 01:28:04 to 01:28:36).
             Planned{L"i_security_monitor", L"bp_security_monitor_c", Moment::State, L"examine_idle"},
+            // The Washingtons' portrait in the lodge's garage vestibule, looked at by Chris (act2_11,
+            // BP_Family_portrait, core name set in the level: examine_into, then examine_idle as his look
+            // stands, "Назад" on the bar 0.7 s on; research/sessions/s70-play.log, 11:44:26 to 11:44:29).
+            // A painting on a static mesh (SM_family_portrait, its one colour texture
+            // T_family_portrait_clr), the same at every look.
+            Planned{L"i_family_portrait", L"bp_family_portrait_c", Moment::State, L"examine_idle"},
         };
     }
 

@@ -122,6 +122,14 @@ TEST_CASE("pictures: a photo is known by its texture, a thing in the hand by any
     CHECK(monitor->state == L"examine_idle");
     CHECK(monitor->key == L"i_security_monitor");
     CHECK(picture::PlanFor(Names{L"", L"", L"BP_Security_monitor_C"})->key == L"i_security_monitor");
+    // The Washingtons' portrait in the lodge's garage vestibule, once Chris's look at it stands
+    // (research/sessions/s70-play.log, 11:44:29): a painting, the same at every look.
+    const auto portrait = picture::PlanFor(Names{L"I_family_portrait", L"I_family_portrait", L"BP_Family_portrait_C"});
+    REQUIRE(portrait.has_value());
+    CHECK(portrait->moment == picture::Moment::State);
+    CHECK(portrait->state == L"examine_idle");
+    CHECK(portrait->key == L"i_family_portrait");
+    CHECK(picture::PlanFor(Names{L"", L"", L"BP_Family_portrait_C"})->key == L"i_family_portrait");
     // The chapter 1 graffiti is transcribed by the game itself (its reading widget); a class shared by
     // other things (the generic wall examine the walls are made from) names no picture.
     CHECK_FALSE(picture::PlanFor(Names{L"I_carved_graffiti", L"", L"BP_Examine_wall_item_left_C"}).has_value());
