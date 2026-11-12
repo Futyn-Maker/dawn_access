@@ -483,6 +483,74 @@ TEST_CASE("ways: a way round a companion standing at a corridor's mouth: Chris i
     CHECK_FALSE(keep.StepClear(recheck::Vec{987, -6316, 0}, recheck::Vec{1007, -6316, 0}));
 }
 
+TEST_CASE("ways: a way past Chris standing a hand nearer the corridor's corner: touching him, 2026-11-12")
+{
+    // research/sessions/s72-play.log, 11:56:55 to 12:03:15: Chris, forced to idle after the picture
+    // fell, stood at (1077, -6330), 14 cm from where he stood in s58 and nearer the corner of the
+    // corridor to the creaky door; every walk from the corridor's mouth (1125, -6261) to the wine
+    // cellar's door and the wine rack found no way round him ("442 cells opened") and ended naming
+    // him. tests/fixtures/ground-cellar-chris-mouth.tsv is the cellar as the ground had it as the walk
+    // stopped (cut from research/dumps/ground-20261112-111738.tsv up to its line 559200). The live
+    // search opened 442 cells, the count over the answers recorded without the landings mirrored from
+    // steps back: the walk's asking had just forgotten the steps about her, and the one mirrored
+    // landing past him, onto a ledge at the corridor's corner, answered refused at one sweep and free
+    // at the next (the record's lines 549147 and 554996). The way past him must not rest on it.
+    auto record = ReadFixture("ground-cellar-chris-mouth.tsv");
+    const recheck::Vec origin{2119.15, -8090.76, 0.0};
+    const auto middle = [&](const grid::Cell& c) { return recheck::Vec{origin.x + (c.x + 0.5) * 20.0, origin.y + (c.y + 0.5) * 20.0, 0.0}; };
+    const auto cellOf = [&](double x, double y) { return grid::Cell{static_cast<int>(std::floor((x - origin.x) / 20.0)), static_cast<int>(std::floor((y - origin.y) / 20.0)), 43}; };
+    const grid::Cell her = cellOf(1125, -6261);
+    const recheck::Vec chris{1077, -6330, 0};
+    const grid::Cell door = cellOf(-211, -5821); // where the way to the wine cellar's door ended
+    const grid::Cell rack = cellOf(129, -6061);  // where the way to the wine rack ended
+    const auto passable = record.Passable(nullptr, false);
+    const auto flood = [&](const std::function<bool(grid::Cell, grid::Cell&)>& step)
+    {
+        auto f = std::make_unique<grid::Flood>(her, 200, 100000);
+        while (f->Step(64, step) == grid::Flood::State::Running)
+        {
+        }
+        return f;
+    };
+    // The ground itself, the characters left out, carries her to both.
+    const auto plain = flood(passable);
+    REQUIRE(plain->LevelsAt(door.x, door.y));
+    REQUIRE(plain->LevelsAt(rack.x, rack.y));
+    const auto clearances = ways::KeepClearances(42.0, 42.0);
+    REQUIRE(clearances.size() == 2);
+    CHECK(clearances[0] == doctest::Approx(42.0 + 42.0 + ways::kKeepClearMargin));
+    CHECK(clearances[1] == doctest::Approx(84.0));
+    // With the margin, the way round him stays in the corridor, as the walk found.
+    ways::KeepClear roomy{{chris}, clearances[0]};
+    const auto withMargin = flood([&](grid::Cell a, grid::Cell& b) { return roomy.StepClear(middle(a), middle(b)) && passable(a, b); });
+    CHECK_FALSE(withMargin->LevelsAt(door.x, door.y));
+    CHECK_FALSE(withMargin->LevelsAt(rack.x, rack.y));
+    CHECK(withMargin->Expanded() < 500); // the corridor alone, as the live search's 442
+    // Touching him, it passes between him and the corner, to the door and to the rack.
+    ways::KeepClear touching{{chris}, clearances[1]};
+    const auto past = flood([&](grid::Cell a, grid::Cell& b) { return touching.StepClear(middle(a), middle(b)) && passable(a, b); });
+    REQUIRE(past->LevelsAt(door.x, door.y));
+    REQUIRE(past->LevelsAt(rack.x, rack.y));
+    // Its narrowest: nearer him than the margin asks, never within his reach once out of it.
+    const auto way = past->PathTo(grid::Cell{door.x, door.y, past->LevelsAt(door.x, door.y)->front()});
+    REQUIRE_FALSE(way.empty());
+    double nearest = 1e9;
+    bool out = false;
+    for (const auto& c : way)
+    {
+        const double apart = std::hypot(middle(c).x - chris.x, middle(c).y - chris.y);
+        if (touching.Clear(middle(c))) out = true;
+        if (out)
+        {
+            CHECK(touching.Clear(middle(c)));
+            nearest = std::min(nearest, apart);
+        }
+    }
+    CHECK(out);
+    CHECK(nearest < clearances[0]);
+    CHECK(nearest >= clearances[1]);
+}
+
 namespace
 {
     // Whether a flood reaches the entrails' place in act6_4: the use location stands at (7290, -3651),

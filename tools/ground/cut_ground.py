@@ -45,8 +45,11 @@ for number, line in enumerate(open(path, encoding="utf-8"), 1):
         floors.setdefault((x, y, int(math.floor(floor / anchor[4]))), floor)
     elif p[0] == "S":
         ax, ay, al, bx, by = map(int, p[1:6])
+        # The step's last answer stands: one found free and asked again refused is refused.
         if p[6] != "X":
             steps[(ax, ay, al, bx, by)] = int(p[6])
+        else:
+            steps.pop((ax, ay, al, bx, by), None)
 
 ox, oy, cell = anchor[0], anchor[1], anchor[3]
 

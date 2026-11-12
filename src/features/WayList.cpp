@@ -432,6 +432,11 @@ namespace da::ways
         return !thing.behind && !thing.offPath && !thing.unreachable && !thing.superseded && !thing.onRoad && !thing.apart;
     }
 
+    std::vector<double> KeepClearances(double hers, double his)
+    {
+        return {hers + his + kKeepClearMargin, hers + his};
+    }
+
     bool KeepClear::Clear(const Vec& at) const
     {
         return std::none_of(standing.begin(), standing.end(), [&](const Vec& o) { return std::hypot(at.x - o.x, at.y - o.y) < clearance; });

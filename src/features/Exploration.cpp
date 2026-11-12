@@ -6774,12 +6774,13 @@ namespace da::features
         double g_lastWalkEndedAt = -10.0;
 
         // A way round the character standing in the walk's way, felt out over the ground kept clear
-        // of him (ways::KeepClear) once per walk; the walk follows it, or, there being none, ends
-        // naming him.
+        // of him (ways::KeepClear) once per walk, by each of the clearances in turn
+        // (ways::KeepClearances); the walk follows it, or, there being none, ends naming him.
         struct Detour
         {
             UObject* forActor = nullptr;
             ways::KeepClear keep;
+            std::vector<double> clearances; // still to try, the one kept now first
             std::wstring around;
             std::wstring aroundName; // the game's name for who it goes round, none for a creature
             std::unique_ptr<grid::Search> search;
@@ -7366,6 +7367,8 @@ namespace da::features
             sounds::Play(sounds::Cue::Confirm);
         }
 
+        void StartDetourSearch(UObject* pawn, const Target& t);
+
         // A way round the character standing in the walk's way: the walk's goal, felt out over the
         // ground with the stretch about him kept clear.
         void BeginDetour(UObject* pawn, const Target& t, double now)
@@ -7376,11 +7379,20 @@ namespace da::features
             g_detour.around = g_walkBlocker;
             g_detour.aroundName = g_walkBlockerName;
             g_detour.startedAt = now;
+            const double his = obj::IsLive(g_walkBlockerActor) ? WalkingRadius(g_walkBlockerActor) : g_grid.radius;
+            g_detour.clearances = ways::KeepClearances(g_grid.radius, his);
+            g_detour.keep = ways::KeepClear{{g_walkBlockerAt}, g_detour.clearances.front()};
+            log::Info(L"explore: the walk to \"{}\" looks for a way round {}, who stands in it at ({:.0f}, {:.0f}), kept {:.0f} cm clear of", t.label,
+                      g_walkBlocker, g_walkBlockerAt.x, g_walkBlockerAt.y, g_detour.keep.clearance);
+            StartDetourSearch(pawn, t);
+        }
+
+        // Begins the search for the way round with the clearance kept now.
+        void StartDetourSearch(UObject* pawn, const Target& t)
+        {
             Vec middle;
             double halfHeight = 88.0;
             if (!CapsuleSpan(pawn, middle, halfHeight)) return;
-            const double his = obj::IsLive(g_walkBlockerActor) ? WalkingRadius(g_walkBlockerActor) : g_grid.radius;
-            g_detour.keep = ways::KeepClear{{g_walkBlockerAt}, g_grid.radius + his + ways::kKeepClearMargin};
             const grid::Cell start = CellOf(middle, middle.z - halfHeight);
             grid::Cell goal;
             double goalRadius = 1.5;
@@ -7397,8 +7409,6 @@ namespace da::features
             g_detour.search = std::make_unique<grid::Search>(start, goal, goalRadius, goalLevels, radiusCells, kGridExpansions, kLevelSize / kCellSize, fits);
             g_detour.search->SetLinks(&PassageLinksOf);
             g_detour.origin = g_grid.origin;
-            log::Info(L"explore: the walk to \"{}\" looks for a way round {}, who stands in it at ({:.0f}, {:.0f}), kept {:.0f} cm clear of", t.label,
-                      g_walkBlocker, g_walkBlockerAt.x, g_walkBlockerAt.y, g_detour.keep.clearance);
         }
 
         // Steps the way round on; true while it is being felt out (the walk stands meanwhile).
@@ -7428,9 +7438,20 @@ namespace da::features
                 if (state == grid::Search::State::Running) return true;
                 if (state == grid::Search::State::Failed)
                 {
-                    log::Info(L"explore: no way round {} to \"{}\": {} cells opened with the ground about him kept clear", g_detour.around, t.label,
-                              g_detour.search->Expanded());
+                    log::Info(L"explore: no way round {} to \"{}\": {} cells opened with the ground about him kept {:.0f} cm clear", g_detour.around,
+                              t.label, g_detour.search->Expanded(), g_detour.keep.clearance);
                     g_detour.search.reset();
+                    // Nearer him, by the next clearance (ways::KeepClearances): touching is as near as the
+                    // game's movement lets her pass him.
+                    g_detour.clearances.erase(g_detour.clearances.begin());
+                    if (!g_detour.clearances.empty())
+                    {
+                        g_detour.keep.clearance = g_detour.clearances.front();
+                        log::Info(L"explore: the walk to \"{}\" looks for a way round {} kept {:.0f} cm clear of him", t.label, g_detour.around,
+                                  g_detour.keep.clearance);
+                        StartDetourSearch(pawn, t);
+                        if (g_detour.search) return true;
+                    }
                     // The walk got nowhere and no way passes him: it ends now, naming him.
                     g_detour.failed = true;
                     return false;

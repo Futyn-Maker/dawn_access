@@ -596,6 +596,16 @@ namespace da::ways
     };
     constexpr double kKeepClearMargin = 10.0; // cm past touching
 
+    // The clearances a way round a standing character keeps, tried in turn: a margin past touching
+    // first, so that the walk does not brush him where the ground leaves room; then touching alone,
+    // which the game's movement slides past. In the cellar on 2026-11-12 Chris, forced to idle after
+    // the picture fell (Scene01_poltergeist_ai 7), stood 14 cm nearer the corridor's corner than in
+    // s58, and the cellar left 112 cm between him and the wall for her 84: the way past him ran 92.6 cm
+    // from him at its narrowest, the margin asked 94, and every walk to the wine cellar's door and the
+    // wine rack ended "Крис мешает пройти" for seven minutes (research/sessions/s72-play.log, 11:56:55
+    // to 12:03:15; fixture ground-cellar-chris-mouth.tsv). `hers` and `his`: the capsules' radii.
+    std::vector<double> KeepClearances(double hers, double his);
+
     // Whether a walk whose target left the list ended in arriving: a way on's volume she stands in
     // (`wayVolume` and `inside`), which the scene it set going took off the list in the same look,
     // is reached and said so; a use location, or a volume she is not in, has gone. In the lodge's
