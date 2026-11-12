@@ -6864,15 +6864,7 @@ namespace da::features
         // A character's name as the game's subtitles give it (the speaker names' string table).
         std::wstring CharacterDisplayName(const std::wstring& name)
         {
-            static const std::pair<const wchar_t*, const wchar_t*> keys[] = {
-                {L"Mike", L"SMG013_65675"},  {L"Jessica", L"SMG013_65676"}, {L"Sam", L"SMG013_65677"},    {L"Chris", L"SMG013_65678"},
-                {L"Ashley", L"SMG013_65679"}, {L"Emily", L"SMG013_65680"},  {L"Matt", L"SMG013_65681"},   {L"Josh", L"SMG013_65682"},
-                {L"Hannah", L"SMG013_65684"}, {L"Beth", L"SMG013_65685"}};
-            for (const auto& [english, key] : keys)
-            {
-                if (str::EqualsNoCase(name, english)) return gametext::ResolveWithFallback(key, name);
-            }
-            return name;
+            return gametext::CharacterName(name);
         }
 
         // The walk could not get there: with someone standing in its way, said so.

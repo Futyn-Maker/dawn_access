@@ -2,6 +2,7 @@
 
 #include "core/Strings.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cwctype>
 
@@ -43,11 +44,12 @@ namespace da::picture
             std::wstring_view className; // its class, lower case, where its class is its own
             Moment moment;
             std::wstring_view state;
+            bool afterHud = false; // shown with words of the HUD's own, said after them (LookPlan::afterHud)
         };
 
         // The interactions whose pictures the mod describes, and when; the moments are the game's own
         // states, as the logs of chapters 5 and 6 show them.
-        constexpr std::array<Planned, 28> kPlans = {
+        constexpr std::array<Planned, 50> kPlans = {
             // Dr. Hill's card is picked up face down and turned over with the stick (act20_1,
             // BP_PsychSession_PickUp, which no other level places: its examine stage reveals). It has no
             // core name; its activity starts it as I_psychsession_1_Interaction.
@@ -123,6 +125,37 @@ namespace da::picture
             Planned{L"a_telescope", L"", Moment::Begins, L""},
             Planned{L"i_telescope.act2_2", L"/game/gameplay/gameobjects/interactions/act2_2/telescope/bp_telescope", Moment::Begins, L""},
             Planned{L"i_telescope.act2_3", L"/game/gameplay/gameobjects/interactions/act2_3/telescope/bp_telescope", Moment::Begins, L""},
+            // The silent things of chapter 6, found in session 72 and the first playthrough's s57 to s58
+            // (research by the levels' placements, the interactions' own cameras and the props' decoded
+            // meshes, textures and animations). The tower's death whistle turned to its face, the locker's
+            // poster of Hannah after its transcript (act5_2); in the lodge (act5_3) the smashed vase, Sam's
+            // bracelet wherever it lies (one class), the cellar's painting before it falls, the dollhouse
+            // looked into at its first use and opened with the key at its second, its keyhole, the key
+            // behind the painting, the wine rack and the wine cellar's door, the hidden camera, the doll's
+            // head turned to its face and the cockroaches it lets out, Sam under the sack; the old hotel's clues that show only a card,
+            // said in the game's own clue words after the card; the beach photo Ashley picks up.
+            Planned{L"i_death_whistle", L"bp_death_whistle_c", Moment::Reveals, L""},
+            Planned{L"i_view_hannah_poster_part2", L"bp_view_hannah_poster_part2_c", Moment::State, L"ExaminePosterIdleLoop2", true},
+            Planned{L"i_smashed_vase", L"bp_smashed_vase_v2_c", Moment::State, L"ik_idle"},
+            Planned{L"i_sams_bracelet", L"bp_bracelet_c", Moment::State, L"ik_idle"},
+            Planned{L"i_picture_lookat", L"bp_picture_lookat_c", Moment::State, L"examine_idle"},
+            Planned{L"i_dollhouse_complete", L"bp_doll_house_open_c", Moment::State, L"LookinSequence"},
+            Planned{L"i_dollhouse_complete.open", L"bp_doll_house_open_c", Moment::State, L"Reach_to_open_front|Open_Front"},
+            Planned{L"i_doll_house_lookat_keyhole", L"bp_doll_house_lookat_keyhole_c", Moment::State, L"examine_idle"},
+            Planned{L"i_doll_house_key", L"bp_doll_house_key_c", Moment::State, L"ik_animation"},
+            Planned{L"i_wine_rack", L"bp_wine_rack_c", Moment::State, L"examine_idle"},
+            Planned{L"i_wine_cellar_door", L"bp_wine_cellar_door_lookat_c", Moment::State, L"examine_idle"},
+            Planned{L"i_secret_camera", L"bp_secret_camera_c", Moment::State, L"camera_ik_idle"},
+            Planned{L"i_doll_head", L"bp_dolls_head_c", Moment::Reveals, L""},
+            Planned{L"i_doll_head.roaches", L"bp_dolls_head_c", Moment::State, L"cockroach_panic"},
+            Planned{L"i_sams_sack", L"bp_samsack_c", Moment::State, L"EndPose"},
+            Planned{L"i_dead_pig_lookat", L"bp_pigs_lookat_c", Moment::State, L"examine_idle", true},
+            Planned{L"i_chains_and_knives_lookat_first", L"bp_knives_lookat_first_c", Moment::State, L"examine_idle", true},
+            Planned{L"i_chains_and_knives_lookat", L"bp_knives_lookat_c", Moment::State, L"examine_idle", true},
+            Planned{L"i_batteries_and_timers", L"bp_batteries_and_timers_c", Moment::State, L"examine_idle", true},
+            Planned{L"i_photos_of_friends_lookat_first", L"bp_photos_lookat_first_c", Moment::State, L"examine_idle", true},
+            Planned{L"i_photos_of_friends_lookat", L"bp_photos_lookat_c", Moment::State, L"examine_idle", true},
+            Planned{L"i_hannah_and_beth_beach_photo_female", L"bp_hannah_and_beth_beach_photo_female_c", Moment::State, L"ik_animation"},
         };
     }
 
@@ -278,10 +311,36 @@ namespace da::picture
             const std::wstring lower = str::ToLower(name);
             for (const auto& p : kPlans)
             {
-                if (p.key == lower || (!p.className.empty() && p.className == lower)) return LookPlan{p.moment, std::wstring(p.state), std::wstring(p.key)};
+                if (p.key == lower || (!p.className.empty() && p.className == lower)) return LookPlan{p.moment, std::wstring(p.state), std::wstring(p.key), p.afterHud};
             }
         }
         return std::nullopt;
+    }
+
+    std::vector<LookPlan> PlansFor(const std::vector<std::wstring>& names)
+    {
+        std::vector<LookPlan> plans;
+        for (const auto& p : kPlans)
+        {
+            const bool named = std::any_of(names.begin(), names.end(),
+                                           [&](const std::wstring& name)
+                                           {
+                                               if (name.empty()) return false;
+                                               const std::wstring lower = str::ToLower(name);
+                                               return p.key == lower || (!p.className.empty() && p.className == lower);
+                                           });
+            if (named) plans.push_back(LookPlan{p.moment, std::wstring(p.state), std::wstring(p.key), p.afterHud});
+        }
+        return plans;
+    }
+
+    int CrossedOut(const std::array<bool, 8>& dislikes)
+    {
+        for (size_t i = 0; i < dislikes.size(); ++i)
+        {
+            if (dislikes[i]) return static_cast<int>(i);
+        }
+        return -1;
     }
 
     std::wstring LookKey(std::wstring_view planKey)
@@ -347,14 +406,15 @@ namespace da::picture
         m_indexAt = 0.0;
     }
 
-    void Due::Set(double now, bool awaitPrompt)
+    void Due::Set(double now, bool awaitPrompt, bool afterHud)
     {
         m_pending = true;
         m_awaitPrompt = awaitPrompt;
+        m_afterHud = afterHud;
         m_at = now;
     }
 
-    bool Due::Ready(double now, double promptAt, bool keyHeld)
+    bool Due::Ready(double now, double promptAt, bool keyHeld, double hudSaidAt)
     {
         if (!m_pending) return false;
         if (m_awaitPrompt)
@@ -362,6 +422,7 @@ namespace da::picture
             const bool prompted = promptAt >= m_at && now - promptAt >= kPromptSettle;
             if (!prompted && now - m_at < kLookPromptWaitMost) return false;
         }
+        if (m_afterHud && hudSaidAt < m_at && now - m_at < kHudWaitMost) return false;
         if (WaitsForKey(now, keyHeld)) return false;
         m_pending = false;
         return true;
@@ -376,6 +437,7 @@ namespace da::picture
     {
         m_pending = false;
         m_awaitPrompt = false;
+        m_afterHud = false;
         m_at = 0.0;
     }
 }

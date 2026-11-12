@@ -6,6 +6,7 @@
 // its own is never described here (the game reads them out itself, translated, or they are left as
 // the game prints them).
 
+#include <array>
 #include <optional>
 #include <set>
 #include <string>
@@ -197,6 +198,8 @@ namespace da::picture
         Moment moment = Moment::Begins;
         std::wstring state; // the anim graph's state, for Moment::State
         std::wstring key;   // the name its description is kept under (LookKey, PageKey)
+        // Shown with words of the HUD's own (a clue's card, a document's page): said after them (Due).
+        bool afterHud = false;
     };
     // The plan for an interaction by any of the names the game gives it, or nothing when the mod
     // describes nothing there: its core name, its name in the level's actor database (the one its scene
@@ -205,6 +208,21 @@ namespace da::picture
     // had been keyed by, so neither was ever described (research/sessions/s67-play.log, 19:16:29); the
     // activity starts the card as "I_psychsession_1_Interaction" (act20_1's InteractionWithIdle stage).
     std::optional<LookPlan> PlanFor(const std::vector<std::wstring>& names);
+    // Every plan for an interaction by any of its names, in the table's order: an interaction may show
+    // one picture at one state and another at another, each said once a use. The lodge cellar's
+    // dollhouse (act5_3, BP_Doll_house_open) is looked into through its windows at its first use
+    // (LookinSequence), and opened with the key at its second (Open_Front).
+    std::vector<LookPlan> PlansFor(const std::vector<std::wstring>& names);
+
+    // The friend whose photo the psycho's board shows crossed out (act5_3, Scene02_kitchencorridorexplore
+    // state 8): the first of the eight whose callforward PsychDislike<name> is set, in the script's order
+    // (kDislikeOrder: Ash, Chris, Jessica, Emily, Josh, Matt, Mike, Sam), from Dr. Hill's sessions; -1
+    // when none is read set (the script then falls to Ashley's, which the mod does not claim on a
+    // reading it cannot tell from a missing one). In Andrey's second playthrough Emily's
+    // (CallforwardPsychDislikeEmily, s72's saves).
+    constexpr std::array<const wchar_t*, 8> kDislikeOrder = {L"Ash", L"Chris", L"Jessica", L"Emily", L"Josh", L"Matt", L"Mike", L"Sam"};
+    constexpr std::array<const wchar_t*, 8> kDislikeNames = {L"Ashley", L"Chris", L"Jessica", L"Emily", L"Josh", L"Matt", L"Mike", L"Sam"};
+    int CrossedOut(const std::array<bool, 8>& dislikes);
     // The description's key for an interaction's plan ("look.i_psychsession_1_interaction").
     std::wstring LookKey(std::wstring_view planKey);
 
@@ -258,14 +276,22 @@ namespace da::picture
     // to .452). The key is waited for at most kKeyWaitMost: a key held on longer is not let go for it.
     constexpr double kLookPromptWaitMost = 1.0;
     constexpr double kKeyWaitMost = 4.0;
+    // A picture shown with words of the HUD's own (LookPlan::afterHud) waits for them, at most kHudWaitMost:
+    // a clue's card came 1.2 s into the look at the old hotel's dead pig, its picture before it by the
+    // prompt's rule (research/sessions/s58-whole.log, 11:44:24.879 to 26.076), and the locker's poster
+    // of Hannah has its transcript read 1.4 s after the look stands (s72, 11:29:14.43 to 15.79); the
+    // words first, then the picture, as Andrey asked of Hannah's pinboard (s71).
+    constexpr double kHudWaitMost = 3.0;
     class Due
     {
     public:
-        // The moment has come at `now`; `awaitPrompt`: a prompt may come with it.
-        void Set(double now, bool awaitPrompt);
+        // The moment has come at `now`; `awaitPrompt`: a prompt may come with it; `afterHud`: words of
+        // the HUD's own come with it, said first.
+        void Set(double now, bool awaitPrompt, bool afterHud = false);
         // Whether the words are to be said at this poll: once. `promptAt` when the game's prompt was
-        // last said (-1 never), `keyHeld` the player's key still down.
-        bool Ready(double now, double promptAt, bool keyHeld);
+        // last said (-1 never), `keyHeld` the player's key still down, `hudSaidAt` when the HUD last
+        // said words of its own (-1 never).
+        bool Ready(double now, double promptAt, bool keyHeld, double hudSaidAt = -1.0);
         bool Pending() const
         {
             return m_pending;
@@ -282,6 +308,7 @@ namespace da::picture
     private:
         bool m_pending = false;
         bool m_awaitPrompt = false;
+        bool m_afterHud = false;
         double m_at = 0.0;
     };
 }

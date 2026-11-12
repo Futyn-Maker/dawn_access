@@ -22,6 +22,10 @@ namespace da::gametext
     // Resolves a key, falling back to a non-localized string when the key is empty or unknown.
     std::wstring ResolveWithFallback(std::wstring_view key, std::wstring_view fallback);
 
+    // A character's name as the game's subtitles give it (the speaker names' string table), by the
+    // English name; the English name itself for one the table has not.
+    std::wstring CharacterName(std::wstring_view english);
+
     // Drops cached resolutions (when the language changes).
     void ClearCache();
 }

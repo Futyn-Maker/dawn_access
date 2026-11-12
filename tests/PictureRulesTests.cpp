@@ -170,6 +170,81 @@ TEST_CASE("pictures: a photo is known by its texture, a thing in the hand by any
     CHECK_FALSE(picture::PlanFor(Names{}).has_value());
 }
 
+TEST_CASE("pictures: an interaction shows a picture at each of its states that has one: chapter 6's dollhouse and doll's head, 2026-11-12")
+{
+    using Names = std::vector<std::wstring>;
+    // The lodge cellar's dollhouse (research/sessions/s72-play.log 11:51:17, s58-whole.log 11:18:56): looked
+    // into through its windows at its first use, opened with the key at its second.
+    const auto house = picture::PlansFor(Names{L"I_dollhouse_complete", L"I_dollhouse_complete", L"BP_Doll_house_open_C"});
+    REQUIRE(house.size() == 2);
+    CHECK(house[0].key == L"i_dollhouse_complete");
+    CHECK(house[0].state == L"LookinSequence");
+    CHECK(house[1].key == L"i_dollhouse_complete.open");
+    CHECK(house[1].state == L"Reach_to_open_front|Open_Front");
+    // Its first plan stands for it where one is asked for.
+    CHECK(picture::PlanFor(Names{L"I_dollhouse_complete", L"I_dollhouse_complete", L"BP_Doll_house_open_C"})->key == L"i_dollhouse_complete");
+    // The doll's head: its face as it is turned to it, the cockroaches as they burst out after.
+    const auto head = picture::PlansFor(Names{L"I_doll_head", L"I_doll_head", L"BP_Dolls_head_C"});
+    REQUIRE(head.size() == 2);
+    CHECK(head[0].moment == picture::Moment::Reveals);
+    CHECK(head[1].state == L"cockroach_panic");
+    // Sam's bracelet by its class wherever it lies; the hidden camera and the sack, whose core names
+    // the level leaves empty, by theirs.
+    CHECK(picture::PlansFor(Names{L"I_SamsBracelet_Cinema", L"I_SamsBracelet_Cinema", L"BP_Bracelet_C"}).front().key == L"i_sams_bracelet");
+    CHECK(picture::PlansFor(Names{L"", L"I_secret_camera", L"BP_Secret_camera_C"}).front().state == L"camera_ik_idle");
+    CHECK(picture::PlansFor(Names{L"", L"", L"BP_Samsack_C"}).front().state == L"EndPose");
+    // The old hotel's clues and the locker's poster are said after the HUD's own words (the card, the
+    // transcript); the dollhouse after nothing of the HUD's.
+    CHECK(picture::PlansFor(Names{L"I_dead_pig_lookat", L"I_dead_pig_lookat", L"BP_Pigs_lookat_C"}).front().afterHud);
+    CHECK(picture::PlansFor(Names{L"I_view_hannah_poster_part2", L"I_view_hannah_poster_part2", L"BP_View_hannah_poster_part2_C"}).front().afterHud);
+    CHECK_FALSE(house[0].afterHud);
+    // One plan, as before.
+    CHECK(picture::PlansFor(Names{L"I_map", L"", L"BP_Map_C"}).size() == 1);
+    CHECK(picture::PlansFor(Names{L"I_carved_graffiti", L"", L"BP_Examine_wall_item_left_C"}).empty());
+}
+
+TEST_CASE("pictures: a picture shown with the HUD's own words is said after them, at most kHudWaitMost on: the dead pig's card, 2026-11-12")
+{
+    // research/sessions/s58-whole.log: the dead pig's look stood at 11:44:24.879, its prompt "Назад:
+    // круг" was said at 25.569 and the clue's card at 26.076.
+    const double look = 1000.0;
+    const double prompt = look + 0.69;
+    const double card = look + 1.20;
+    picture::Due due;
+    due.Set(look, true, true);
+    // The prompt said and settled, the card not yet: the picture waits.
+    CHECK_FALSE(due.Ready(prompt + 0.3, prompt, false, look - 30.0));
+    // The card said: the picture follows.
+    CHECK(due.Ready(card + 0.05, prompt, false, card));
+    // No words of the HUD's at all: said kHudWaitMost on.
+    picture::Due late;
+    late.Set(look, true, true);
+    CHECK_FALSE(late.Ready(look + picture::kHudWaitMost - 0.1, prompt, false, -1.0));
+    CHECK(late.Ready(look + picture::kHudWaitMost, prompt, false, -1.0));
+    // A picture with no words of the HUD's waits for none.
+    picture::Due plain;
+    plain.Set(look, true);
+    CHECK(plain.Ready(prompt + 0.3, prompt, false, -1.0));
+}
+
+TEST_CASE("pictures: the psycho's board crosses out the first friend the callforwards name, in the script's order")
+{
+    // act5_3's Scene02_kitchencorridorexplore state 8: PsychDislike Ash, Chris, Jessica, Emily, Josh, Matt,
+    // Mike, Sam, the first set taken. Andrey's second playthrough has Emily's set (s72's saves).
+    std::array<bool, 8> dislikes{};
+    CHECK(picture::CrossedOut(dislikes) == -1);
+    dislikes[3] = true;
+    CHECK(picture::CrossedOut(dislikes) == 3);
+    CHECK(std::wstring(picture::kDislikeNames[3]) == L"Emily");
+    CHECK(std::wstring(picture::kDislikeOrder[3]) == L"Emily");
+    dislikes[6] = true;
+    CHECK(picture::CrossedOut(dislikes) == 3);
+    dislikes[0] = true;
+    CHECK(picture::CrossedOut(dislikes) == 0);
+    CHECK(std::wstring(picture::kDislikeOrder[0]) == L"Ash");
+    CHECK(std::wstring(picture::kDislikeNames[0]) == L"Ashley");
+}
+
 TEST_CASE("pictures: Sam's sketchbook says each spread as its graph comes to it, nothing while a page turns")
 {
     CHECK(picture::PageKey(L"I_sams_sketchbook", 2) == L"look.i_sams_sketchbook.2");

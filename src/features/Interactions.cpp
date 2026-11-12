@@ -31,6 +31,7 @@
 #include <Unreal/FWeakObjectPtr.hpp>
 #include <Unreal/NameTypes.hpp>
 
+#include <array>
 #include <cmath>
 #include <cstring>
 #include <format>
@@ -77,8 +78,9 @@ namespace da::features
         // the prologue's camera, each photo as the camera is raised and as its page turns, by the
         // texture it shows.
 
-        std::optional<picture::LookPlan> g_look; // the plan for the interaction in use, if any
-        bool g_lookSaid = false;                 // its moment has come
+        std::optional<picture::LookPlan> g_look; // the plan for the interaction in use, if any (its first)
+        std::vector<picture::LookPlan> g_looks;  // every plan for it: pictures at states of its own (picture::PlansFor)
+        std::set<std::wstring> g_looksSaid;      // the plans whose moment has come this use
         std::wstring g_lookWords;                // the words of the picture shown now, for the screen's readout
         std::wstring g_lookSpoken;               // the words last given to speech, which a spread turned cuts short
         int g_lookPage = 0;                      // the spread shown last, for a book read spread by spread
@@ -97,7 +99,8 @@ namespace da::features
         // still wait as the interaction ends is not described.
         void PlanLook(UObject* bound)
         {
-            g_lookSaid = false;
+            g_looksSaid.clear();
+            g_looks.clear();
             g_lookWords.clear();
             g_lookSpoken.clear();
             g_lookPage = 0;
@@ -112,32 +115,60 @@ namespace da::features
             UObject* package = bound->GetClassPrivate() ? bound->GetClassPrivate()->GetOuterPrivate() : nullptr;
             const std::vector<std::wstring> names = {level::CoreName(bound), level::FriendlyName(bound), obj::ClassName(bound),
                                                      package ? obj::ObjectName(package) : std::wstring()};
-            g_look = picture::PlanFor(names);
+            g_looks = picture::PlansFor(names);
+            if (!g_looks.empty()) g_look = g_looks.front();
             log::Info(L"interactions: {} goes by core name \"{}\", the level's name \"{}\"; {}", obj::ObjectName(bound), names[0], names[1],
                       g_look ? L"its picture is described as \"" + g_look->key + L"\"" : std::wstring(L"no picture of it is described"));
         }
 
         // A picture's words, due now, said once the game's prompt and the player's key let them
         // (picture::Due).
-        void DueLook(const std::wstring& words, const std::wstring& name, bool awaitPrompt)
+        void DueLook(const std::wstring& words, const std::wstring& name, bool awaitPrompt, bool afterHud = false)
         {
-            g_lookDue.Set(gamethread::NowSeconds(), awaitPrompt);
+            g_lookDue.Set(gamethread::NowSeconds(), awaitPrompt, afterHud);
             g_lookDueWords = words;
             g_lookDueName = name;
             g_lookKeyLogged = false;
         }
 
-        void SayLook(const wchar_t* why)
+        bool GlobalBool(const wchar_t* name, bool& out);
+
+        // The friend the psycho's board shows crossed out (picture::CrossedOut), by the game's callforwards,
+        // in the player's language: empty when none is read set.
+        std::wstring CrossedOutFriend()
         {
-            if (!g_look || g_lookSaid) return;
-            g_lookSaid = true;
-            const auto key = picture::LookKey(g_look->key);
+            std::array<bool, 8> dislikes{};
+            std::wstring read;
+            for (size_t i = 0; i < picture::kDislikeOrder.size(); ++i)
+            {
+                bool set = false;
+                const std::wstring name = std::wstring(L"CallforwardPsychDislike") + picture::kDislikeOrder[i];
+                const bool got = GlobalBool(name.c_str(), set);
+                dislikes[i] = got && set;
+                read += std::format(L"{}{} {}", read.empty() ? L"" : L", ", picture::kDislikeOrder[i], got ? (set ? L"set" : L"not set") : L"unread");
+            }
+            const int crossed = picture::CrossedOut(dislikes);
+            log::Info(L"interactions: the psycho's board by the callforwards PsychDislike: {}; crossed out: {}", read,
+                      crossed < 0 ? std::wstring(L"none read") : std::wstring(picture::kDislikeNames[crossed]));
+            return crossed < 0 ? std::wstring() : gametext::CharacterName(picture::kDislikeNames[crossed]);
+        }
+
+        void SayLook(const picture::LookPlan& plan, const wchar_t* why)
+        {
+            if (!g_looksSaid.insert(plan.key).second) return;
+            const auto key = picture::LookKey(plan.key);
             const bool described = locale::Has(key);
-            log::Info(L"interactions: the picture of {} is shown ({}); {}", g_look->key, why,
+            log::Info(L"interactions: the picture of {} is shown ({}); {}", plan.key, why,
                       described ? L"its words wait for the game's prompt and the player's key" : L"no words for it");
             if (!described) return;
             g_lookWords = Words(key);
-            DueLook(g_lookWords, g_look->key, true);
+            // The board of the friends' photos shows one of them crossed out, by the player's answers to
+            // Dr. Hill (act5_3): named after the game's own words for the board.
+            if (plan.key.starts_with(L"i_photos_of_friends_lookat"))
+            {
+                if (const auto name = CrossedOutFriend(); !name.empty()) g_lookWords += L" " + locale::Mod(L"look.crossedout", name);
+            }
+            DueLook(g_lookWords, plan.key, true, plan.afterHud);
         }
 
         void PollLookDue(double now)
@@ -145,7 +176,7 @@ namespace da::features
             if (!g_lookDue.Pending()) return;
             const bool keyHeld = keyhook::KeyRepeating();
             const double promptAt = LastPromptSaidAt();
-            if (!g_lookDue.Ready(now, promptAt, keyHeld))
+            if (!g_lookDue.Ready(now, promptAt, keyHeld, hud::LastSaidAt()))
             {
                 if (g_lookDue.WaitsForKey(now, keyHeld) && !g_lookKeyLogged)
                 {
@@ -941,8 +972,11 @@ namespace da::features
                 g_statesSince = now;
                 g_promptRepeated = false;
                 log::Verbose(L"interactions: {} stands in {}", obj::ObjectName(interaction), joined.empty() ? L"no state" : joined);
-                if (g_look && g_look->moment == picture::Moment::State && std::find(states.begin(), states.end(), g_look->state) != states.end())
-                    SayLook(L"its item comes to the state that shows it");
+                for (const auto& plan : g_looks)
+                {
+                    if (plan.moment == picture::Moment::State && std::find(states.begin(), states.end(), plan.state) != states.end())
+                        SayLook(plan, L"its item comes to the state that shows it");
+                }
                 SayPage(states);
                 // A framed shot judged by the game: its verdict as every outcome sounds, the word at the
                 // detailed level (Andrey, s71).
@@ -1125,7 +1159,7 @@ namespace da::features
                 s.graphReadsReveal = g_turnGraph == 1;
             }
             // A picture turned to its face is described then, whether or not its turn is led.
-            if (stage && s.revealing && g_look && g_look->moment == picture::Moment::Reveals) SayLook(L"it is turned to its face");
+            if (stage && s.revealing && g_look && g_look->moment == picture::Moment::Reveals) SayLook(*g_look, L"it is turned to its face");
             switch (g_turnCourse.Update(s))
             {
             case nudge::TurnCourse::Event::Begins:
@@ -1392,7 +1426,7 @@ namespace da::features
                     g_sidesSaid = false;
                     if (bound) log::Info(L"interactions: the character uses {} ({})", obj::ObjectName(bound), obj::ClassName(bound));
                     PlanLook(bound);
-                    if (g_look && g_look->moment == picture::Moment::Begins) SayLook(L"its interaction begins");
+                    if (g_look && g_look->moment == picture::Moment::Begins) SayLook(*g_look, L"its interaction begins");
                     if (bound && obj::IsA(bound, L"BatesInteractionComplex") && !obj::IsA(bound, L"BatesInteractionComplexCameraNudge"))
                         FindExamineStages(bound);
                     // The interaction ending as its stage's clock ran out out of a waiting state ran out.
