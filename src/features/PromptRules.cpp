@@ -243,18 +243,20 @@ namespace da::prompt
         return say;
     }
 
+    bool PromptedSince(double promptAt, double stageAt)
+    {
+        return promptAt >= stageAt - kStageNoticeSlack;
+    }
+
     WayOn WayOnNow(double since, bool prompted, const std::wstring& lastActions, const std::wstring& main, const std::wstring& forward, bool stepPrompts,
                    const std::wstring& back)
     {
         if (prompted && !forward.empty() && lastActions == forward) return WayOn::Skip;
         if (prompted && !back.empty() && lastActions == back) return WayOn::Skip;
         if (since < kWayOnAfter) return WayOn::Wait;
-        if (stepPrompts)
-        {
-            if (prompted && lastActions != main) return WayOn::Say; // a step's own prompt, not the way on alone
-            return since < kStepPromptWait ? WayOn::Wait : WayOn::Say;
-        }
-        if (!prompted && since < 2.0 * kWayOnAfter) return WayOn::Wait;
+        if (!prompted) return since < kPromptWait ? WayOn::Wait : WayOn::Say;
+        // A step's own prompt may follow the stage's: the way waits for it a while.
+        if (stepPrompts && lastActions == main && since < kStepPromptWait) return WayOn::Wait;
         return WayOn::Say;
     }
 

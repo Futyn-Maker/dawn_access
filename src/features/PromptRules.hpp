@@ -243,9 +243,21 @@ namespace da::prompt
     // start: the desk's way on was said 1 s in, and its first page named it 1.3 s later
     // (research/sessions/s63-play.log, 00:23:23.497 and 24.748). `since`: the seconds since the stage
     // began; `main`: the actions of the stage's own prompt. A step's own prompt that names the way
-    // back alone (`back`) stands at the stage's last step, where there is no way on to name.
+    // back alone (`back`) stands at the stage's last step, where there is no way on to name. Nothing
+    // drawn yet, the way waits for the game's prompt up to kPromptWait (Andrey, s72: "let the game
+    // speak first"): the radio tower's ladders drew theirs 3.0 to 3.2 s after the climb began, and on
+    // two of the three the way on was said 17 ms before it (research/sessions/s72-play.log, 11:25:52,
+    // 11:26:57 and 11:28:09).
     constexpr double kWayOnAfter = 1.0;      // the game's own prompt comes up first
     constexpr double kStepPromptWait = 3.0;  // a step's own prompt comes once the step stands idle
+    constexpr double kPromptWait = 6.0;      // the longest the way waits for the game's own prompt
+
+    // Whether the game's prompt drawn at `promptAt` came with the stage noticed at `stageAt`: the stage
+    // is looked at every sixth frame and the prompts every second, so a stage's own prompt can be read
+    // up to kStageNoticeSlack before its stage is noticed, and missed for the whole stage (the way on
+    // then waiting kPromptWait for nothing).
+    constexpr double kStageNoticeSlack = 0.25;
+    bool PromptedSince(double promptAt, double stageAt);
     enum class WayOn
     {
         Wait,

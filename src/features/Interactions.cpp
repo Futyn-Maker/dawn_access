@@ -897,7 +897,7 @@ namespace da::features
             // After the game's own words: the page and its card the HUD is still to say, then the
             // stage's prompt, and the step's own where the stage draws one; nothing where the game
             // names the way on itself (prompt::WayOnNow).
-            const bool prompted = LastInteractionPromptAt() >= g_linearSince;
+            const bool prompted = prompt::PromptedSince(LastInteractionPromptAt(), g_linearSince);
             const auto input = g_linearInput.find(current);
             const auto wayBack = g_linearBack.find(current);
             const auto when = prompt::WayOnNow(now - g_linearSince, prompted, prompted ? LastInteractionPromptActions() : std::wstring(),

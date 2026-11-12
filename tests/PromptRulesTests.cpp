@@ -716,7 +716,36 @@ TEST_CASE("a staged stage's way on waits for the step's own prompt, and is not s
     CHECK(prompt::WayOnNow(0.5, true, main, main, forward, false) == WayOn::Wait);
     CHECK(prompt::WayOnNow(1.04, true, main, main, forward, false) == WayOn::Say);
     CHECK(prompt::WayOnNow(1.5, false, L"", main, forward, false) == WayOn::Wait);
-    CHECK(prompt::WayOnNow(2.0, false, L"", main, forward, false) == WayOn::Say);
+    CHECK(prompt::WayOnNow(2.0, false, L"", main, forward, false) == WayOn::Wait);
+    // Nothing drawn by kPromptWait: said all the same.
+    CHECK(prompt::WayOnNow(prompt::kPromptWait, false, L"", main, forward, false) == WayOn::Say);
+    CHECK(prompt::WayOnNow(prompt::kPromptWait, false, L"", main, forward, true) == WayOn::Say);
+}
+
+TEST_CASE("a staged climb's way on waits for the game's own prompt: the radio tower's ladders, 2026-11-12")
+{
+    // research/sessions/s72-play.log: the ladders' stage (BP_Interaction_Stage_Linear_Staged on
+    // IA_InteractionMovement_UpDown, going on with IA_InteractionMovement_Up, drawing prompts at its
+    // steps) began as the ladder was taken; the game drew "левый стик вверх и вниз" 2.97 s in on the
+    // first, 3.13 and 3.20 s in on the second and third, and the way on was said at 3.11, 3.12 and
+    // 3.19 s: after the game's prompt once, before it twice.
+    using prompt::WayOn;
+    const std::wstring main = L"IA_InteractionMovement_UpDown";
+    const std::wstring forward = L"IA_InteractionMovement_Up";
+    const std::wstring back = L"IA_InteractionMovement_Down";
+    // The second ladder, 3.12 s in, nothing drawn yet: the way waits.
+    CHECK(prompt::WayOnNow(3.12, false, L"", main, forward, true, back) == WayOn::Wait);
+    // The game's prompt drawn at 3.13 s: the way follows it.
+    CHECK(prompt::WayOnNow(3.14, true, main, main, forward, true, back) == WayOn::Say);
+    // The first ladder, its prompt drawn at 2.97 s: the way waits for a step's own prompt to 3 s, then follows.
+    CHECK(prompt::WayOnNow(2.98, true, main, main, forward, true, back) == WayOn::Wait);
+    CHECK(prompt::WayOnNow(3.11, true, main, main, forward, true, back) == WayOn::Say);
+    // A prompt read a moment before the stage is noticed (the stage looked at every sixth frame) is the
+    // stage's; one read well before is another's.
+    CHECK(prompt::PromptedSince(100.0, 100.0));
+    CHECK(prompt::PromptedSince(99.9, 100.0));
+    CHECK(prompt::PromptedSince(101.0, 100.0));
+    CHECK_FALSE(prompt::PromptedSince(99.5, 100.0));
 }
 
 TEST_CASE("while a staged stage stands the bar says a line its action has new words for: the transcript's key toggled")
