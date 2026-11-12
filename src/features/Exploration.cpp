@@ -527,6 +527,8 @@ namespace da::features
             // When the ground felt out was found changed under her (features/GroundRecheck): a walk
             // stopped against what was free, or a prop the game moved.
             double groundChangedAt = -1000.0;
+            // ... by enough steps to tell a walk the world has changed (ways::GroundChangeTells).
+            double groundChangeToldAt = -1000.0;
             double refusalsForgottenAt = -1000.0;
             bool partial = false; // the cells being pulled straight end short of the goal
             // The cell the character stands in, and where in it she stands: it is swept from
@@ -4675,10 +4677,11 @@ namespace da::features
 
         // The ground felt out was found changed: what lies about it (`columns`, none where the stretch
         // was just asked again whole) is asked again, and a map begun since judges the list afresh.
-        void GroundChanged(const std::set<recheck::Column>& columns, const std::wstring& why, double now)
+        void GroundChanged(const std::set<recheck::Column>& columns, const std::wstring& why, size_t changedSteps, double now)
         {
             const size_t forgotten = ForgetColumns(columns);
             g_grid.groundChangedAt = now;
+            if (ways::GroundChangeTells(changedSteps)) g_grid.groundChangeToldAt = now;
             DropMap();
             log::Info(L"explore: the ground felt out has changed: {}; {}, and a new map judges the list afresh", why,
                       columns.empty() ? std::wstring(L"the stretch asked again stands for it")
@@ -4799,7 +4802,7 @@ namespace da::features
                     GroundChanged(recheck::ColumnsAround(changed, kRecheckAround),
                                   std::format(L"{} step(s) found free about the walk's stop at ({:.0f}, {:.0f}) are shut now", g_walkReask.reask.Shut(),
                                               g_walkReask.at.x, g_walkReask.at.y),
-                                  now);
+                                  g_walkReask.reask.Shut() + g_walkReask.reask.Opened(), now);
             }
         }
 
@@ -4817,7 +4820,7 @@ namespace da::features
                     GroundChanged({},
                                   std::format(L"the game moved {}; of the {} step(s) about it {} are shut now and {} open", g_propReask.what, r.Steps().size(),
                                               r.Shut(), r.Opened()),
-                                  now);
+                                  r.Shut() + r.Opened(), now);
             }
         }
 
@@ -6792,6 +6795,13 @@ namespace da::features
         };
         Detour g_detour;
 
+        // Whether the list's judgement keeps the target from a walk (ways::WalkLosesTarget): a thing to
+        // use another room's, a way on with no walk getting there.
+        bool ClosedOff(const Target& t)
+        {
+            return t.way ? t.unreachable : t.room == rooms::Verdict::Apart;
+        }
+
         void StopWalk(const wchar_t* what, bool askedFor)
         {
             if (!g_walking) return;
@@ -7530,6 +7540,10 @@ namespace da::features
                     g_autoChosen = false;
                     g_walkFor = thing->actor;
                     g_walkForLabel = thing->label;
+                    // Gone to its thing: the thing's verdict as the walk turns to it is the one a later
+                    // map is weighed against (ways::WalkLosesTarget), as at a retarget.
+                    g_walkForApart = ClosedOff(*thing);
+                    g_walkTargetSince = now;
                     target = thing;
                 }
             }
@@ -7558,7 +7572,7 @@ namespace da::features
             }
             // A map begun since the walk set off proves its thing closed off (ways::WalkLosesTarget): the
             // walk ends, and the thing, the player's choice no more, leaves the list as the others did.
-            if (ways::WalkLosesTarget(target->way, target->room == rooms::Verdict::Apart, g_walkForApart, g_worldChangedAt > g_walkTargetSince))
+            if (ways::WalkLosesTarget(ClosedOff(*target), g_walkForApart, ways::WorldChangedSince(g_worldChangedAt, g_grid.groundChangeToldAt, g_walkTargetSince)))
             {
                 log::Info(L"explore: the walk to \"{}\" ends: a map begun since it set off finds it closed off", g_walkForLabel);
                 if (g_selected == target->actor) g_selected = nullptr;
@@ -7876,7 +7890,7 @@ namespace da::features
             g_backOffActive = false;
             g_walkFor = target->actor;
             g_walkForLabel = target->label;
-            g_walkForApart = target->room == rooms::Verdict::Apart;
+            g_walkForApart = ClosedOff(*target);
             g_arriveSince = -1.0;
             g_levelSince = -1.0;
             StraightenChosen(*target, gamethread::NowSeconds());
@@ -9627,7 +9641,7 @@ namespace da::features
             {
                 g_walkFor = g_targets[candidate].actor;
                 g_walkForLabel = g_targets[candidate].label;
-                g_walkForApart = g_targets[candidate].room == rooms::Verdict::Apart;
+                g_walkForApart = ClosedOff(g_targets[candidate]);
                 g_walkTargetSince = gamethread::NowSeconds();
                 g_backedOff = false;
                 g_backOffActive = false;

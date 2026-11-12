@@ -518,12 +518,34 @@ namespace da::ways
     // 2026-11-11 ten levels streamed in as Matt walked to the danger totem, a new map found it and five
     // other things closed off behind a spline wall, and the walk pushed into that wall for twenty seconds
     // and said it could not get there; the list dropped them all a moment after (s71, 23:28:44 to 23:29:24).
-    // `isWay`: a way on, which the rooms do not judge. Only a map of a world changed since the walk set
-    // off (`worldChanged`: levels streamed in or out) has a new fact to tell; a map the walk begins itself
-    // (its last stretch's map from where she stands, the ground asked again where its pushes went
-    // nowhere) can find closed off a thing the game offers a step away: after its use, the morgue's
-    // death certificate was found closed off by every map (s71, 22:53 on).
-    bool WalkLosesTarget(bool isWay, bool closedOffNow, bool closedOffAtStart, bool worldChanged);
+    // `closedOffNow`: the thing's verdict now, another room's for a thing to use, no walk getting there for
+    // a way on. Only a map of a world changed since the walk set off (`worldChanged`, WorldChangedSince)
+    // has a new fact to tell; a map the walk begins itself (its last stretch's map from where she stands,
+    // the ground asked again where its pushes went nowhere and found as it was) can find closed off a
+    // thing the game offers a step away: after its use, the morgue's death certificate was found closed
+    // off by every map (s71, 22:53 on). A way on is judged so too: in the lodge on 2026-11-12 the cinema
+    // airlock's door sprang shut behind Ashley as she walked to the way on into the kitchen, the new map
+    // found the way closed off, and the walk pushed into the door for thirty seconds and said it could
+    // not get there (research/sessions/s72-play.log, 11:46:56 to 11:47:29).
+    bool WalkLosesTarget(bool closedOffNow, bool closedOffAtStart, bool worldChanged);
+
+    // Whether the world has changed since a walk set off (`since`): levels streamed in or out
+    // (`streamedAt`), or the ground asked again found a step shut or opened (`groundChangedAt`, the last
+    // the asking found a change): a door slammed. In the lodge's cellar on 2026-11-12 the cellar's door
+    // slammed shut as Ashley went up the stairs to the airlock's door beyond it; the walk's own asking
+    // found 68 steps shut, the new map found the door's things closed off, and the walk said "Пройти не
+    // удалось" ten seconds later where Andrey expected "Цель пропала" (s72, 11:59:57 to 12:00:09).
+    bool WorldChangedSince(double streamedAt, double groundChangedAt, double since);
+
+    // Whether a change the ground's asking again found (`changed`: the steps found shut or opened) is a
+    // change of the world to a walk (WorldChangedSince): a door's leaf across a doorway shuts dozens of
+    // steps (54 at the cinema airlock's and 68 at the cellar's on 2026-11-12, 106 at the cinema's exit
+    // door in s57), while a step asked from the cell she stands pressed in can answer otherwise from one
+    // sweep to the next, and the walk's own asking found one step shut ten times in sessions 57 to 72
+    // ("1 step(s) found free about the walk's stop at (418, -8340) are shut now", s72 11:47:18, Chris a
+    // metre off). A change of fewer leaves the walk going, the map judging the list as before.
+    constexpr size_t kWorldChangeSteps = 10;
+    bool GroundChangeTells(size_t changed);
 
     // Whether a way on waits for her to walk into it anew: its story fires on entering (`firesOnEntry`:
     // its trigger's actions or its script's Enter event), no scene asks whether she stands in it

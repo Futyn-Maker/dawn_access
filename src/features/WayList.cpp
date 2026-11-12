@@ -405,9 +405,19 @@ namespace da::ways
         return walkFor != nullptr && chosen == walkFor;
     }
 
-    bool WalkLosesTarget(bool isWay, bool closedOffNow, bool closedOffAtStart, bool worldChanged)
+    bool WalkLosesTarget(bool closedOffNow, bool closedOffAtStart, bool worldChanged)
     {
-        return !isWay && closedOffNow && !closedOffAtStart && worldChanged;
+        return closedOffNow && !closedOffAtStart && worldChanged;
+    }
+
+    bool WorldChangedSince(double streamedAt, double groundChangedAt, double since)
+    {
+        return streamedAt > since || groundChangedAt > since;
+    }
+
+    bool GroundChangeTells(size_t changed)
+    {
+        return changed >= kWorldChangeSteps;
     }
 
     bool WaitsForEntry(bool firesOnEntry, bool polled, bool standingIn)

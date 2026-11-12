@@ -2658,16 +2658,52 @@ TEST_CASE("walks: a thing found closed off by a map begun during the walk ends t
 {
     // s71 23:28:57: ten levels streamed in, the new map found the danger totem closed off behind a
     // spline wall; the walk went on into the wall.
-    CHECK(ways::WalkLosesTarget(false, true, false, true));
+    CHECK(ways::WalkLosesTarget(true, false, true));
     // Closed off already as the player chose it: the player's choice stands, the walk goes on.
-    CHECK_FALSE(ways::WalkLosesTarget(false, true, true, true));
+    CHECK_FALSE(ways::WalkLosesTarget(true, true, true));
     // Still reached: the walk goes on.
-    CHECK_FALSE(ways::WalkLosesTarget(false, false, false, true));
-    // A way on is not judged by the rooms.
-    CHECK_FALSE(ways::WalkLosesTarget(true, true, false, true));
+    CHECK_FALSE(ways::WalkLosesTarget(false, false, true));
     // A map the walk began itself, the world as it was: no new fact, the walk goes on (the morgue's
     // certificate, found closed off by the maps after it, a step from where the game offered it).
-    CHECK_FALSE(ways::WalkLosesTarget(false, true, false, false));
+    CHECK_FALSE(ways::WalkLosesTarget(true, false, false));
+}
+
+TEST_CASE("walks: a door shut behind her during the walk is a change of the world: the cellar's door and the airlock's, 2026-11-12")
+{
+    // research/sessions/s72-play.log. The cellar: the walk to the airlock's door beyond the cellar's
+    // set off at 11:59:26; nothing streamed; the walk's own asking found 68 steps shut at 11:59:58
+    // (the cellar's door, slammed at 11:50:47, locked); the map begun for it found the door's things
+    // closed off at 11:59:59; the walk ended "Пройти не удалось" at 12:00:09.
+    // The play clock's seconds since the launch (11:16:41).
+    const double setOff = 2565.0;    // 11:59:26
+    const double streamed = 1530.0;  // the act's last streaming, long before
+    const double shutFound = 2597.0; // 11:59:58
+    CHECK(ways::WorldChangedSince(streamed, shutFound, setOff));
+    CHECK(ways::WalkLosesTarget(true, false, ways::WorldChangedSince(streamed, shutFound, setOff)));
+    // The asking found the ground as it was: no change, and the walk's own map tells nothing new.
+    const double neverChanged = -1000.0;
+    CHECK_FALSE(ways::WorldChangedSince(streamed, neverChanged, setOff));
+    // A change before the walk set off was known as it set off (the airlock's, 11:46:58).
+    CHECK_FALSE(ways::WorldChangedSince(streamed, 1817.0, setOff));
+    // Levels streamed during the walk, as at s71's danger totem.
+    CHECK(ways::WorldChangedSince(2577.0, neverChanged, setOff));
+    // The airlock (11:46:41 to 11:47:29): the walk went for the way on into the kitchen 70 m off; a
+    // door shut behind her, the asking found 54 steps shut at 11:46:58 and the new map found no way to
+    // the way on. A way on found closed off so ends the walk too.
+    CHECK(ways::WalkLosesTarget(true, false, ways::WorldChangedSince(streamed, 1817.0, 1800.0)));
+}
+
+TEST_CASE("walks: a step found shut alone is no change of the world, a door's dozens are")
+{
+    // The walk's own asking again in sessions 57 to 72: doors' leaves (s57's cinema exit door 106 steps,
+    // s72's airlock 54 and cellar 68) and single steps from where she stood pressed (ten times, 1 step).
+    CHECK(ways::GroundChangeTells(54));
+    CHECK(ways::GroundChangeTells(68));
+    CHECK(ways::GroundChangeTells(106));
+    CHECK_FALSE(ways::GroundChangeTells(1));
+    CHECK_FALSE(ways::GroundChangeTells(0));
+    CHECK(ways::GroundChangeTells(ways::kWorldChangeSteps));
+    CHECK_FALSE(ways::GroundChangeTells(ways::kWorldChangeSteps - 1));
 }
 
 TEST_CASE("ways: a way fired by walking in waits, while she stands in it already, for her to walk in anew")
