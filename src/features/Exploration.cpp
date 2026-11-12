@@ -355,6 +355,8 @@ namespace da::features
         bool g_beamWalk = false;        // the walk along it: the walk key's with no target chosen, or a walk onto it carried on
         double g_beamLedAt = -1.0;
         UObject* BeamHolding(UObject* pawn);
+        UObject* StairsHolding(UObject* pawn);
+        bool StairTrack(UObject* stairs, UObject* pawn, Vec& bottom, Vec& top);
         // The beams of the level by the volume that puts her on each (ABatesSpecialLocoActivityActor's
         // ActivationVolume): walking into it, she is on the beam, and only the beam moves her on. The
         // ground's grid cannot walk a beam (on the asylum's walkway on 2026-11-07 the map stopped at the
@@ -7439,6 +7441,56 @@ namespace da::features
             g_detour.origin = g_grid.origin;
         }
 
+        // The corners of the way the walk follows, from the one it heads for on: the corner nearest the
+        // one it heads for, the way's corners laid anew since it was taken as they may be.
+        std::vector<Vec> WayAhead(const Target& t)
+        {
+            const auto from = [&](const std::vector<Vec>& corners) -> std::vector<Vec>
+            {
+                size_t best = corners.size();
+                double nearest = 2.0 * kCellSize;
+                for (size_t i = 0; i < corners.size(); ++i)
+                {
+                    const double d = Distance(corners[i], t.routeNext);
+                    if (d < nearest)
+                    {
+                        nearest = d;
+                        best = i;
+                    }
+                }
+                if (best == corners.size()) return {};
+                return std::vector<Vec>(corners.begin() + static_cast<std::ptrdiff_t>(best), corners.end());
+            };
+            if (!t.hasRoute) return {};
+            if (!t.detour.empty()) return from(t.detour);
+            return from(t.gridCorners);
+        }
+
+        // On a staircase that holds her the walk pushes up or down it, toward the end its way leaves
+        // by (look::StairPush): the stairs take nothing of a push across them. False off the stairs.
+        int g_stairPush = 0; // the way the walk last pushed on the stairs: 1 up, -1 down, 0 none
+        bool StairBearing(UObject* pawn, const Vec& here, const Target& t, double yaw, double& bearing)
+        {
+            UObject* stairs = BindingState(pawn) == 3 ? StairsHolding(pawn) : nullptr;
+            Vec bottom, top;
+            if (!stairs || !StairTrack(stairs, pawn, bottom, top))
+            {
+                g_stairPush = 0;
+                return false;
+            }
+            const auto decided = look::StairPush(here, bottom, top, WayAhead(t), Aim(t), g_stairPush);
+            const Vec push = decided.push;
+            bearing = BearingDegrees(here, Vec{here.x + push.x * 100.0, here.y + push.y * 100.0, here.z}, yaw);
+            const int way = decided.way;
+            if (way != g_stairPush)
+            {
+                g_stairPush = way;
+                log::Info(L"explore: {} holds her on the stairs from ({:.0f}, {:.0f}, {:.0f}) to ({:.0f}, {:.0f}, {:.0f}): the walk to \"{}\" pushes {} them",
+                          obj::ObjectName(stairs), bottom.x, bottom.y, bottom.z, top.x, top.y, top.z, t.label, way > 0 ? L"up" : L"down");
+            }
+            return true;
+        }
+
         // Steps the way round on; true while it is being felt out (the walk stands meanwhile).
         bool PollDetour(UObject* pawn, Target& t, double now)
         {
@@ -7739,8 +7791,12 @@ namespace da::features
             // path, the heading is the path's forward, which is all the game takes.
             const Vec goal = target->hasRoute ? target->routeNext : Aim(*target);
             double bearing = BearingDegrees(here, goal, yaw) + g_walkLean;
-            // On a beam the only way is where she faces (look::LeadAlongBeam).
+            // On a beam the only way is where she faces (look::LeadAlongBeam); on stairs, up or down them
+            // (look::StairPush).
             if (g_onBeam) bearing = NormalizeDegrees(FacingYaw(pawn) - yaw);
+            else if (StairBearing(pawn, here, *target, yaw, bearing))
+            {
+            }
             else if (g_path.set)
             {
                 const double ahead = PathAhead(here, Aim(*target));
@@ -8056,6 +8112,46 @@ namespace da::features
                 if (record && record[flag] != 0) return true;
             }
             return false;
+        }
+
+        // The staircase that holds the character, if one does (look::StairPush).
+        UObject* StairsHolding(UObject* pawn)
+        {
+            for (UObject* stairs : g_stairs)
+            {
+                if (obj::IsA(stairs, L"BatesStairActivityActor") && LocoRecordOf(stairs, pawn)) return stairs;
+            }
+            return nullptr;
+        }
+
+        // The ends of the track of a staircase she climbs, by the stairs' own reckoning
+        // (GetBottomOfCurrentStairTrack, GetTopOfCurrentStairTrack).
+        bool StairTrack(UObject* stairs, UObject* pawn, Vec& bottom, Vec& top)
+        {
+            const auto end = [&](const wchar_t* name, Vec& out)
+            {
+                auto* fn = obj::IsLive(stairs) ? obj::FindFunction(stairs, name) : nullptr;
+                if (!fn) return false;
+                bool read = false;
+                obj::Call(
+                    stairs, fn,
+                    [&](void* params)
+                    {
+                        for (auto* prop : fn->ForEachProperty())
+                        {
+                            if (prop && prop->GetName() == L"InCharacter") *static_cast<UObject**>(obj::ValuePtrAt(params, prop)) = pawn;
+                        }
+                    },
+                    [&](void* params)
+                    {
+                        for (auto* prop : fn->ForEachProperty())
+                        {
+                            if (prop && prop->GetName() == L"ReturnValue") read = ReadVec(obj::ValuePtrAt(params, prop), prop, out);
+                        }
+                    });
+                return read;
+            };
+            return end(L"GetBottomOfCurrentStairTrack", bottom) && end(L"GetTopOfCurrentStairTrack", top);
         }
 
         // The beam that holds the character, if one does (look::LeadAlongBeam).

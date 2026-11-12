@@ -350,6 +350,30 @@ namespace da::look
     };
     BeamLead LeadAlongBeam(double facing, double stickX, double stickY);
 
+    // A staircase the game walks her on, a special locomotion of its own (ABatesStairActivityActor):
+    // it takes the movement input only along the stairs, the input dotted with the stairs' rise saying
+    // up above nought and down else once she moves, and from a standstill only past the stairs'
+    // InputThresholdAmountNormalised (UpdateInputForCharacters, from 0x44f8e68). A walk pushing toward
+    // a corner of its way beside the stairs pushes near square to them: on the lodge's stairs down to
+    // the lower hall on 2026-11-12 the corner lay 67 cm aside, the push swung about the square as she
+    // went, and Ashley went down and up and down for six seconds until the walk said it could not get
+    // there, 13 m short of the smashed vase (research/sessions/s72-play.log, 11:44:03 to 11:44:16). On
+    // the stairs the walk pushes along them, the way its way first moves her along them: the first
+    // corner of the way ahead (`ahead`) more than kStairDecides up or down the stairs from her says
+    // which (a corner beside her says nothing, and the way cannot leave the stairs but by an end);
+    // with none, the target (`aim`) above or below her by more than kStairDecidesRise, else where it
+    // lies along them; with nothing to go by, the way last pushed (`last`, 0 for none: up). `bottom`
+    // and `top`: the ends of the track she climbs. Returns the flat direction to push, of unit
+    // length, and the way: 1 up, -1 down.
+    constexpr double kStairDecides = 30.0;     // cm along the stairs
+    constexpr double kStairDecidesRise = 50.0; // cm up or down
+    struct StairWay
+    {
+        Vec push;
+        int way = 0;
+    };
+    StairWay StairPush(const Vec& here, const Vec& bottom, const Vec& top, const std::vector<Vec>& ahead, const Vec& aim, int last);
+
     // The walk ends where the press is taken only once she has come to rest there, still for
     // kRestFor on end: let go, she takes a stopping step, and at the lodge's patio door on 2026-11-05
     // the walk ended 0.4 s after the press would be taken, the moment her speed first read still,

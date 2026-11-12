@@ -929,6 +929,48 @@ TEST_CASE("look: on a beam the lead sounds where she faces in the stick's frame,
     CHECK(lead.locked);
 }
 
+TEST_CASE("look: on a staircase the walk pushes along the stairs, toward the end its way leaves by: the lodge's lower hall, 2026-11-12")
+{
+    // research/sessions/s72-play.log, 11:43:54 to 11:44:16. The way to the smashed vase ran down the
+    // stairs into the lower hall along x 1929 (2855 cm high at y -7381, 2574 at -7881), then on along
+    // the hall to the vase at (1969, -9115). The stairs held Ashley on her track at x 1862 to 1894.
+    const look::Vec bottom{1870, -7881, 2574};
+    const look::Vec top{1870, -7381, 2855};
+    const look::Vec here{1862, -7805, 2723};
+    const std::vector<look::Vec> ahead{{1929, -7841, 2600}, {1929, -7881, 2574}, {1929, -8761, 2555}, {1949, -8801, 2555}, {1949, -9041, 2538}};
+    const look::Vec vase{1969, -9115, 2536};
+    const look::Vec rise{0.0, 1.0, 0.0};
+    const auto dot = [](const look::Vec& a, const look::Vec& b) { return a.x * b.x + a.y * b.y; };
+    // The walk pushed toward the next corner, 76 cm off and 67 of it aside: barely down the stairs,
+    // and leaning 40 degrees as it does when stuck, up them.
+    const double toCorner = std::atan2(ahead[0].y - here.y, ahead[0].x - here.x);
+    const look::Vec leaned{std::cos(toCorner + 40.0 * std::numbers::pi / 180.0), std::sin(toCorner + 40.0 * std::numbers::pi / 180.0), 0.0};
+    CHECK(dot(look::Vec{std::cos(toCorner), std::sin(toCorner), 0.0}, rise) > -0.5);
+    CHECK(dot(leaned, rise) > 0.0);
+    // Along the stairs, down: the way's first move along them is down.
+    const auto decided = look::StairPush(here, bottom, top, ahead, vase, 0);
+    CHECK(decided.way == -1);
+    CHECK(dot(decided.push, rise) == doctest::Approx(-1.0));
+    CHECK(std::hypot(decided.push.x, decided.push.y) == doctest::Approx(1.0));
+    // A corner beside her says nothing; the first one that moves her along the stairs does.
+    CHECK(look::StairPush(here, bottom, top, {{1929, -7800, 2700}, {1929, -7860, 2590}, {1929, -8761, 2555}}, vase, 0).way == -1);
+    // Coming the other way, up the stairs to the hall above: up.
+    const std::vector<look::Vec> upward{{1929, -7600, 2700}, {1929, -7381, 2855}, {1949, -7321, 2855}, {2329, -7381, 2968}};
+    CHECK(look::StairPush(look::Vec{1866, -7700, 2700}, bottom, top, upward, look::Vec{2349, -7401, 2968}, 0).way == 1);
+    // A way down that turns back under the stairs at their foot: down, though its corners run back
+    // alongside them past their top's line.
+    const std::vector<look::Vec> turnBack{{1870, -7870, 2580}, {1700, -7870, 2560}, {1700, -7300, 2560}};
+    CHECK(look::StairPush(here, bottom, top, turnBack, look::Vec{1700, -7250, 2560}, 0).way == -1);
+    // No corners to go by (the way's corners laid anew): by the target's height. The lodge's kitchen
+    // door upstairs lies past the stairs' bottom along them, and above her: up.
+    CHECK(look::StairPush(here, bottom, top, {}, look::Vec{2344, -8665, 2968}, 0).way == 1);
+    CHECK(look::StairPush(here, bottom, top, {}, vase, 0).way == -1);
+    // Level with her: where it lies along them; beside her: the way last pushed.
+    CHECK(look::StairPush(here, bottom, top, {}, look::Vec{1870, -7500, 2740}, 0).way == 1);
+    CHECK(look::StairPush(here, bottom, top, {}, look::Vec{1950, -7810, 2730}, -1).way == -1);
+    CHECK(look::StairPush(here, bottom, top, {}, look::Vec{1950, -7810, 2730}, 0).way == 1);
+}
+
 TEST_CASE("look: a thing is reached only where it can be used, or a look of the player's is all it waits for, 2026-11-07")
 {
     // act4_1, the kitchen's blood after its first use (research/sessions/s49-full.log, 00:40:05):

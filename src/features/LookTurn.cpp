@@ -269,6 +269,37 @@ namespace da::look
         return lead;
     }
 
+    StairWay StairPush(const Vec& here, const Vec& bottom, const Vec& top, const std::vector<Vec>& ahead, const Vec& aim, int last)
+    {
+        const double rx = top.x - bottom.x;
+        const double ry = top.y - bottom.y;
+        const double run = std::hypot(rx, ry);
+        if (run < 1.0)
+        {
+            const double dx = aim.x - here.x, dy = aim.y - here.y;
+            const double d = std::hypot(dx, dy);
+            return StairWay{d < 1.0 ? Vec{0.0, 0.0, 0.0} : Vec{dx / d, dy / d, 0.0}, 0};
+        }
+        const Vec rise{rx / run, ry / run, 0.0};
+        const auto along = [&](const Vec& p) { return (p.x - bottom.x) * rise.x + (p.y - bottom.y) * rise.y; };
+        const double from = along(here);
+        const auto sign = [](double v) { return v > 0.0 ? 1 : -1; };
+        int way = 0;
+        for (const Vec& c : ahead)
+        {
+            const double moved = along(c) - from;
+            if (std::fabs(moved) > kStairDecides)
+            {
+                way = sign(moved);
+                break;
+            }
+        }
+        if (way == 0 && std::fabs(aim.z - here.z) > kStairDecidesRise) way = sign(aim.z - here.z);
+        if (way == 0 && std::fabs(along(aim) - from) > kStairDecides) way = sign(along(aim) - from);
+        if (way == 0) way = last != 0 ? last : 1;
+        return StairWay{Vec{rise.x * way, rise.y * way, 0.0}, way};
+    }
+
     void Motion::Update(double now, const Vec& here)
     {
         if (!m_samples.empty() && now < m_samples.back().first) m_samples.clear(); // another clock
