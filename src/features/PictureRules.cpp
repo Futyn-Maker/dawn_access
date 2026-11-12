@@ -47,7 +47,7 @@ namespace da::picture
 
         // The interactions whose pictures the mod describes, and when; the moments are the game's own
         // states, as the logs of chapters 5 and 6 show them.
-        constexpr std::array<Planned, 25> kPlans = {
+        constexpr std::array<Planned, 28> kPlans = {
             // Dr. Hill's card is picked up face down and turned over with the stick (act20_1,
             // BP_PsychSession_PickUp, which no other level places: its examine stage reveals). It has no
             // core name; its activity starts it as I_psychsession_1_Interaction.
@@ -113,6 +113,16 @@ namespace da::picture
             Planned{L"i_look_at_dollshouse", L"", Moment::State, L"examine_idle"},
             Planned{L"i_headlessdoll", L"bp_headlessdoll_c", Moment::Reveals, L""},
             Planned{L"i_controls_lookat", L"bp_controls_lookat_c", Moment::State, L"examine_idle"},
+            // The views through the telescopes, one picture each whichever way the stick turns them (Andrey,
+            // session 71), from walkthroughs of the remake, frame by frame, and the levels' data: Ashley's at
+            // the scenic view (act2_1, its own core name A_telescope; Emily and Mike are what its framing
+            // waits for), Mike's at the vista (Act2_2) and Matt's on the observation deck (act2_3). The last two
+            // share their core name and their class's name, and are told apart by the class's package. Said as
+            // the view comes up, after the game's prompt; the scares that cut in (Matt's face, the gaunt face at
+            // the vista) are not described.
+            Planned{L"a_telescope", L"", Moment::Begins, L""},
+            Planned{L"i_telescope.act2_2", L"/game/gameplay/gameobjects/interactions/act2_2/telescope/bp_telescope", Moment::Begins, L""},
+            Planned{L"i_telescope.act2_3", L"/game/gameplay/gameobjects/interactions/act2_3/telescope/bp_telescope", Moment::Begins, L""},
         };
     }
 

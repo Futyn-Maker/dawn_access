@@ -107,7 +107,11 @@ namespace da::features
             g_photoWords.clear();
             g_look.reset();
             if (!bound) return;
-            const std::vector<std::wstring> names = {level::CoreName(bound), level::FriendlyName(bound), obj::ClassName(bound)};
+            // The class's package last: two blueprints of one name (BP_Telescope of Act2_2 and of act2_3,
+            // their core names alike) are told apart by it.
+            UObject* package = bound->GetClassPrivate() ? bound->GetClassPrivate()->GetOuterPrivate() : nullptr;
+            const std::vector<std::wstring> names = {level::CoreName(bound), level::FriendlyName(bound), obj::ClassName(bound),
+                                                     package ? obj::ObjectName(package) : std::wstring()};
             g_look = picture::PlanFor(names);
             log::Info(L"interactions: {} goes by core name \"{}\", the level's name \"{}\"; {}", obj::ObjectName(bound), names[0], names[1],
                       g_look ? L"its picture is described as \"" + g_look->key + L"\"" : std::wstring(L"no picture of it is described"));

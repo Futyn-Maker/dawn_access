@@ -145,6 +145,15 @@ TEST_CASE("pictures: a photo is known by its texture, a thing in the hand by any
     CHECK(doll->moment == picture::Moment::Reveals);
     CHECK(doll->key == L"i_headlessdoll");
     CHECK(picture::PlanFor(Names{L"I_controls_lookat", L"I_controls_lookat", L"BP_controls_lookat_C"})->state == L"examine_idle");
+    // The telescopes: Ashley's by its own core name; Mike's and Matt's, alike in every other name, by their
+    // class's package (s71 15:21:08 and 20:25:18 logged both as I_Telescope, BP_Telescope_C).
+    CHECK(picture::PlanFor(Names{L"A_telescope", L"A_telescope", L"BP_Telescope_C", L"/Game/Gameplay/Gameobjects/Activities/act2_1/Scenic_view/Telescope/BP_Telescope"})->key ==
+          L"a_telescope");
+    CHECK(picture::PlanFor(Names{L"I_Telescope", L"I_Telescope", L"BP_Telescope_C", L"/Game/Gameplay/Gameobjects/interactions/Act2_2/Telescope/BP_Telescope"})->key ==
+          L"i_telescope.act2_2");
+    CHECK(picture::PlanFor(Names{L"I_Telescope", L"I_Telescope", L"BP_Telescope_C", L"/Game/Gameplay/Gameobjects/interactions/act2_3/Telescope/BP_Telescope"})->key ==
+          L"i_telescope.act2_3");
+    CHECK_FALSE(picture::PlanFor(Names{L"I_Telescope", L"I_Telescope", L"BP_Telescope_C", L""}).has_value());
     // The silent things of chapters 1 and 2, as the logs of sessions 68 to 71 name them.
     CHECK(picture::PlanFor(Names{L"", L"I_Car_lookat", L"BP_Car_lookat_C"})->key == L"i_car_lookat");
     CHECK(picture::PlanFor(Names{L"I_MineMap", L"I_MineMap", L"BP_Minemap_C"})->state == L"look_idle1");
