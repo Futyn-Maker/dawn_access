@@ -299,6 +299,43 @@ TEST_CASE("recheck: a prop the game moves is said once it comes to rest, with wh
     CHECK_FALSE(said);
 }
 
+TEST_CASE("recheck: a door a sequence spawns shut is said as it stands, where a prop seen first never is: the cinema's exit door, 2026-11-12")
+{
+    // research/sessions/s72-play.log: the cinema's exit door slammed in the scene that ended at
+    // 11:46:09; the door that stood shut was BatesAnimatedSequenceActor_2147454443, a sequence's
+    // spawnable (its SkeletalMeshComponent0 a PhysicsActor that stopped the map at 11:46:58). The
+    // ground kept the doorway free from before.
+    recheck::Box before, after;
+    const recheck::Box shut{{905, -9200, 2550}, {1010, -9150, 2790}};
+    // A prop of the level's, seen first: no move, its ground is the ground the map felt out.
+    recheck::PropWatch prop;
+    CHECK_FALSE(prop.Update(0.0, shut, before, after));
+    CHECK_FALSE(prop.Update(0.5, shut, before, after));
+    CHECK_FALSE(prop.Update(1.5, shut, before, after));
+    CHECK_FALSE(prop.Update(3.0, shut, before, after));
+    // The sequence's door, arriving: said once it has stood for kPropRest, where it stands.
+    recheck::PropWatch door;
+    door.Arrive();
+    CHECK_FALSE(door.Update(0.0, shut, before, after));
+    CHECK_FALSE(door.Update(0.5, shut, before, after));
+    REQUIRE(door.Update(1.0 + recheck::kPropRest, shut, before, after));
+    CHECK_FALSE(recheck::Moved(before, shut, 0.5));
+    CHECK_FALSE(recheck::Moved(after, shut, 0.5));
+    // Said once; moved later, a move as any prop's.
+    CHECK_FALSE(door.Update(3.0, shut, before, after));
+    recheck::Box open = shut;
+    open.low.y -= 100.0;
+    open.high.x -= 95.0;
+    CHECK_FALSE(door.Update(4.0, open, before, after));
+    REQUIRE(door.Update(4.0 + recheck::kPropRest, open, before, after));
+    CHECK_FALSE(recheck::Moved(before, shut, 0.5));
+    // Arriving with no collision: nothing to say until it takes some up.
+    recheck::PropWatch ghost;
+    ghost.Arrive();
+    CHECK_FALSE(ghost.Update(0.0, std::nullopt, before, after));
+    CHECK_FALSE(ghost.Update(2.0, std::nullopt, before, after));
+}
+
 TEST_CASE("recheck: a prop's bounds that read wider than any prop are no reading: act6_1's lift cog, 2026-11-08")
 {
     // BP_Cog_lift stood (-30301, 5107, -8091) to (-30101, 5323, -6198): 2 by 2 m, 19 m high. As the

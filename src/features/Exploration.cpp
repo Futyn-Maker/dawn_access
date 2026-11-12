@@ -347,6 +347,9 @@ namespace da::features
         std::vector<UObject*> g_volumes;
         std::vector<UObject*> g_stairs; // the level's staircases
         std::vector<UObject*> g_props;  // the props the scenes bind (BatesBindableProp), watched as the game moves them
+        // The actors the scenes' sequences spawn (BatesAnimatedSequenceActor), watched as props, each
+        // first seen as put where nothing stood (recheck::PropWatch::Arrive): a door a scene slams.
+        std::vector<UObject*> g_sequenceActors;
         std::vector<UObject*> g_beams;  // the level's other special locomotions: beams (look::LeadAlongBeam)
         UObject* g_onBeam = nullptr;    // the beam that holds her, at the last look
         bool g_beamWalk = false;        // the walk along it: the walk key's with no target chosen, or a walk onto it carried on
@@ -4943,27 +4946,38 @@ namespace da::features
 
         std::set<UObject*> g_propUnfilled; // props whose bounds read wider than any prop, told once
 
+        double g_sequenceActorsAt = -1000.0;
+
         void PollProps(const Vec& here, double now)
         {
             if (now - g_propsPolledAt < kPropPollApart) return;
             g_propsPolledAt = now;
+            // The sequences' actors are looked for here, in a scene too: a door a scene spawns shut is
+            // watched before the hold it ends in.
+            if (now - g_sequenceActorsAt >= kScanApart)
+            {
+                g_sequenceActorsAt = now;
+                g_sequenceActors = obj::FindAllLive(L"BatesAnimatedSequenceActor");
+            }
             std::erase_if(g_propWatch, [](const auto& item) { return !obj::IsLive(item.first); });
             std::set<recheck::Column> columns;
             std::vector<std::wstring> moved;
-            for (UObject* prop : g_props)
+            const auto watch = [&](UObject* prop, bool spawned)
             {
                 Vec at;
                 if (!obj::IsLive(prop) || !ActorLocation(prop, at) || FlatDistance(at, here) > kPropWatchRange || std::fabs(at.z - here.z) > kPropWatchRise)
-                    continue;
-                if (CarriedByCharacter(prop)) continue;
+                    return;
+                if (CarriedByCharacter(prop)) return;
                 // A creature walking about is no wall of the ground (ScanOthers): its moves change none.
-                if (LivingCreatureActor(prop)) continue;
+                if (LivingCreatureActor(prop)) return;
                 recheck::Box before, after;
                 const auto box = CollidingBox(prop);
                 if (box && !recheck::PropFills(*box) && g_propUnfilled.insert(prop).second)
                     log::Info(L"explore: the bounds of {} read {:.0f} by {:.0f} m across, no place a prop stands: not taken for where it is",
                               obj::ObjectName(prop), (box->high.x - box->low.x) / 100.0, (box->high.y - box->low.y) / 100.0);
-                if (!g_propWatch[prop].Update(now, box, before, after)) continue;
+                const auto [entry, fresh] = g_propWatch.try_emplace(prop);
+                if (fresh && spawned) entry->second.Arrive();
+                if (!entry->second.Update(now, box, before, after)) return;
                 std::wstring name;
                 UObject* core = nullptr;
                 if (obj::ReadObject(prop, L"CoreProperties", core) && obj::IsLive(core)) obj::ReadString(core, L"CoreName", name);
@@ -4978,20 +4992,24 @@ namespace da::features
                 if (!recheck::Weighed(leaf, stops))
                 {
                     log::Verbose(L"explore: the game moved {}, which stops no pawn", what);
-                    continue;
+                    return;
                 }
                 const auto under = recheck::ColumnsUnder(RecheckGrid(), before, after, g_grid.radius + kCellSize);
                 const size_t steps = recheck::StepsIn(g_grid.steps, under).size();
-                if (steps == 0) continue; // no ground felt out there
+                if (steps == 0) return; // no ground felt out there
                 if (steps > recheck::kPropStepsMost)
                 {
                     log::Info(L"explore: the game moved {}, over {} steps of the ground: more than a prop's place, left to the walk's own asking again", what,
                               steps);
-                    continue;
+                    return;
                 }
                 columns.insert(under.begin(), under.end());
                 moved.push_back(what);
-            }
+            };
+            for (UObject* prop : g_props)
+                watch(prop, false);
+            for (UObject* actor : g_sequenceActors)
+                watch(actor, true);
             if (columns.empty()) return;
             // A stretch still being asked takes the new one in: begun again over both, each step weighed
             // against the answer kept before either was asked (a fresh answer kept would hide a door

@@ -269,6 +269,13 @@ namespace da::recheck
     {
     public:
         bool Update(double now, const std::optional<Box>& box, Box& before, Box& after);
+        // A thing a scene puts where nothing stood: its first reading is a move from nowhere, said once
+        // it stands still. The lodge's slammed doors are no props of the level's but actors a
+        // sequence spawns shut (ABatesAnimatedSequenceActor): the cinema's exit door slammed at 11:46:09
+        // on 2026-11-12, the ground kept its doorway free, and for fifty seconds the list offered the
+        // whole hall beyond it until a walk ran into it (research/sessions/s72-play.log). Called before
+        // the first reading.
+        void Arrive();
 
     private:
         bool m_seen = false;

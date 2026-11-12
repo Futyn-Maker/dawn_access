@@ -201,6 +201,11 @@ namespace da::recheck
         return columns;
     }
 
+    void PropWatch::Arrive()
+    {
+        m_seen = true; // with no place it stood in before
+    }
+
     bool PropWatch::Update(double now, const std::optional<Box>& box, Box& before, Box& after)
     {
         // A box no prop fills is no reading: everything stands as the last reading left it.
