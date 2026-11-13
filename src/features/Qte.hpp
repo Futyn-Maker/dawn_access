@@ -26,6 +26,9 @@ namespace da::features
 
     // True while a quick-time event of the game's is running.
     bool QteInProgress();
+    // The settings' QTE demonstration (qte::Demo): the row the menu's focus is on and its value, told
+    // by the menus at each poll (an empty row when no control has the focus, or no menu is up).
+    void QteDemoFocus(const std::wstring& row, const std::wstring& value);
     // The cue a quick-time event plays for the way its action points (qte::DirectionOf): the
     // stick's way, or the side of the pad a face button sits on.
     sounds::Cue DirectionCue(const std::wstring& action);

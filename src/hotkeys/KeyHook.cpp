@@ -26,6 +26,7 @@ namespace da::keyhook
         std::array<bool, 256> g_watchedDown{}; // likewise, for the keys that are only watched
         std::atomic<bool> g_active{false};
         std::atomic<bool> g_context{false};
+        std::atomic<bool> g_demo{false};
         std::atomic<bool> g_on{true};
         std::atomic<bool> g_gameWaitsForKey{false};
         std::atomic<int> g_lastPassed{0}; // the key last pressed and let go on, while it is down
@@ -92,6 +93,7 @@ namespace da::keyhook
                         {
                             if (ctrl != binding.ctrl || alt != binding.alt || shift != binding.shift) continue;
                             if (binding.contextual && !g_context.load(std::memory_order_relaxed)) continue;
+                            if (binding.demo && !g_demo.load(std::memory_order_relaxed)) continue;
                             if (!binding.switchKey && !g_on.load(std::memory_order_relaxed)) continue;
                         }
                         const auto take = hotkeys::TakeOf(down, g_down[static_cast<size_t>(vk)], waits);
@@ -199,6 +201,11 @@ namespace da::keyhook
     bool Active()
     {
         return g_active.load();
+    }
+
+    void SetDemo(bool active)
+    {
+        g_demo.store(active, std::memory_order_relaxed);
     }
 
     void SetContext(bool active)

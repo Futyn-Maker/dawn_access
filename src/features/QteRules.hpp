@@ -123,4 +123,53 @@ namespace da::qte
         Drop, // gone before it was said
     };
     ExampleStep Example(double setUpAt, double now, bool shown);
+
+    // ---- the settings' demonstration ---------------------------------------------------------
+    //
+    // The accessibility tab's QTE rows (Setting_QTEBehaviour, Setting_QTEIcon, Setting_SingleQTEAction,
+    // Setting_QTEScale, Setting_QTEPosition) run the game's own example of a QTE beside them while one
+    // of them has the focus, as the setting shapes it: in the standard mode a prompt every two seconds
+    // that runs a second and times out, with "succeed on timeout" one that succeeds, with "pause on
+    // timeout" one that runs a second and stands, in the automatic modes none (their prompt is not shown
+    // in play either). Said as it ran, each prompt and the copies the page sets up with it buried the
+    // rows under "cross" every two seconds as the player went through the values (research/sessions/
+    // s73-play.log, 11:17:01 to 11:24:23). So the examples are silent, and the row says after the game's
+    // own words which key plays them (Andrey, 2026-11-13): the key turns the example's voice on and off,
+    // for every row of the group, and it stops by itself when the focus leaves the row or its value
+    // changes. Playing, an example is voiced as a prompt in play is: its cue and key, its cue again as
+    // it takes the press, the key every second, and the tone of how it ended.
+    bool DemoRow(std::wstring_view controlName);
+    class Demo
+    {
+    public:
+        // The row the menu's focus is on and its value, as a poll reads them (an empty row: none of the
+        // group): true when a demonstration playing stops for it.
+        bool Focus(std::wstring_view row, std::wstring_view value);
+        enum class Toggle
+        {
+            On,
+            Off,
+            NotHere, // no row of the group has the focus
+        };
+        Toggle Toggled();
+        bool Playing() const
+        {
+            return m_playing;
+        }
+        // A row of the group has the focus: the key is the demonstration's.
+        bool Here() const
+        {
+            return DemoRow(m_row);
+        }
+        // The demonstration ends wherever it stood: the menu left.
+        void Stop()
+        {
+            m_playing = false;
+        }
+
+    private:
+        std::wstring m_row;
+        std::wstring m_value;
+        bool m_playing = false;
+    };
 }

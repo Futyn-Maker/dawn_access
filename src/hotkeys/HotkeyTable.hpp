@@ -26,6 +26,7 @@ namespace da::hotkeys
         Where,
         Walk,
         Beacon,
+        Demonstration,
         DevDumpTree,
         DevTrace,
         DevLogLevel,
@@ -36,6 +37,7 @@ namespace da::hotkeys
     {
         Always,  // wherever the game is in front
         Context, // only while the player walks the character, fights or looks around; the game's otherwise
+        Demo,    // only while the focus is on a settings row that shows an example (the QTE rows); the game's otherwise
         Dev,     // a developer's key: everywhere, and not in the README
         Switch,  // the mod's own switch, which works while the mod is off as well
     };

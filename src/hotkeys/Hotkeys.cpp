@@ -37,6 +37,7 @@ namespace da::hotkeys
 
         std::vector<KeyBinding> g_keys;
         std::vector<Context> g_contexts;
+        std::vector<Context> g_demoContexts;
         std::map<Command, std::vector<Handler>> g_handlers;
 
         bool InContext()
@@ -46,6 +47,23 @@ namespace da::hotkeys
                 if (inContext()) return true;
             }
             return false;
+        }
+
+        bool InDemoContext()
+        {
+            for (const Context inContext : g_demoContexts)
+            {
+                if (inContext()) return true;
+            }
+            return false;
+        }
+
+        // Whether a command's scope lets it answer now.
+        bool ScopeAnswers(Scope scope, bool context, bool demo)
+        {
+            if (scope == Scope::Context) return context;
+            if (scope == Scope::Demo) return demo;
+            return true;
         }
 
         // Whether a command answers now: every one while the mod is on, its switch alone
@@ -200,6 +218,7 @@ namespace da::hotkeys
                 // the mod is off the hook takes nothing but the switch.
                 keyhook::SetOn(gate::IsOn());
                 keyhook::SetContext(gate::IsOn() && InContext());
+                keyhook::SetDemo(gate::IsOn() && InDemoContext());
                 keyhook::SetGameWaitsForKey(gameWaits);
                 for (const int id : keyhook::TakePresses())
                 {
@@ -217,11 +236,12 @@ namespace da::hotkeys
             const bool alt = Down(VK_MENU);
             const bool shift = Down(VK_SHIFT);
             const bool context = InContext();
+            const bool demo = InDemoContext();
             for (auto& k : g_keys)
             {
                 const bool down = Down(k.key.vk);
                 if (down && !k.wasDown && !gameWaits && ctrl == k.key.ctrl && alt == k.key.alt && shift == k.key.shift && Answers(k.command) &&
-                    (Of(k.command).scope != Scope::Context || context))
+                    ScopeAnswers(Of(k.command).scope, context, demo))
                 {
                     Run(k.command, Source::Keyboard);
                 }
@@ -241,6 +261,7 @@ namespace da::hotkeys
         // Buttons that need no chord because the game leaves them unused in the situations
         // the features declare; they answer only there.
         std::vector<PadBinding> g_exploreBindings;
+        std::vector<PadBinding> g_demoBindings; // the same for the settings rows with an example
         std::wstring g_padHold;
 
         void PollBindings(const input::PadReading& pad, std::vector<PadBinding>& bindings, bool live)
@@ -262,13 +283,14 @@ namespace da::hotkeys
         // the player controller no longer reports keys, as well as in play.
         void PollPad()
         {
-            if ((g_padBindings.empty() && g_exploreBindings.empty()) || gamethread::FrameCount() % 3 != 0) return;
+            if ((g_padBindings.empty() && g_exploreBindings.empty() && g_demoBindings.empty()) || gamethread::FrameCount() % 3 != 0) return;
             const bool inFront = GameWindowInForeground();
             const input::PadReading pad = inFront ? input::ReadPad() : input::PadReading{};
             NotePadState(inFront, pad.valid);
             const bool chord = pad.valid && !g_padHold.empty() && input::PadKeyDown(pad, g_padHold);
             PollBindings(pad, g_padBindings, pad.valid && chord);
             PollBindings(pad, g_exploreBindings, pad.valid && !chord && gate::IsOn() && InContext());
+            PollBindings(pad, g_demoBindings, pad.valid && !chord && gate::IsOn() && InDemoContext());
         }
 
         // The mod switched off and on. Off is said before the switch turns, so that it is
@@ -297,6 +319,11 @@ namespace da::hotkeys
     void AddContext(Context inContext)
     {
         if (inContext) g_contexts.push_back(inContext);
+    }
+
+    void AddDemoContext(Context inContext)
+    {
+        if (inContext) g_demoContexts.push_back(inContext);
     }
 
     void OnCommand(Command command, Handler handler)
@@ -355,7 +382,7 @@ namespace da::hotkeys
         {
             const Scope scope = Of(g_keys[i].command).scope;
             bindings.push_back(keyhook::Binding{g_keys[i].key.vk, g_keys[i].key.ctrl, g_keys[i].key.alt, g_keys[i].key.shift, static_cast<int>(i),
-                                                scope == Scope::Context, scope == Scope::Switch});
+                                                scope == Scope::Context, scope == Scope::Switch, scope == Scope::Demo});
         }
         // The keys that stop what is being said (HotkeyTable's stop keys) are answered by the
         // hook: it runs before the game is given the key, so the stop always lands before
@@ -398,11 +425,12 @@ namespace da::hotkeys
             }
         }
         g_exploreBindings.clear();
+        g_demoBindings.clear();
         for (const Hotkey& hotkey : Table())
         {
             const auto button = PadOf(hotkey.command);
             if (button.empty()) continue;
-            g_exploreBindings.push_back({button, hotkey.command});
+            (hotkey.scope == Scope::Demo ? g_demoBindings : g_exploreBindings).push_back({button, hotkey.command});
             log::Info(L"gamepad in context: {} = {}", button, hotkey.name);
         }
         gamethread::AddPoller(L"hotkeys",

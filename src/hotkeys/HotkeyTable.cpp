@@ -19,6 +19,9 @@ namespace da::hotkeys
             {Command::Where, L"Where", L"H", L"", L"", L"ExploreWhere", L"Gamepad_DPad_Up", Scope::Context},
             {Command::Walk, L"Walk", L"G", L"", L"", L"ExploreWalk", L"Gamepad_FaceButton_Left", Scope::Context},
             {Command::Beacon, L"Beacon", L"T", L"", L"", L"ExploreBeacon", L"Gamepad_DPad_Down", Scope::Context},
+            // The settings' QTE rows: G and the right stick's click are bound to nothing in the game's
+            // menus (MC_Menu), where its X or square restores a setting's default.
+            {Command::Demonstration, L"Demonstration", L"G", L"", L"", L"PadDemonstration", L"Gamepad_RightThumbstick", Scope::Demo},
             {Command::DevDumpTree, L"DevDumpTree", L"Ctrl+F9", L"ChordDevDumpTree", L"Gamepad_LeftShoulder", L"", L"", Scope::Dev},
             {Command::DevTrace, L"DevTrace", L"Ctrl+F10", L"", L"", L"", L"", Scope::Dev},
             {Command::DevLogLevel, L"DevLogLevel", L"Ctrl+F11", L"ChordDevLogLevel", L"Gamepad_LeftTrigger", L"", L"", Scope::Dev},

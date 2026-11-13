@@ -1,6 +1,8 @@
 #include "features/Menus.hpp"
 
 #include "features/MenuRules.hpp"
+#include "features/Qte.hpp"
+#include "features/QteRules.hpp"
 
 #include "core/Config.hpp"
 #include "core/GameThread.hpp"
@@ -221,6 +223,14 @@ namespace da::features
             return HistoryMove(-1);
         }
 
+        // A settings row with the game's example of a QTE beside it: the key that voices the example is
+        // said after the game's own words for the row (qte::Demo).
+        void SayDemonstrationKey(UObject* control)
+        {
+            if (!control || !qte::DemoRow(obj::ObjectName(control))) return;
+            speech::Announce(locale::Mod(L"qte.demo.key", hotkeys::SpokenKey(hotkeys::Command::Demonstration)));
+        }
+
         void SpeakArrival(UObject* page, bool anew)
         {
             g_history.on = false;
@@ -263,7 +273,10 @@ namespace da::features
             if (anew && text == g_arrivalText)
                 log::Verbose(L"menus: shown anew with the same words, not read again");
             else if (!text.empty())
+            {
                 speech::Focus(text);
+                SayDemonstrationKey(control);
+            }
             g_arrivalText = text;
             g_screen = obj::KeyOf(page);
             g_screenGeneration = watch::DisplayGeneration();
@@ -301,6 +314,7 @@ namespace da::features
             // The prompts a control brings with it are said after it when they are new here.
             const auto fresh = NewPrompts(page);
             if (!fresh.empty()) speech::Announce(fresh);
+            SayDemonstrationKey(control);
         }
 
         void Forget()
@@ -330,6 +344,7 @@ namespace da::features
             if (!page)
             {
                 if (g_screen.object) Forget();
+                QteDemoFocus(L"", L"");
                 return;
             }
             const obj::ObjectKey pageKey = obj::KeyOf(page);
@@ -359,6 +374,12 @@ namespace da::features
 
             UObject* control = FocusedControl();
             const obj::ObjectKey controlKey = obj::KeyOf(control);
+            // The settings' QTE demonstration follows the row and its value (qte::Demo): every poll that
+            // reads them tells it.
+            if (control && (controlKey != g_control || gamethread::FrameCount() % 8 == 0))
+                QteDemoFocus(obj::ObjectName(control), ui::ValueOf(control));
+            else if (!control)
+                QteDemoFocus(L"", L"");
             if (control && controlKey != g_control)
             {
                 // Come from another group of controls, the focus brings the page's texts that came
@@ -470,6 +491,8 @@ namespace da::features
         const ui::Kind kind = ui::KindOf(control);
         if (kind == ui::Kind::Selector || kind == ui::Kind::Slider)
             out.push_back(locale::Mod(L"ui.prompt.selector", input::KeyDisplayName(L"Left"), input::KeyDisplayName(L"Right")));
+        if (control && qte::DemoRow(obj::ObjectName(control)))
+            out.push_back(locale::Mod(L"help.qte.demo", hotkeys::SpokenKey(hotkeys::Command::Demonstration)));
     }
 
     void ResetMenus()

@@ -22,6 +22,8 @@ namespace da::keyhook
         bool contextual = false;
         // The mod's own switch, taken while the mod is off as well.
         bool switchKey = false;
+        // A key that is the mod's only while a settings row with an example has the focus.
+        bool demo = false;
     };
 
     // A key the mod watches but never takes: the handler runs on the hook's own thread the
@@ -37,6 +39,8 @@ namespace da::keyhook
     // Whether the contextual bindings are taken now; set from the game thread as the
     // context comes and goes.
     void SetContext(bool active);
+    // Whether a settings row with an example has the focus: the demonstration's key is the mod's.
+    void SetDemo(bool active);
     // Whether the mod is on; off, the hook takes nothing but the switch. Set from the game
     // thread as the mod is switched.
     void SetOn(bool on);

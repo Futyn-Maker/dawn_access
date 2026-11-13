@@ -87,6 +87,28 @@ namespace da::qte
         return sinceSetUp >= kOpeningApart;
     }
 
+    bool DemoRow(std::wstring_view controlName)
+    {
+        return controlName.starts_with(L"Setting_") && controlName.find(L"QTE") != std::wstring_view::npos;
+    }
+
+    bool Demo::Focus(std::wstring_view row, std::wstring_view value)
+    {
+        const bool moved = row != m_row || value != m_value;
+        m_row = row;
+        m_value = value;
+        if (!moved || !m_playing) return false;
+        m_playing = false;
+        return true;
+    }
+
+    Demo::Toggle Demo::Toggled()
+    {
+        if (m_row.empty() || !DemoRow(m_row)) return Toggle::NotHere;
+        m_playing = !m_playing;
+        return m_playing ? Toggle::On : Toggle::Off;
+    }
+
     bool Examples::Says(const std::wstring& text, double now)
     {
         if (text == m_last && now - m_at < kExamplesApart) return false;

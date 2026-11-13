@@ -38,6 +38,9 @@ namespace da::hotkeys
     // field's.
     using Context = bool (*)();
     void AddContext(Context inContext);
+    // The situations in which the demonstration's key is the mod's (Scope::Demo): a settings row
+    // with an example has the focus.
+    void AddDemoContext(Context inContext);
 
     // A command a feature answers. The handler says whether it took the command; the handlers
     // of a command are asked in the order they were registered until one does. A command with

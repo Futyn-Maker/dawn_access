@@ -281,3 +281,49 @@ TEST_CASE("qte: a warm-up says the key once and the cue again as the press is ta
     REQUIRE(plain.repeats.size() == 2);
     CHECK(plain.repeats[0] == doctest::Approx(1.0).epsilon(0.03));
 }
+
+TEST_CASE("qte: the settings' examples are silent until the player's key plays them, and stop as the row or its value changes: s73 11:17 to 11:24")
+{
+    // The QTE rows of the accessibility tab, by the names the game gives their controls.
+    CHECK(qte::DemoRow(L"Setting_QTEBehaviour"));
+    CHECK(qte::DemoRow(L"Setting_QTEIcon"));
+    CHECK(qte::DemoRow(L"Setting_SingleQTEAction"));
+    CHECK(qte::DemoRow(L"Setting_QTEScale"));
+    CHECK(qte::DemoRow(L"Setting_QTEPosition"));
+    CHECK_FALSE(qte::DemoRow(L"Setting_DontMoveAutoSucceed"));
+    CHECK_FALSE(qte::DemoRow(L"Setting_AimAssist"));
+    CHECK_FALSE(qte::DemoRow(L"QTEWidget"));
+    CHECK_FALSE(qte::DemoRow(L""));
+
+    qte::Demo demo;
+    // Nothing is played until the key is pressed on a row of the group.
+    CHECK_FALSE(demo.Playing());
+    CHECK_FALSE(demo.Here());
+    CHECK(demo.Toggled() == qte::Demo::Toggle::NotHere);
+    CHECK_FALSE(demo.Focus(L"Setting_AimAssist", L"On"));
+    CHECK(demo.Toggled() == qte::Demo::Toggle::NotHere);
+    CHECK_FALSE(demo.Focus(L"Setting_QTEBehaviour", L"Pause on timeout"));
+    CHECK(demo.Here());
+    CHECK(demo.Toggled() == qte::Demo::Toggle::On);
+    CHECK(demo.Playing());
+    // The same row and value read again: it plays on.
+    CHECK_FALSE(demo.Focus(L"Setting_QTEBehaviour", L"Pause on timeout"));
+    CHECK(demo.Playing());
+    // The value changed: it stops, once.
+    CHECK(demo.Focus(L"Setting_QTEBehaviour", L"Standard"));
+    CHECK_FALSE(demo.Playing());
+    CHECK_FALSE(demo.Focus(L"Setting_QTEBehaviour", L"Standard"));
+    // Played again, then the focus moved to another row of the group: it stops.
+    CHECK(demo.Toggled() == qte::Demo::Toggle::On);
+    CHECK(demo.Focus(L"Setting_QTEIcon", L"Standard"));
+    CHECK_FALSE(demo.Playing());
+    // The key again turns it off.
+    CHECK(demo.Toggled() == qte::Demo::Toggle::On);
+    CHECK(demo.Toggled() == qte::Demo::Toggle::Off);
+    CHECK_FALSE(demo.Playing());
+    // The menu left: no row, and the key is not the demonstration's.
+    CHECK(demo.Toggled() == qte::Demo::Toggle::On);
+    CHECK(demo.Focus(L"", L""));
+    CHECK_FALSE(demo.Here());
+    CHECK(demo.Toggled() == qte::Demo::Toggle::NotHere);
+}

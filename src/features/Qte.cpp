@@ -9,6 +9,7 @@
 #include "core/ParamReader.hpp"
 #include "core/Symbols.hpp"
 #include "hooks/HookDispatcher.hpp"
+#include "hotkeys/Hotkeys.hpp"
 #include "input/InputNames.hpp"
 #include "locale/Locale.hpp"
 #include "speech/Sounds.hpp"
@@ -40,9 +41,29 @@ namespace da::features
             std::wstring text;        // what is said for it: the key or button
             sounds::Cue cue = sounds::Cue::Up;
             bool exampleWaits = false; // an example not said yet (qte::Example)
+            bool voiced = false;       // an example the demonstration voices as a prompt in play (qte::Demo)
         };
         std::vector<Qte> g_qtes;
         qte::Examples g_examples; // a page can show the same example in several places at once
+        qte::Demo g_demo;         // the settings' examples voiced or not (the player's key)
+
+        // A prompt the settings show as an example: on a page of a menu, or set up while a menu is up
+        // and no play runs (the copies the QTE rows set up as a value changes stand outside the page).
+        bool IsDemonstration(UObject* widget)
+        {
+            return ui::InsideMenuPage(widget) || (watch::CurrentScreen() != nullptr && !gamestate::InPlay());
+        }
+
+        // The demonstration stops: the examples it voiced fall silent where they stand.
+        void SilenceExamples()
+        {
+            for (auto& q : g_qtes)
+            {
+                if (!q.voiced) continue;
+                q.voiced = false;
+                q.demonstration = true;
+            }
+        }
 
         Qte* Find(UObject* widget)
         {
@@ -127,9 +148,9 @@ namespace da::features
             qte.cue = CueOf(actionName);
             qte.setUpAt = now;
             qte.warmup = warmup;
-            // A prompt inside a page of the settings is the game's example of what its
-            // prompts look like: said once as it is shown, never repeated, never judged.
-            qte.demonstration = ui::InsideMenuPage(widget);
+            // A prompt the settings show is the game's example of what its prompts look like: silent,
+            // unless the player has the demonstration play (qte::Demo).
+            qte.demonstration = IsDemonstration(widget);
             if (!qte.demonstration) qte.stage = StageOf(widget);
             log::Info(L"qte: {} set up with {} (\"{}\"), warm-up {:.2f} s (from {}){}", obj::ObjectName(widget), actionName, qte.text, warmup, readFrom,
                       qte.demonstration ? std::wstring(L", a demonstration")
@@ -137,7 +158,8 @@ namespace da::features
                                         : std::wstring(L", its stage not found"));
             if (qte.demonstration)
             {
-                // Said once it has stood a moment on its page (qte::Example).
+                // Voiced, while the demonstration plays, once it has stood a moment on its page
+                // (qte::Example).
                 qte.exampleWaits = true;
                 g_qtes.push_back(qte);
                 return;
@@ -254,8 +276,17 @@ namespace da::features
                         qte.exampleWaits = false;
                         if (step == qte::ExampleStep::Drop)
                             log::Verbose(L"qte: the example {} went before it was said", obj::ObjectName(qte.widget));
+                        else if (!g_demo.Playing())
+                            log::Verbose(L"qte: the example {} stays silent: the demonstration is off", obj::ObjectName(qte.widget));
                         else if (g_examples.Says(qte.text, now))
+                        {
+                            // Voiced as a prompt in play: its cue and key, the cue as it takes the press, the
+                            // key every second, the tone of its end.
+                            qte.voiced = true;
+                            qte.demonstration = false;
+                            log::Info(L"qte: the demonstration voices the example {}", obj::ObjectName(qte.widget));
                             Speak(qte, now, true);
+                        }
                     }
                 }
                 if (!qte.finished)
@@ -306,6 +337,56 @@ namespace da::features
         }
     }
 
+    void QteDemoFocus(const std::wstring& row, const std::wstring& value)
+    {
+        if (!g_demo.Focus(row, value)) return;
+        SilenceExamples();
+        log::Info(L"qte: the demonstration stops: the focus is on {} at \"{}\" now", row.empty() ? L"no row" : row, value);
+    }
+
+    namespace
+    {
+        // The settings row with the examples has the focus: the demonstration's key is the mod's.
+        bool DemoRowFocused()
+        {
+            return g_demo.Here();
+        }
+
+        // The player's key on a QTE row of the settings: the examples voiced or silent. Turned on, the
+        // example on the page now is voiced at once, as it stands.
+        bool OnDemonstrationKey()
+        {
+            const auto toggled = g_demo.Toggled();
+            if (toggled == qte::Demo::Toggle::NotHere) return false;
+            if (toggled == qte::Demo::Toggle::Off)
+            {
+                SilenceExamples();
+                log::Info(L"qte: the demonstration is turned off");
+                speech::Now(locale::Mod(L"qte.demo.off"));
+                return true;
+            }
+            log::Info(L"qte: the demonstration is turned on");
+            speech::Now(locale::Mod(L"qte.demo.on"));
+            const double now = gamethread::NowSeconds();
+            for (auto& q : g_qtes)
+            {
+                if (!q.demonstration || q.exampleWaits || !obj::IsLive(q.widget)) continue;
+                if (!(obj::IsWidgetShown(q.widget) || ui::LayerWidgetDrawn(q.widget))) continue;
+                // The example on the page now: a running one voiced on from here, one standing (the pause
+                // on timeout's) said as it stands.
+                if (!q.finished)
+                {
+                    q.voiced = true;
+                    q.demonstration = false;
+                }
+                log::Info(L"qte: the demonstration voices the example on the page, {}", obj::ObjectName(q.widget));
+                Speak(q, now, true);
+                break;
+            }
+            return true;
+        }
+    }
+
     void QteFeature::Install()
     {
         // The game's calls on the widget and the events it raises in the widget's own
@@ -318,6 +399,8 @@ namespace da::features
         hooks::OnScript(L"BatesQTEWidget", L"BP_EndQTEPrompt", &OnEndEvent);
         hooks::OnNative(L"/Script/Bates.BatesQTEWidget:EndQTEPrompt", &OnEndCall, nullptr);
         gamethread::AddPoller(L"qte", &Poll);
+        hotkeys::OnCommand(hotkeys::Command::Demonstration, &OnDemonstrationKey);
+        hotkeys::AddDemoContext(&DemoRowFocused);
     }
 
     void QteFeature::Describe(std::vector<std::wstring>& out)
