@@ -106,6 +106,18 @@ namespace da::shoot
         return p;
     }
 
+    std::vector<std::wstring> DilemmaWords(const std::wstring& leftKey, const std::wstring& rightKey, const std::wstring& left, const std::wstring& right)
+    {
+        if (left.empty() || right.empty()) return {};
+        if (leftKey.empty() || rightKey.empty()) return {left, right};
+        return {leftKey, left, rightKey, right};
+    }
+
+    bool NamesHighlight(bool dilemma, bool finishOnHighlight)
+    {
+        return dilemma && !finishOnHighlight;
+    }
+
     DilemmaLead LeadDilemma(const DilemmaPlace& p, int option, bool highlighted, bool invert)
     {
         DilemmaLead lead;

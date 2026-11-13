@@ -459,3 +459,29 @@ TEST_CASE("shooting: an aim-only stage names the way its stick turns")
     CHECK(shoot::AimWay(goal, false).empty());
     CHECK(shoot::AimWay(shoot::Sight{}, false).empty());
 }
+
+TEST_CASE("the dilemma's sides are named by the keys that turn the aim, and the shot names whoever the aim is on: Chris's shot, s73 11:56:27 and 11:56:42")
+{
+    // The game draws no prompt for the aim: each side by the key that turns the aim that way, then the
+    // one it takes the aim to.
+    const auto keyed = shoot::DilemmaWords(L"right stick left", L"right stick right", L"Chris", L"Ashley");
+    REQUIRE(keyed.size() == 4);
+    CHECK(keyed[0] == L"right stick left");
+    CHECK(keyed[1] == L"Chris");
+    CHECK(keyed[2] == L"right stick right");
+    CHECK(keyed[3] == L"Ashley");
+    // No key to name: the ways alone, as before.
+    const auto ways = shoot::DilemmaWords(L"", L"right stick right", L"Chris", L"Ashley");
+    REQUIRE(ways.size() == 2);
+    CHECK(ways[0] == L"Chris");
+    CHECK(ways[1] == L"Ashley");
+    // A side with no name: nothing.
+    CHECK(shoot::DilemmaWords(L"A", L"D", L"", L"Ashley").empty());
+    // The shot after the first turn (ShootChoice_AimAsh: both targets kept, a hit on each leading to its
+    // own end) can still be turned to the other side: the one the game highlights is named as it
+    // changes. The first turn (StartPose, finishing on the highlight) commits and says its side as it
+    // ends; other stages lead to their targets by sound.
+    CHECK(shoot::NamesHighlight(true, false));
+    CHECK_FALSE(shoot::NamesHighlight(true, true));
+    CHECK_FALSE(shoot::NamesHighlight(false, false));
+}

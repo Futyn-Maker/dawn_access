@@ -395,8 +395,12 @@ namespace da::features
                 log::Info(L"shooting: {} is the dilemma: the stick's left takes the aim to {}, its right to {}; yaw {:g} to {:g}, the middle {:g}{}", s.name,
                           left, right, s.minYaw, s.maxYaw, s.middle, s.finishOnHighlight ? L"; a side reached commits" : L"");
                 // The aim chooses: the sides named as the aim takes them (Andrey, 2026-11-08: "left:
-                // Chris, right: Ashley" left him asking what makes the choice).
-                if (!left.empty() && !right.empty()) speech::Announce(locale::Mod(L"shoot.dilemma", left, right));
+                // Chris, right: Ashley" left him asking what makes the choice), each by the key that
+                // turns the aim that way, for the game draws no prompt for the aim (Andrey, 2026-11-13:
+                // the stick and the buttons first; shoot::DilemmaWords).
+                const auto words = shoot::DilemmaWords(input::KeyForActionWay(L"IA_SequenceAim", L"Left"), input::KeyForActionWay(L"IA_SequenceAim", L"Right"),
+                                                       left, right);
+                if (!words.empty()) speech::Announce(words.size() == 4 ? locale::Mod(L"shoot.dilemma.keys", words) : locale::Mod(L"shoot.dilemma", words));
             }
             s.snaps = shoot::Snaps({s.targets.size(), s.aimingOnly, s.targetsHidden, s.finishOnHighlight, s.dilemma});
             log::Info(L"shooting: {} begins ({}): type {}, {} target(s) [{}]; {}; aim assist {}; aiming only {}; targets {}, reticle {}; the aim between yaw "
@@ -700,7 +704,13 @@ namespace da::features
             if (highlighted != s.highlighted)
             {
                 const Target* t = TargetAt(s, highlighted);
-                log::Info(L"shooting: {}", t ? std::format(L"the game highlights {}", t->label) : std::wstring(L"the game highlights neither side"));
+                // Where a press fires, the one the aim is on is named as it changes: the shot after the
+                // first turn can still be turned to the other (its stage keeps both, a hit on each
+                // leading to its own end); the first turn says the side it commits to as it ends.
+                const bool named = shoot::NamesHighlight(s.dilemma, s.finishOnHighlight) && t && !t->label.empty();
+                log::Info(L"shooting: {}{}", t ? std::format(L"the game highlights {}", t->label) : std::wstring(L"the game highlights neither side"),
+                          named ? L", said" : L"");
+                if (named) speech::Focus(t->label);
                 s.highlighted = highlighted;
             }
             if (place.region != s.dilemmaRegion)

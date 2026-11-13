@@ -206,6 +206,21 @@ namespace da::shoot
     };
     DilemmaLead LeadDilemma(const DilemmaPlace& p, int option, bool highlighted, bool invert);
 
+    // The dilemma's sides as the mod names them: each by the key that turns the aim that way and the
+    // one it takes the aim to ({leftKey, left, rightKey, right}), for the game draws no prompt for the
+    // aim; by the way alone ({left, right}, "aim left: ..., right: ...") where a key cannot be named;
+    // nothing where a side has no name. Chris's shot in s73 (11:56:27, 11:56:42) was said as the sides
+    // alone, and Andrey asked for the stick and the buttons first.
+    std::vector<std::wstring> DilemmaWords(const std::wstring& leftKey, const std::wstring& rightKey, const std::wstring& left, const std::wstring& right);
+
+    // Whether the one the game highlights is named as the highlight changes: in the dilemma's shot,
+    // where a press fires at whichever side the aim is on, and the aim can still be turned from the
+    // side the first turn chose to the other (ShootChoice_AimAsh keeps both targets, a hit on each
+    // leading to its own end: Shoot_Chris, Shoot_Ash); not in the first turn, which commits to the side
+    // it reaches and says it as it ends, nor in any other stage, where the aim sound and the walk key
+    // lead to a target named on its own.
+    bool NamesHighlight(bool dilemma, bool finishOnHighlight);
+
     // ---- the aim put on a target (the walk key in a shooting stage) ----------------------------
 
     // The walk key snaps the stage's aim onto a target and holds it there, as the walk takes the
