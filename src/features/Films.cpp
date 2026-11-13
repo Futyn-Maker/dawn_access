@@ -391,11 +391,13 @@ namespace da::features
 
     std::wstring Words(std::wstring_view key)
     {
-        std::wstring words = locale::Mod(key);
         // A description may be one of the game's own strings, said in the game's language, or the
-        // words of another description of the table (=key), for one picture shown in two places.
-        if (words.starts_with(L"@")) return gametext::Resolve(words.substr(1));
-        if (words.starts_with(L"=") && words.size() > 1 && words.substr(1) != key) return locale::Mod(words.substr(1));
+        // words of another description of the table (=key), for one picture shown in two places,
+        // followed through (picture::ResolveWords); a game string not found gives no words.
+        const std::wstring words = picture::ResolveWords(
+            key, [](std::wstring_view k) { return locale::Has(k) ? locale::Mod(k) : std::wstring(); },
+            [](std::wstring_view k) { return gametext::Resolve(k); });
+        if (words.empty()) log::Info(L"films: the description {} gives no words (a game string not found, or a reference that leads nowhere)", key);
         return words;
     }
 

@@ -7,6 +7,7 @@
 // the game prints them).
 
 #include <array>
+#include <functional>
 #include <optional>
 #include <set>
 #include <string>
@@ -223,8 +224,21 @@ namespace da::picture
     constexpr std::array<const wchar_t*, 8> kDislikeOrder = {L"Ash", L"Chris", L"Jessica", L"Emily", L"Josh", L"Matt", L"Mike", L"Sam"};
     constexpr std::array<const wchar_t*, 8> kDislikeNames = {L"Ashley", L"Chris", L"Jessica", L"Emily", L"Josh", L"Matt", L"Mike", L"Sam"};
     int CrossedOut(const std::array<bool, 8>& dislikes);
+    // The board of the friends' photos (i_photos_of_friends_lookat_first at the first look,
+    // i_photos_of_friends_lookat after): a clue whose crossed-out photo alone is said.
+    bool IsFriendsBoard(std::wstring_view planKey);
     // The description's key for an interaction's plan ("look.i_psychsession_1_interaction").
     std::wstring LookKey(std::wstring_view planKey);
+
+    // The words of a description: its text in the mod's table, or one of the game's own strings when
+    // it reads "@<key>", or the words another description gives when it reads "=<key>" (one picture
+    // shown in two places), followed through to the end: a description pointing at one that is a
+    // game string is that game string. A game string not found, a description missing, a reference
+    // round in a circle, give no words: a raw "@key" or "=key" is never said ("@SMG013_65750", the
+    // board of the friends' photos looked at again, s73 11:47:52). `mod` answers a key of the mod's
+    // table, empty when it has none; `game` a key of the game's string tables, empty when not found.
+    std::wstring ResolveWords(std::wstring_view key, const std::function<std::wstring(std::wstring_view)>& mod,
+                              const std::function<std::wstring(std::wstring_view)>& game);
 
     // The spread a book's anim graph shows in one of its states: its idles are named by the spread
     // ("page2_idle_right", "page4_idle_left1"; ABP_Act5_3_oldhotel_sams_sketchbook_template, whose

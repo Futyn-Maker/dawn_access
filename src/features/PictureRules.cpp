@@ -49,7 +49,7 @@ namespace da::picture
 
         // The interactions whose pictures the mod describes, and when; the moments are the game's own
         // states, as the logs of chapters 5 and 6 show them.
-        constexpr std::array<Planned, 50> kPlans = {
+        constexpr std::array<Planned, 46> kPlans = {
             // Dr. Hill's card is picked up face down and turned over with the stick (act20_1,
             // BP_PsychSession_PickUp, which no other level places: its examine stage reveals). It has no
             // core name; its activity starts it as I_psychsession_1_Interaction.
@@ -132,8 +132,10 @@ namespace da::picture
             // bracelet wherever it lies (one class), the cellar's painting before it falls, the dollhouse
             // looked into at its first use and opened with the key at its second, its keyhole, the key
             // behind the painting, the wine rack and the wine cellar's door, the hidden camera, the doll's
-            // head turned to its face and the cockroaches it lets out, Sam under the sack; the old hotel's clues that show only a card,
-            // said in the game's own clue words after the card; the beach photo Ashley picks up.
+            // head turned to its face and the cockroaches it lets out, Sam under the sack; the board of the
+            // friends' photos, whose crossed-out one alone is said (a clue the game describes in its
+            // menu, as every clue: its card and nothing more, Andrey 2026-11-13, but the photo crossed
+            // out is shown on the board alone), after the card; the beach photo Ashley picks up.
             Planned{L"i_death_whistle", L"bp_death_whistle_c", Moment::Reveals, L""},
             Planned{L"i_view_hannah_poster_part2", L"bp_view_hannah_poster_part2_c", Moment::State, L"ExaminePosterIdleLoop2", true},
             Planned{L"i_smashed_vase", L"bp_smashed_vase_v2_c", Moment::State, L"ik_idle"},
@@ -149,10 +151,6 @@ namespace da::picture
             Planned{L"i_doll_head", L"bp_dolls_head_c", Moment::Reveals, L""},
             Planned{L"i_doll_head.roaches", L"bp_dolls_head_c", Moment::State, L"cockroach_panic"},
             Planned{L"i_sams_sack", L"bp_samsack_c", Moment::State, L"EndPose"},
-            Planned{L"i_dead_pig_lookat", L"bp_pigs_lookat_c", Moment::State, L"examine_idle", true},
-            Planned{L"i_chains_and_knives_lookat_first", L"bp_knives_lookat_first_c", Moment::State, L"examine_idle", true},
-            Planned{L"i_chains_and_knives_lookat", L"bp_knives_lookat_c", Moment::State, L"examine_idle", true},
-            Planned{L"i_batteries_and_timers", L"bp_batteries_and_timers_c", Moment::State, L"examine_idle", true},
             Planned{L"i_photos_of_friends_lookat_first", L"bp_photos_lookat_first_c", Moment::State, L"examine_idle", true},
             Planned{L"i_photos_of_friends_lookat", L"bp_photos_lookat_c", Moment::State, L"examine_idle", true},
             Planned{L"i_hannah_and_beth_beach_photo_female", L"bp_hannah_and_beth_beach_photo_female_c", Moment::State, L"ik_animation"},
@@ -343,9 +341,32 @@ namespace da::picture
         return -1;
     }
 
+    bool IsFriendsBoard(std::wstring_view planKey)
+    {
+        return planKey == L"i_photos_of_friends_lookat_first" || planKey == L"i_photos_of_friends_lookat";
+    }
+
     std::wstring LookKey(std::wstring_view planKey)
     {
         return L"look." + str::ToLower(planKey);
+    }
+
+    std::wstring ResolveWords(std::wstring_view key, const std::function<std::wstring(std::wstring_view)>& mod,
+                              const std::function<std::wstring(std::wstring_view)>& game)
+    {
+        constexpr int kHopsMost = 8;
+        std::set<std::wstring> seen;
+        std::wstring at(key);
+        for (int hop = 0; hop < kHopsMost; ++hop)
+        {
+            if (!seen.insert(str::ToLower(at)).second) return {};
+            const std::wstring words = mod(at);
+            if (words.starts_with(L"@")) return words.size() > 1 ? game(std::wstring_view(words).substr(1)) : std::wstring();
+            if (!words.starts_with(L"=")) return words;
+            if (words.size() < 2) return {};
+            at = words.substr(1);
+        }
+        return {};
     }
 
     std::optional<int> PageOf(std::wstring_view state)

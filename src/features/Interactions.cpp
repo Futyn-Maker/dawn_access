@@ -157,17 +157,22 @@ namespace da::features
         {
             if (!g_looksSaid.insert(plan.key).second) return;
             const auto key = picture::LookKey(plan.key);
-            const bool described = locale::Has(key);
-            log::Info(L"interactions: the picture of {} is shown ({}); {}", plan.key, why,
-                      described ? L"its words wait for the game's prompt and the player's key" : L"no words for it");
-            if (!described) return;
-            g_lookWords = Words(key);
-            // The board of the friends' photos shows one of them crossed out, by the player's answers to
-            // Dr. Hill (act5_3): named after the game's own words for the board.
-            if (plan.key.starts_with(L"i_photos_of_friends_lookat"))
+            std::wstring words;
+            // The board of the friends' photos is a clue, described in the game's own menu, but it shows
+            // one of the photos crossed out, by the player's answers to Dr. Hill (act5_3): that alone is
+            // said, at the first look and every look after.
+            if (picture::IsFriendsBoard(plan.key))
             {
-                if (const auto name = CrossedOutFriend(); !name.empty()) g_lookWords += L" " + locale::Mod(L"look.crossedout", name);
+                if (const auto name = CrossedOutFriend(); !name.empty()) words = locale::Mod(L"look.crossedout", name);
             }
+            else if (locale::Has(key))
+            {
+                words = Words(key);
+            }
+            log::Info(L"interactions: the picture of {} is shown ({}); {}", plan.key, why,
+                      !words.empty() ? L"its words wait for the game's prompt and the player's key" : L"no words for it");
+            if (words.empty()) return;
+            g_lookWords = words;
             DueLook(g_lookWords, plan.key, true, plan.afterHud);
         }
 

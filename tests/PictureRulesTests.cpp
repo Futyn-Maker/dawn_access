@@ -3,6 +3,7 @@
 #include "Support.hpp"
 #include "features/PictureRules.hpp"
 
+#include <map>
 #include <string>
 #include <vector>
 
@@ -193,11 +194,23 @@ TEST_CASE("pictures: an interaction shows a picture at each of its states that h
     CHECK(picture::PlansFor(Names{L"I_SamsBracelet_Cinema", L"I_SamsBracelet_Cinema", L"BP_Bracelet_C"}).front().key == L"i_sams_bracelet");
     CHECK(picture::PlansFor(Names{L"", L"I_secret_camera", L"BP_Secret_camera_C"}).front().state == L"camera_ik_idle");
     CHECK(picture::PlansFor(Names{L"", L"", L"BP_Samsack_C"}).front().state == L"EndPose");
-    // The old hotel's clues and the locker's poster are said after the HUD's own words (the card, the
-    // transcript); the dollhouse after nothing of the HUD's.
-    CHECK(picture::PlansFor(Names{L"I_dead_pig_lookat", L"I_dead_pig_lookat", L"BP_Pigs_lookat_C"}).front().afterHud);
+    // The board of the friends' photos and the locker's poster are said after the HUD's own words (the
+    // card, the transcript); the dollhouse after nothing of the HUD's.
+    CHECK(picture::PlansFor(Names{L"I_photos_of_friends_lookat_first", L"I_photos_of_friends_lookat_first", L"BP_Photos_lookat_first_C"}).front().afterHud);
     CHECK(picture::PlansFor(Names{L"I_view_hannah_poster_part2", L"I_view_hannah_poster_part2", L"BP_View_hannah_poster_part2_C"}).front().afterHud);
     CHECK_FALSE(house[0].afterHud);
+    // The old hotel's other clues show their card and nothing more: the game describes a clue in its
+    // menu, and the mod never copies those words into the world (Andrey, 2026-11-13).
+    CHECK(picture::PlansFor(Names{L"I_dead_pig_lookat", L"I_dead_pig_lookat", L"BP_Pigs_lookat_C"}).empty());
+    CHECK(picture::PlansFor(Names{L"I_chains_and_knives_lookat_first", L"I_chains_and_knives_lookat_first", L"BP_Knives_lookat_first_C"}).empty());
+    CHECK(picture::PlansFor(Names{L"I_chains_and_knives_lookat", L"I_chains_and_knives_lookat", L"BP_Knives_lookat_C"}).empty());
+    CHECK(picture::PlansFor(Names{L"I_batteries_and_timers", L"I_batteries_and_timers", L"BP_Batteries_and_timers_C"}).empty());
+    // The board, looked at first and again, is the board whose crossed-out photo alone is said.
+    const auto boardAgain = picture::PlansFor(Names{L"I_photos_of_friends_lookat", L"I_photos_of_friends_lookat", L"BP_Photos_lookat_C"});
+    REQUIRE(boardAgain.size() == 1);
+    CHECK(picture::IsFriendsBoard(boardAgain.front().key));
+    CHECK(picture::IsFriendsBoard(L"i_photos_of_friends_lookat_first"));
+    CHECK_FALSE(picture::IsFriendsBoard(L"i_dollhouse_complete"));
     // One plan, as before.
     CHECK(picture::PlansFor(Names{L"I_map", L"", L"BP_Map_C"}).size() == 1);
     CHECK(picture::PlansFor(Names{L"I_carved_graffiti", L"", L"BP_Examine_wall_item_left_C"}).empty());
@@ -560,4 +573,42 @@ TEST_CASE("pictures: a film's screen gone with its level leaves it unseen until 
     // Its screens all gone with a level the game let go: not seen, though once found; found again as the
     // level streams back, drawn or not as the engine says.
     CHECK(picture::ScreenOf(true, 0, false) == picture::Screen::Hidden);
+}
+
+TEST_CASE("pictures: a description's words are followed through to the end and never said as a raw key: the board looked at again, s73 11:47:52")
+{
+    // The board looked at again pointed at the first look's words (=key), which were a game string
+    // (@key): the reference was taken as the words, and "@SMG013_65750" was said before the photo
+    // crossed out; the chains and knives looked at again said "@SMG013_65753" alone.
+    std::map<std::wstring, std::wstring> table{
+        {L"look.first", L"@SMG013_65750"},
+        {L"look.again", L"=look.first"},
+        {L"look.plain", L"A wooden door."},
+        {L"look.alias", L"=look.plain"},
+        {L"look.chain", L"=look.alias"},
+        {L"look.lost", L"@SMG_NOWHERE"},
+        {L"look.loop1", L"=look.loop2"},
+        {L"look.loop2", L"=look.loop1"},
+        {L"look.self", L"=look.self"},
+        {L"look.dangling", L"=look.missing"},
+        {L"look.bare", L"@"},
+    };
+    const auto mod = [&](std::wstring_view key) -> std::wstring
+    {
+        const auto it = table.find(std::wstring(key));
+        return it == table.end() ? std::wstring() : it->second;
+    };
+    const auto game = [](std::wstring_view key) -> std::wstring { return key == L"SMG013_65750" ? L"Long-lens photographs." : L""; };
+    CHECK(picture::ResolveWords(L"look.first", mod, game) == L"Long-lens photographs.");
+    CHECK(picture::ResolveWords(L"look.again", mod, game) == L"Long-lens photographs.");
+    CHECK(picture::ResolveWords(L"look.plain", mod, game) == L"A wooden door.");
+    CHECK(picture::ResolveWords(L"look.alias", mod, game) == L"A wooden door.");
+    CHECK(picture::ResolveWords(L"look.chain", mod, game) == L"A wooden door.");
+    // Nothing is said rather than a key: a game string not found, a circle, a description missing.
+    CHECK(picture::ResolveWords(L"look.lost", mod, game).empty());
+    CHECK(picture::ResolveWords(L"look.loop1", mod, game).empty());
+    CHECK(picture::ResolveWords(L"look.self", mod, game).empty());
+    CHECK(picture::ResolveWords(L"look.dangling", mod, game).empty());
+    CHECK(picture::ResolveWords(L"look.bare", mod, game).empty());
+    CHECK(picture::ResolveWords(L"look.none", mod, game).empty());
 }
