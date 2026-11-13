@@ -1338,7 +1338,7 @@ TEST_CASE("only what the game has just turned on is news, not what comes within 
 TEST_CASE("the trigger that streams in more of the world is the way on where the map ends: the kitchen's airlock, 2026-11-07")
 {
     // act4_1, Chris after the kitchen's open door (research/dumps/ground-20261107-001916.tsv, the
-    // third grid, cut by research/tools/cut_ground.py from his cell at (4022, -8651)): the map ran
+    // third grid, cut by tools/ground/cut_ground.py from his cell at (4022, -8651)): the map ran
     // through the airlock to a strip of the porch and stopped at its edge, "no floor". The porch's
     // stairs, the yard and the path to the hanging shed are levels of Section_02, which the game
     // streams in only once he walks into T_Section2_Load in the airlock's corridor (its slab placed
@@ -1447,7 +1447,7 @@ TEST_CASE("a walk goes on only with its own target, or the player's new choice, 
 TEST_CASE("the volume that puts her on a beam is the way on where the ground's map ends: the asylum's walkway, 2026-11-07")
 {
     // act4_2, Mike on the ledge above the cellar after the barrel's climb (research/dumps/
-    // ground-20261107-170946.tsv, the second grid, cut by research/tools/cut_ground.py from his cell
+    // ground-20261107-170946.tsv, the second grid, cut by tools/ground/cut_ground.py from his cell
     // at (28258, 33418)): the map ran down the walkway and stopped at its middle, 108 cells, and the
     // list stood empty; the way on is over BP_BeamWalk_C_1, whose ActivationVolume
     // (BP_CharacterTriggerVolume_C_1, an engine cube of 256 scaled 3.41 by 0.28 by 0.5, turned

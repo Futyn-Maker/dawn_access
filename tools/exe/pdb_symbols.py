@@ -38,6 +38,14 @@ GAME = os.environ.get(
 )
 EXE = os.path.join(GAME, r"Windows\Bates\Binaries\Win64\Bates-Win64-Shipping.exe")
 PDB = os.path.join(GAME, r"Windows\Bates\Binaries\Win64\Bates-Win64-Shipping.pdb")
+# The tools look for the game where DA_GAME_DIR says, else in Steam's default library.
+def need(path):
+    """The path of a file of the game's; the run ends with where to point the tools when it is missing."""
+    if not os.path.exists(path):
+        raise SystemExit("%s is missing: set DA_GAME_DIR to Until Dawn's folder (the one that holds Windows\\Bates.exe)" % path)
+    return path
+
+
 CLSID_DIA_SOURCE = GUID("{E6756135-1E65-4D17-8576-610761398C3C}")
 
 (
@@ -95,7 +103,7 @@ def open_session():
         ctypes.byref(factory),
     )
     source = factory.CreateInstance(None, msdia.IDiaDataSource)
-    source.loadDataFromPdb(PDB)
+    source.loadDataFromPdb(need(PDB))
     session = source.openSession()
     return msdia, session, session.globalScope
 
@@ -104,7 +112,7 @@ def exe_debug_directory():
     """The PDB GUID, age and path the exe's debug directory names, with the exe's size and timestamp."""
     import pefile
 
-    pe = pefile.PE(EXE, fast_load=True)
+    pe = pefile.PE(need(EXE), fast_load=True)
     pe.parse_data_directories(
         directories=[pefile.DIRECTORY_ENTRY["IMAGE_DIRECTORY_ENTRY_DEBUG"]]
     )
@@ -268,7 +276,7 @@ def func_bytes(name, count=32):
         return
     import pefile
 
-    pe = pefile.PE(EXE, fast_load=True)
+    pe = pefile.PE(need(EXE), fast_load=True)
     for i in range(rows.Count):
         s = rows.Item(i)
         rva = s.relativeVirtualAddress

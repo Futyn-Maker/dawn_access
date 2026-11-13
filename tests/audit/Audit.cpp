@@ -8,7 +8,7 @@
 // audit <ground.tsv> <volumes.tsv> [--all]
 //
 // The volumes are the ground record's own "V" lines (a record written in play holds the ways
-// on it judged; research/tools/level_triggers.py writes them for every trigger of the levels),
+// on it judged; tools/levels/level_triggers.py writes them for every trigger of the levels),
 // with "O name mx my mz sx sy sz yaw" for the old box. --all prints the volumes no stretch
 // reaches too.
 #include "features/GridPath.hpp"

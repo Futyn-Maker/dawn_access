@@ -686,7 +686,7 @@ TEST_CASE("out of the music box's place the last stretch steps her toward ground
     // moved her nowhere: "could not get there", a metre from it. Pushed again at full stick she stood
     // two seconds against the dresser, then a lean took her round its slanted edge and in. The fixture
     // is the ground the session's record reached from where she slid to, within (4900, -8200) to
-    // (5300, -7900) (research/dumps/ground-20261105-230156.tsv, grid 1, research/tools/cut_ground.py).
+    // (5300, -7900) (research/dumps/ground-20261105-230156.tsv, grid 1, tools/ground/cut_ground.py).
     std::ifstream in(std::filesystem::path(DA_REPO_ROOT) / "tests" / "fixtures" / "ground-musicbox.tsv");
     REQUIRE(in);
     const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());

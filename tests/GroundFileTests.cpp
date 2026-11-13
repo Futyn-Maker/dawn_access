@@ -245,7 +245,7 @@ TEST_CASE("the generator shed's doorway, which the cells could not pass, is pass
     // no nearer the generator than 248 cm, wedged in the shed's doorway, and the generator, the very
     // thing the objective named, was left out as closed off; a grid laid in the lodge at 01:08 the
     // night before had happened to lie near the doorway's line and got in. The fixture is cut from that
-    // session's record (research/dumps/ground-20261104-025228.tsv, research/tools/cut_ground.py): the
+    // session's record (research/dumps/ground-20261104-025228.tsv, tools/ground/cut_ground.py): the
     // cells the map reached from her spot within (8600, -7300) to (10600, -5700); the shed's floor
     // where the passage ends inside (2317.7, as the 01:08 grid measured it there); and the level's own
     // passage there, BP_Doorway_Shed (its middle (8793, -5943), turned -30 degrees, its entry points

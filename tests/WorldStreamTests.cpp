@@ -153,7 +153,7 @@ TEST_CASE("the ways through the hall run round its walls while Section_03 is awa
     // asked again every wall it knew when Section_03 went, found 1306 steps through the hall's walls
     // free while they were away, and kept them free once they were back. The fixture holds the hall
     // as it was first felt out with Section_03 in (cut from research/dumps/ground-20261107-205052.tsv
-    // by research/tools/cut_world_change.py), those 1306 walls, the changes the game made, and the
+    // by tools/ground/cut_world_change.py), those 1306 walls, the changes the game made, and the
     // free answers the old rules took while Section_03 was away. The record does not say which of
     // its 33 levels held each wall: the section's own level stands for them.
     std::ifstream in(std::filesystem::path(DA_REPO_ROOT) / "tests" / "fixtures" / "ground-asylum-hall-streamed.tsv");

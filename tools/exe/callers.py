@@ -58,6 +58,8 @@ def main():
             return "%s+0x%x" % (rows[i][2], rva - rows[i][0])
         return "?"
 
+    if not os.path.exists(EXE):
+        raise SystemExit("%s is missing: set DA_GAME_DIR to Until Dawn's folder (the one that holds Windows\\Bates.exe)" % EXE)
     pe = pefile.PE(EXE, fast_load=True)
     text = next(s for s in pe.sections if s.Name.rstrip(b"\0") == b".text")
     base = text.VirtualAddress

@@ -80,6 +80,8 @@ def main():
         wanted.append(by_name[args[k]])
         k += 1
 
+    if not os.path.exists(EXE):
+        raise SystemExit("%s is missing: set DA_GAME_DIR to Until Dawn's folder (the one that holds Windows\\Bates.exe)" % EXE)
     pe = pefile.PE(EXE, fast_load=True)
     image = pe.get_memory_mapped_image()
     md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_64)

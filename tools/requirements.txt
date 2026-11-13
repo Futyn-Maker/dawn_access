@@ -1,0 +1,9 @@
+# The Python packages the tools need beyond the standard library (Python 3.12), at the versions they
+# were run with:  python -m pip install -r tools\requirements.txt
+# The rest of the tools need none. Each tool is run as  python -I tools\<folder>\<tool>.py
+numpy>=1.26      # exe/callers.py, levels/rooms_audit.py
+pefile>=2024.8   # exe/callers.py, exe/dasm.py, exe/pdb_symbols.py
+capstone>=5.0    # exe/dasm.py
+comtypes>=1.4    # exe/pdb_symbols.py (the DIA SDK of Visual Studio, msdia140.dll)
+scipy>=1.13      # levels/rooms_audit.py
+minidump>=0.0.24 # exe/crash.py

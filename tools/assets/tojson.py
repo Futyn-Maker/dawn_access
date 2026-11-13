@@ -13,8 +13,9 @@ carry. UAssetGUI applies them only by a name registered in %LOCALAPPDATA%\UAsset
              native classes, enough for widgets, data assets and inputs;
   BatesPlay  the mappings dumped in play (research/dumps/Bates-play.usmap): the Blueprint classes
              of levels' actors too (trigger volumes, doors), so that they come out as properties.
-A known name not registered yet is registered from research/dumps. A new dump is made in the game
-by USMapDump (beside this script; a UE4SS Lua mod).
+A known name not registered yet is registered from DA_USMAPS, else research/dumps (git-ignored: the
+mappings are the game's own types, made on each machine). A new dump is made in the game by USMapDump
+(beside this script; a UE4SS Lua mod, enabled for that one launch only) and saved under the name above.
 
 UAssetGUI is DA_UASSETGUI, else research/tools/UAssetGUI.exe. It is only ever run with the tojson
 arguments: run without them it opens a window.
@@ -33,9 +34,10 @@ UASSETGUI = os.environ.get(
 )
 ENGINE = "VER_UE5_3"
 MAPPINGS_DIR = os.path.join(os.environ.get("LOCALAPPDATA", ""), "UAssetGUI", "Mappings")
+USMAPS = os.environ.get("DA_USMAPS", os.path.join(REPO, "research", "dumps"))
 KNOWN_USMAPS = {
-    "Bates": os.path.join(REPO, "research", "dumps", "Bates-mainmenu-v3.usmap"),
-    "BatesPlay": os.path.join(REPO, "research", "dumps", "Bates-play.usmap"),
+    "Bates": os.path.join(USMAPS, "Bates-mainmenu-v3.usmap"),
+    "BatesPlay": os.path.join(USMAPS, "Bates-play.usmap"),
 }
 
 
@@ -47,8 +49,9 @@ def ensure_registered(name):
     source = KNOWN_USMAPS.get(name)
     if not source or not os.path.exists(source):
         print(
-            "mappings %r are not registered in %s and no known source"
-            % (name, MAPPINGS_DIR)
+            "mappings %r are not registered in %s, and %s is missing: dump them in the game with"
+            " USMapDump and save them there, or set DA_USMAPS to the folder that holds them"
+            % (name, MAPPINGS_DIR, source or name + ".usmap")
         )
         return False
     os.makedirs(MAPPINGS_DIR, exist_ok=True)

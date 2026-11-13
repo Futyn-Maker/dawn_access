@@ -86,7 +86,7 @@ TEST_CASE("recheck: a walk stopped by a door the game shut asks the ground ahead
 {
     // tests/fixtures/ground-cinema-airlock-slam.tsv: the airlock and the lower hall as the mod's ground
     // knew them at the session's end (cut from research/dumps/ground-20261108-012812.tsv by
-    // research/tools/cut_ground.py from (926, -9141)): the doorway's steps found free before the door
+    // tools/ground/cut_ground.py from (926, -9141)): the doorway's steps found free before the door
     // slammed, never asked again.
     auto record = ReadFixture("ground-cinema-airlock-slam.tsv");
     const grid::Cell stall{-58, -52, 51};
@@ -177,7 +177,7 @@ TEST_CASE("recheck: a prop moved by a passage swept free one way only leaves the
     // answered last about the cupboard door the ghost scare swung open (research/sessions/
     // s58-whole.log, 11:27:43: from (1372, -5200)-(1434, -5082) to (1315, -5089)-(1433, -5026)), the
     // stretch a move of it asks again (its boxes grown by her radius and a cell; cut by
-    // research/tools/cut_steps.py from research/dumps/ground-20261108-110204.tsv, anchor 0).
+    // tools/ground/cut_steps.py from research/dumps/ground-20261108-110204.tsv, anchor 0).
     const auto record = ReadFixture("ground-cupboard-door-steps.tsv");
     const auto store = StepStore(record);
     REQUIRE(store.size() == 341);
@@ -608,7 +608,7 @@ namespace
 TEST_CASE("recheck: a thing carried is no door's leaf: the shotgun in Chris's hands walled him in at the scarecrow, 2026-11-08")
 {
     // tests/fixtures/ground-scarecrow-shotgun.tsv: the ground between the scarecrow and the entrails
-    // as the session's record had it at its end, cut by research/tools/cut_ground.py from where Chris
+    // as the session's record had it at its end, cut by tools/ground/cut_ground.py from where Chris
     // stood after the scarecrow (6663, -3611) out of research/dumps/ground-20261108-181921.tsv, and
     // the "leaf" the map laid out at 18:40:16: the two capsules of BP_Shotgun_jack_C_0, the shotgun
     // he carried, which the locked kitchen door's interaction had bound for its animation.

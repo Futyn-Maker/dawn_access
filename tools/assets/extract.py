@@ -82,6 +82,10 @@ def main():
     args = ap.parse_args()
     if not os.path.exists(RETOC):
         raise SystemExit("retoc not found: %s (set DA_RETOC)" % RETOC)
+    if not os.path.isdir(args.paks):
+        raise SystemExit(
+            "The game's Paks folder is not at %s: set DA_GAME_DIR to Until Dawn's folder (the one that holds Windows\\Bates.exe), or pass --paks" % args.paks
+        )
     os.makedirs(args.legacy, exist_ok=True)
     if not args.what.lower().endswith(".txt"):
         result = retoc(args.paks, args.legacy, args.what)

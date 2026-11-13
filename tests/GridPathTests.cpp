@@ -713,7 +713,7 @@ TEST_CASE("a step is free both ways: the map begun in the hall gets back into Sa
 {
     // tests/fixtures/ground-sams-bath-door.tsv: the bathroom, its doorway and the hall beyond as the
     // mod's ground knew them when the map began past the doorway at 23:47:21.508 (cut from
-    // research/dumps/ground-20261107-234549.tsv up to its line 10923 by research/tools/cut_ground.py).
+    // research/dumps/ground-20261107-234549.tsv up to its line 10923 by tools/ground/cut_ground.py).
     // The door pushed open stood ajar across the doorway; the first map, begun in the bathroom, got out
     // by the channel beside its leaf, and every step of that channel taken back from the hall was swept
     // into the leaf or the hall's wall: the map begun past it opened the hall's 281 cells and left the

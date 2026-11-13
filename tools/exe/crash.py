@@ -326,6 +326,11 @@ def dumps_now():
 
 
 def collect(since):
+    if not os.path.isdir(WIN64):
+        print(
+            "The game's binaries are not at %s: its own crash dumps are not looked for; set DA_GAME_DIR to Until Dawn's folder (the one that holds Windows\\Bates.exe)"
+            % WIN64
+        )
     os.makedirs(KEPT, exist_ok=True)
     kept_names = {name.split("-", 2)[-1] for name in os.listdir(KEPT)}
     taken = 0

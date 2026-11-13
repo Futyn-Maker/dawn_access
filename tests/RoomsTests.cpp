@@ -656,7 +656,7 @@ TEST_CASE("the lodge's yard: the lodge's things are another room's, the yard's s
     // Chris in the lodge's yard with the front door frozen shut, 2026-11-02 11:35 to 11:47
     // (research/sessions/s40.log, research/dumps/ground-20261102-113515.tsv cut by trim_record.py
     // to the 5885 cells the yard's maps reached, with the 27 reverb volumes of act2_11's LV_reverb
-    // placed by research/tools/level_triggers.py and the 204 places the character stood at). The
+    // placed by tools/levels/level_triggers.py and the 204 places the character stood at). The
     // list held 24 things; the map, run from the yard, reached four and proved the rest closed off.
     std::ifstream in(std::filesystem::path(DA_REPO_ROOT) / "tests" / "fixtures" / "ground-lodge-yard.tsv");
     REQUIRE(in.good());
