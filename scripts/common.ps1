@@ -179,6 +179,20 @@ function Get-DaInstallFiles {
     foreach ($file in Get-ChildItem $prism -Recurse -File) {
         & $add $file.FullName ("$modDest\licenses\prism\" + $file.FullName.Substring($prism.Length + 1)) Program
     }
+    # Where Prism's source is, as its licence (MPL-2.0, section 3.2) asks of a release that carries the
+    # library: written for the version the build fetched.
+    $prismVersion = Get-DaPrismVersion
+    $source = Join-Path $DaRoot "build\prism-source.txt"
+    New-Item -ItemType Directory -Force (Split-Path -Parent $source) | Out-Null
+    $words = "Prism $prismVersion, the speech library in dlls\prism.dll, is licensed under the Mozilla Public License 2.0 (MPL-2.0; its text is prism\mpl-2.0.txt beside this file). Its source code: https://github.com/ethindp/prism/tree/$prismVersion"
+    Set-Content -Path $source -Value $words -Encoding ASCII
+    & $add $source "$modDest\licenses\prism\SOURCE.txt" Program
+    # The licences of the libraries UE4SS.dll is built from (tools\release\collect_licences.py).
+    $thirdParty = Join-Path $DaRoot "third_party\ue4ss-licences"
+    if (-not (Test-Path $thirdParty)) { throw "UE4SS's third-party licences are missing: run python -I tools\release\collect_licences.py." }
+    foreach ($file in Get-DaShippedFiles $thirdParty) {
+        & $add $file.FullName ("$modDest\licenses\UE4SS-third-party\" + $file.Name) Program
+    }
 
     $missing = @($files | Where-Object { -not (Test-Path $_.Source) } | ForEach-Object { $_.Source })
     if ($missing.Count -gt 0) {

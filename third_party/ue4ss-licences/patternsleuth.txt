@@ -1,0 +1,1 @@
+patternsleuth is licensed MIT OR Apache-2.0, as its Cargo.toml names it; its source: https://github.com/trumank/patternsleuth.
