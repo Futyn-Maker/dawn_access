@@ -54,6 +54,7 @@ add_executable(tests
     CreditsRulesTests.cpp
     PictureRulesTests.cpp
     AchievementRulesTests.cpp
+    AddressCacheTests.cpp
     "${DA_SRC}/core/Strings.cpp"
     "${DA_SRC}/core/Config.cpp"
     "${DA_SRC}/core/Symbols.cpp"

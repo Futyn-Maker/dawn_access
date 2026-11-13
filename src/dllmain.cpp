@@ -2,6 +2,7 @@
 // Entry point: UE4SS loads Mods\DawnAccess\dlls\main.dll and calls start_mod().
 
 #include "core/Config.hpp"
+#include "core/Freed.hpp"
 #include "core/GameThread.hpp"
 #include "core/Log.hpp"
 #include "core/ObjectUtil.hpp"
@@ -117,6 +118,7 @@ public:
 
     ~DawnAccessMod() override
     {
+        da::freed::Uninstall();
         da::hotkeys::Uninstall();
         da::input::ForgetWalkKeys();
         da::outputs::Stop();
@@ -165,6 +167,7 @@ public:
         // utterance short.
         da::input::InstallActivityTracker();
         da::hooks::Install();
+        da::freed::Install();
         da::watch::Install();
         da::narration::Install();
         da::gamestate::Install();

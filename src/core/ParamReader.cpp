@@ -1,5 +1,6 @@
 #include "core/ParamReader.hpp"
 
+#include "core/AddressCache.hpp"
 #include "core/Fault.hpp"
 #include "core/Log.hpp"
 
@@ -11,19 +12,21 @@ namespace da::params
     namespace
     {
         std::mutex g_mutex;
-        std::unordered_map<UFunction*, std::unordered_map<std::wstring, FProperty*>> g_cache;
+        // A function's parameters by name, kept with the function's identity and forgotten when the
+        // game frees it (cache::AddressCache): a Blueprint function loaded again has new ones.
+        cache::AddressCache<std::unordered_map<std::wstring, FProperty*>> g_cache;
     }
 
     FProperty* Find(UFunction* function, std::wstring_view name)
     {
         if (!function) return nullptr;
+        const cache::Identity identity = obj::IdentityOf(function);
         {
             fault::Guard lock(g_mutex, L"params");
-            const auto f = g_cache.find(function);
-            if (f != g_cache.end())
+            if (const auto* known = g_cache.Find(function, identity))
             {
-                const auto p = f->second.find(std::wstring(name));
-                if (p != f->second.end()) return p->second;
+                const auto p = known->find(std::wstring(name));
+                if (p != known->end()) return p->second;
             }
         }
         FProperty* found = nullptr;
@@ -37,8 +40,16 @@ namespace da::params
             }
         }
         fault::Guard lock(g_mutex, L"params");
-        g_cache[function][std::wstring(name)] = found;
+        auto* parameters = g_cache.FindMutable(function, identity);
+        if (!parameters) parameters = &g_cache.Put(function, identity, {});
+        (*parameters)[std::wstring(name)] = found;
         return found;
+    }
+
+    bool Forget(const void* function)
+    {
+        fault::Guard lock(g_mutex, L"params");
+        return g_cache.Forget(function);
     }
 
     bool Bool(FFrame& stack, std::wstring_view name, bool& out)

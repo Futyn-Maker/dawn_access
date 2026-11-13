@@ -50,4 +50,9 @@ namespace da::hooks
 
     // Statistics for the log header.
     size_t ScriptHandlerCount();
+
+    // The game has freed the object at this address (core/Freed): the handlers found for it, as a
+    // function, and the construction listeners it matched, as a class, are looked up anew. True when
+    // anything was kept for it.
+    bool Forget(const void* object);
 }

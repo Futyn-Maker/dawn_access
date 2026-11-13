@@ -1,5 +1,6 @@
 #include "hooks/HookDispatcher.hpp"
 
+#include "core/AddressCache.hpp"
 #include "core/Config.hpp"
 #include "core/Fault.hpp"
 #include "core/GameThread.hpp"
@@ -45,14 +46,19 @@ namespace da::hooks
         std::mutex g_mutex;
         std::vector<std::unique_ptr<Entry>> g_post;
         std::vector<std::unique_ptr<Entry>> g_pre;
-        std::unordered_map<UFunction*, std::vector<Entry*>> g_postCache;
-        std::unordered_map<UFunction*, std::vector<Entry*>> g_preCache;
+        // The handlers of each script function, by the function's address with its identity, and
+        // forgotten when the game frees the function (cache::AddressCache, core/Freed): kept by the
+        // address alone, a function of a Blueprint class loaded again where another had been ran the
+        // handlers of the one before, or none (WBP_DontMove's BP_Success late in s73: no verdict was
+        // heard).
+        cache::AddressCache<std::vector<Entry*>> g_postCache;
+        cache::AddressCache<std::vector<Entry*>> g_preCache;
         std::vector<ConstructedEntry> g_constructed;
         // Which construction listeners a class matches, by the class: the game makes tens of thousands
-        // of objects as a level loads, and each class's name is spelled out and compared once. The
-        // classes listened for are native ones, never unloaded; a Blueprint class freed and its address
-        // taken by another keeps a "no" that is still right for them. Forgotten when a listener is added.
-        std::unordered_map<const UClass*, std::vector<size_t>> g_constructedMatches;
+        // of objects as a level loads, and each class's name is spelled out and compared once. Kept
+        // with the class's identity and forgotten when the game frees the class, as above; forgotten
+        // altogether when a listener is added.
+        cache::AddressCache<std::vector<size_t>> g_constructedMatches;
         std::atomic<bool> g_trace{false};
         std::wstring g_lastHook;
         bool g_installed = false;
@@ -148,12 +154,12 @@ namespace da::hooks
 
             std::vector<Entry*> handlers;
             bool cached = false;
+            const cache::Identity identity = obj::IdentityOf(node);
             {
                 fault::Guard lock(g_mutex, L"hooks");
-                const auto it = cache.find(node);
-                if (it != cache.end())
+                if (const auto* known = cache.Find(node, identity))
                 {
-                    handlers = it->second;
+                    handlers = *known;
                     cached = true;
                 }
             }
@@ -163,7 +169,7 @@ namespace da::hooks
                 functionName = node->GetName();
                 if (!IsSkippedFunctionName(functionName)) handlers = Resolve(entries, node, functionName);
                 fault::Guard lock(g_mutex, L"hooks");
-                cache[node] = handlers;
+                cache.Put(node, identity, handlers);
             }
 
             if (post && g_trace.load(std::memory_order_relaxed))
@@ -195,8 +201,9 @@ namespace da::hooks
             {
                 fault::Guard lock(g_mutex, L"hooks");
                 if (g_constructed.empty()) return;
-                auto found = g_constructedMatches.find(params.Class);
-                if (found == g_constructedMatches.end())
+                const cache::Identity identity = obj::IdentityOf(params.Class);
+                const std::vector<size_t>* found = g_constructedMatches.Find(params.Class, identity);
+                if (!found)
                 {
                     std::vector<size_t> indices;
                     const std::wstring cls = obj::ClassName(const_cast<UClass*>(params.Class));
@@ -205,9 +212,9 @@ namespace da::hooks
                         const auto& entry = g_constructed[i];
                         if (entry.suffix ? str::EndsWith(cls, entry.className) : cls == entry.className) indices.push_back(i);
                     }
-                    found = g_constructedMatches.emplace(params.Class, std::move(indices)).first;
+                    found = &g_constructedMatches.Put(params.Class, identity, std::move(indices));
                 }
-                for (const size_t i : found->second) matched.push_back(g_constructed[i].handler);
+                for (const size_t i : *found) matched.push_back(g_constructed[i].handler);
             }
             if (matched.empty()) return;
             gamethread::Post(
@@ -259,14 +266,14 @@ namespace da::hooks
     {
         fault::Guard lock(g_mutex, L"hooks");
         g_post.push_back(std::make_unique<Entry>(Entry{std::move(ownerClass), std::move(function), std::move(handler)}));
-        g_postCache.clear();
+        g_postCache.Clear();
     }
 
     void OnScriptPre(std::wstring ownerClass, std::wstring function, ScriptHandler handler)
     {
         fault::Guard lock(g_mutex, L"hooks");
         g_pre.push_back(std::make_unique<Entry>(Entry{std::move(ownerClass), std::move(function), std::move(handler)}));
-        g_preCache.clear();
+        g_preCache.Clear();
     }
 
     bool OnNative(const std::wstring& fullName, ScriptHandler pre, ScriptHandler post)
@@ -365,7 +372,7 @@ namespace da::hooks
     {
         fault::Guard lock(g_mutex, L"hooks");
         g_constructed.push_back(ConstructedEntry{std::move(className), suffix, std::move(handler)});
-        g_constructedMatches.clear();
+        g_constructedMatches.Clear();
     }
 
     void SetTrace(bool enabled)
@@ -392,5 +399,14 @@ namespace da::hooks
     {
         fault::Guard lock(g_mutex, L"hooks");
         return g_post.size() + g_pre.size();
+    }
+
+    bool Forget(const void* object)
+    {
+        fault::Guard lock(g_mutex, L"hooks");
+        const bool post = g_postCache.Forget(object);
+        const bool pre = g_preCache.Forget(object);
+        const bool constructed = g_constructedMatches.Forget(object);
+        return post || pre || constructed;
     }
 }

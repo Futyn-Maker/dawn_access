@@ -3,6 +3,8 @@
 // mod survives Blueprint/native layout changes between game patches.
 // All functions must be called on the game thread.
 
+#include "core/AddressCache.hpp"
+
 #include <Unreal/CoreUObject/UObject/Class.hpp>
 #include <Unreal/CoreUObject/UObject/UnrealType.hpp>
 #include <Unreal/UObject.hpp>
@@ -49,6 +51,9 @@ namespace da::obj
     ObjectKey KeyOf(UObject* object); // the empty key for null
     // True while the object the key was taken from is live and still the one at its address.
     bool IsSame(const ObjectKey& key);
+    // The identity a cache keeps beside an object's address (cache::AddressCache): the tokens of
+    // its name and its outer's name.
+    cache::Identity IdentityOf(const UObject* object);
     UObject* FindOuterOfClass(UObject* object, std::wstring_view className, int maxDepth = 12);
     UObject* FindOuterUserWidget(UObject* widget, int maxDepth = 12); // nearest outer that is a UserWidget
 
@@ -182,4 +187,7 @@ namespace da::obj
     UObject* LocalPlayerController();
     UObject* GameInstance();
     void ResetCaches();
+    // The game has freed the object at this address (core/Freed): what was looked up for it, as a
+    // class, is forgotten. True when anything was.
+    bool Forget(const void* object);
 }

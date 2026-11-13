@@ -25,4 +25,8 @@ namespace da::params
 
     // "Name=value, Name2=value2" for logging.
     std::wstring Describe(FFrame& stack);
+
+    // The game has freed the function at this address (core/Freed): its parameters are looked up
+    // anew. True when any were kept.
+    bool Forget(const void* function);
 }

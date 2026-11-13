@@ -1,5 +1,6 @@
 #include "core/ObjectUtil.hpp"
 
+#include "core/AddressCache.hpp"
 #include "core/Fault.hpp"
 #include "core/Log.hpp"
 #include "core/Strings.hpp"
@@ -34,9 +35,12 @@ namespace da::obj
     namespace
     {
         std::mutex g_mutex;
-        std::unordered_map<UClass*, std::wstring> g_classNames;
-        std::unordered_map<UClass*, std::unordered_map<std::wstring, FProperty*>> g_propertyCache;
-        std::unordered_map<UClass*, std::unordered_map<std::wstring, UFunction*>> g_functionCache;
+        // Kept by the class's address with its identity, and forgotten when the game frees the class
+        // (cache::AddressCache, core/Freed): a Blueprint class freed and loaded again, or another taking
+        // its memory, is looked up anew.
+        cache::AddressCache<std::wstring> g_classNames;
+        cache::AddressCache<std::unordered_map<std::wstring, FProperty*>> g_propertyCache;
+        cache::AddressCache<std::unordered_map<std::wstring, UFunction*>> g_functionCache;
         UObject* g_playerController = nullptr;
         UObject* g_gameInstance = nullptr;
 
@@ -147,6 +151,24 @@ namespace da::obj
         return key.object && IsLive(key.object) && KeyOf(key.object) == key;
     }
 
+    namespace
+    {
+        uint64_t NameToken(const FName& name)
+        {
+            return (static_cast<uint64_t>(name.GetComparisonIndex().ToUnstableInt()) << 32) | static_cast<uint32_t>(name.GetNumber());
+        }
+    }
+
+    cache::Identity IdentityOf(const UObject* object)
+    {
+        cache::Identity identity;
+        if (!object) return identity;
+        auto* self = const_cast<UObject*>(object);
+        identity.name = NameToken(self->GetFName());
+        if (UObject* outer = self->GetOuterPrivate()) identity.outer = NameToken(outer->GetFName());
+        return identity;
+    }
+
     bool IsCDO(UObject* object)
     {
         if (!object) return true;
@@ -169,14 +191,14 @@ namespace da::obj
     std::wstring ClassName(UClass* cls)
     {
         if (!cls) return L"<null>";
+        const cache::Identity identity = IdentityOf(cls);
         {
             fault::Guard lock(g_mutex, L"obj");
-            const auto it = g_classNames.find(cls);
-            if (it != g_classNames.end()) return it->second;
+            if (const std::wstring* known = g_classNames.Find(cls, identity)) return *known;
         }
         std::wstring name = cls->GetName();
         fault::Guard lock(g_mutex, L"obj");
-        g_classNames[cls] = name;
+        g_classNames.Put(cls, identity, name);
         return name;
     }
 
@@ -246,13 +268,13 @@ namespace da::obj
     {
         if (!cls) return nullptr;
         const std::wstring key(name);
+        const cache::Identity identity = IdentityOf(cls);
         {
             fault::Guard lock(g_mutex, L"obj");
-            const auto c = g_propertyCache.find(cls);
-            if (c != g_propertyCache.end())
+            if (const auto* known = g_propertyCache.Find(cls, identity))
             {
-                const auto p = c->second.find(key);
-                if (p != c->second.end()) return p->second;
+                const auto p = known->find(key);
+                if (p != known->end()) return p->second;
             }
         }
         FProperty* found = nullptr;
@@ -266,7 +288,9 @@ namespace da::obj
             }
         }
         fault::Guard lock(g_mutex, L"obj");
-        g_propertyCache[cls][key] = found;
+        auto* properties = g_propertyCache.FindMutable(cls, identity);
+        if (!properties) properties = &g_propertyCache.Put(cls, identity, {});
+        (*properties)[key] = found;
         return found;
     }
 
@@ -573,13 +597,13 @@ namespace da::obj
         UClass* cls = object->GetClassPrivate();
         if (!cls) return nullptr;
         const std::wstring key(name);
+        const cache::Identity identity = IdentityOf(cls);
         {
             fault::Guard lock(g_mutex, L"obj");
-            const auto c = g_functionCache.find(cls);
-            if (c != g_functionCache.end())
+            if (const auto* known = g_functionCache.Find(cls, identity))
             {
-                const auto f = c->second.find(key);
-                if (f != c->second.end()) return f->second;
+                const auto f = known->find(key);
+                if (f != known->end()) return f->second;
             }
         }
         UFunction* found = nullptr;
@@ -593,7 +617,9 @@ namespace da::obj
             }
         }
         fault::Guard lock(g_mutex, L"obj");
-        g_functionCache[cls][key] = found;
+        auto* functions = g_functionCache.FindMutable(cls, identity);
+        if (!functions) functions = &g_functionCache.Put(cls, identity, {});
+        (*functions)[key] = found;
         return found;
     }
 
@@ -1209,7 +1235,18 @@ namespace da::obj
         fault::Guard lock(g_mutex, L"obj");
         g_playerController = nullptr;
         g_gameInstance = nullptr;
-        g_propertyCache.clear();
-        g_functionCache.clear();
+        g_propertyCache.Clear();
+        g_functionCache.Clear();
+    }
+
+    bool Forget(const void* object)
+    {
+        fault::Guard lock(g_mutex, L"obj");
+        const bool name = g_classNames.Forget(object);
+        const bool properties = g_propertyCache.Forget(object);
+        const bool functions = g_functionCache.Forget(object);
+        if (object == g_playerController) g_playerController = nullptr;
+        if (object == g_gameInstance) g_gameInstance = nullptr;
+        return name || properties || functions;
     }
 }

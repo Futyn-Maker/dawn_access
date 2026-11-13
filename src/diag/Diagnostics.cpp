@@ -1,6 +1,7 @@
 #include "diag/Diagnostics.hpp"
 
 #include "core/Config.hpp"
+#include "core/Freed.hpp"
 #include "core/GameThread.hpp"
 #include "core/Log.hpp"
 #include "core/ObjectUtil.hpp"
@@ -285,6 +286,15 @@ namespace da::diag
                 share = std::format(L"; mod median {:.2f} ms, 95% {:.2f} ms, worst {:.1f} ms", cost(0.5), cost(0.95), costs.frameMs.back());
                 const auto worst = std::max_element(costs.worst.begin(), costs.worst.end(), [](const auto& a, const auto& b) { return a.second < b.second; });
                 if (worst != costs.worst.end()) share += std::format(L" ({} {:.1f} ms)", worst->first, worst->second);
+            }
+            // How many of the mod's lookups by address the game's frees have taken back (core/Freed),
+            // when that has grown: the evidence that classes come and go under the mod.
+            static unsigned long long forgottenSaid = 0;
+            const unsigned long long forgotten = freed::ForgottenCount();
+            if (forgotten != forgottenSaid)
+            {
+                share += std::format(L"; {} lookup(s) forgotten as the game freed their objects", forgotten);
+                forgottenSaid = forgotten;
             }
             log::Info(L"frames: {} in {:.0f} s; median {:.1f} ms, 95% {:.1f} ms, 99% {:.1f} ms, worst {:.1f} ms{}", g_frames.size(), now - g_framesSince,
                       at(0.5), at(0.95), at(0.99), g_frames.back(), share);
