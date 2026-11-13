@@ -214,6 +214,8 @@ TEST_CASE("pictures: the silent looks of chapters 7 to 10 are described as their
     const Seen seen[] = {
         {{L"I_peer_at_cart", L"I_peer_at_cart", L"BP_Peeratcart_C"}, L"i_peer_at_cart", L"look_idle"},
         {{L"I_torn_miner_clothes", L"I_torn_miner_clothes", L"BP_Tornminerclothes_lookat_C"}, L"i_torn_miner_clothes", L"examine_idle"},
+        // The broken ladder beside it (13:33:32), its generic floor camera filled by the ladder.
+        {{L"I_broken_ladder", L"I_broken_ladder", L"BP_Broken_ladder_lookat_C"}, L"i_broken_ladder", L"examine_idle"},
         {{L"I_sign", L"I_sign", L"BP_Sign_C"}, L"i_sign", L"examine_idle"},
         {{L"I_peer_at_head", L"I_peer_at_head", L"BP_Peerathead_C"}, L"i_peer_at_head", L"look_idle"},
         {{L"I_peer_at_wheel", L"I_peer_at_wheel", L"BP_Peeratwheel_C"}, L"i_peer_at_wheel", L"look_idle"},

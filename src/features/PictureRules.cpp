@@ -49,7 +49,7 @@ namespace da::picture
 
         // The interactions whose pictures the mod describes, and when; the moments are the game's own
         // states, as the logs of chapters 5 and 6 show them.
-        constexpr std::array<Planned, 54> kPlans = {
+        constexpr std::array<Planned, 55> kPlans = {
             // Dr. Hill's card is picked up face down and turned over with the stick (act20_1,
             // BP_PsychSession_PickUp, which no other level places: its examine stage reveals). It has no
             // core name; its activity starts it as I_psychsession_1_Interaction.
@@ -157,10 +157,11 @@ namespace da::picture
             // The silent looks of chapters 7 to 10, found in session 73 (none a clue: none shows a clue's
             // card or sets its flag; research from the levels' placements, the looks' own cameras, the props'
             // decoded meshes and textures, and walkthroughs of the remake), each when its look stands, the
-            // game's "Назад" some 0.7 s on. Emily in the mines (act6_1): the cart's track seen through the
-            // mesh, the miner's helmet on the stones (the look is called the torn clothes), the broken piece
-            // of a danger sign in Hannah's lair, and the views through the mesh where the look is called the
-            // head and the wheel. The lodge's path (act4_1 and act6_4, one look in the levels both stream):
+            // game's "Назад" some 0.7 s on. Emily in the mines (act6_1): the tunnel floor seen through the
+            // mesh, the miner's helmet on the stones (the look is called the torn clothes) and the broken
+            // ladder beside it (a generic floor camera the walkthroughs show filled by the ladder), the broken
+            // piece of a danger sign in Hannah's lair, and the views through the mesh where the look is called
+            // the head and the wheel. The lodge's path (act4_1 and act6_4, one look in the levels both stream):
             // the scarecrow, whose head is the one Dr. Hill's fear question chose (kVariants). Chris at the
             // hanging shed (act6_4): the dead crows (no core name; the level calls them I_Dead_crow_lookat),
             // the chair and blood, the fake torso, the saw blade. Mike in the sanatorium (act7_2): the dead
@@ -168,6 +169,7 @@ namespace da::picture
             // oil can held up (its prompt with it) and the cockroaches it lets out.
             Planned{L"i_peer_at_cart", L"bp_peeratcart_c", Moment::State, L"look_idle"},
             Planned{L"i_torn_miner_clothes", L"bp_tornminerclothes_lookat_c", Moment::State, L"examine_idle"},
+            Planned{L"i_broken_ladder", L"bp_broken_ladder_lookat_c", Moment::State, L"examine_idle"},
             Planned{L"i_sign", L"bp_sign_c", Moment::State, L"examine_idle"},
             Planned{L"i_peer_at_head", L"bp_peerathead_c", Moment::State, L"look_idle"},
             Planned{L"i_peer_at_wheel", L"bp_peeratwheel_c", Moment::State, L"look_idle"},
