@@ -113,14 +113,25 @@ namespace da::lines
     // бабочки: R1", then "Эффект бабочки. Хранитель секретов. R1", 2026-11-02). A card waits for
     // its body to be drawn, for at most kCardWait, and is then read whole.
     constexpr double kCardWait = 3.0;
+    // A card taken away before its body is drawn is said as it stood, its title and key, once it was up
+    // long enough to be seen (kCardSeen): Chris's shot at the end of chapter 6 put up the butterfly
+    // effect's card, and the level's change took it away 1.7 s later, before its name came (it comes
+    // 1.8 to 2.3 s after the card in every other card of the session), and nothing was said
+    // (research/sessions/s73-play.log, 11:56:47.510 to 11:56:49.202).
+    constexpr double kCardSeen = 0.5;
     class Card
     {
     public:
         // A poll of the card, its body drawn or not: whether its lines are read now.
         bool Ready(double now, bool bodyDrawn);
-        void Hidden()
+        // The card is hidden as of `now`: whether it went before its body was drawn, after it had been
+        // up kCardSeen, so that what it showed is said; the card waits anew when shown again.
+        bool Hidden(double now)
         {
+            const bool lost = m_since >= 0.0 && !m_bodySeen && now - m_since >= kCardSeen;
             m_since = -1.0;
+            m_bodySeen = false;
+            return lost;
         }
         // How long the card has been up, as of its first poll; 0 before it.
         double ShownFor(double now) const
@@ -130,6 +141,7 @@ namespace da::lines
 
     private:
         double m_since = -1.0; // since when the card has been shown
+        bool m_bodySeen = false; // its body was drawn, or it was read whole after the longest wait
     };
 
     // A title card (a chapter's, a character's) lays its words out at once and fades them in one

@@ -69,6 +69,7 @@ namespace da::features
             UObject* instance = nullptr;
             lines::Element lines;
             lines::Card card;      // for an update card, which waits for its body (Text_Body)
+            std::wstring cardTitle; // what the card drew while its body was still to come
             lines::TitleFill fill; // for a title card, which fades its words in one after another
             lines::ClockTicks clock; // a clock it shows, said as its hours and minutes change
         };
@@ -227,7 +228,16 @@ namespace da::features
                 if (!obj::IsWidgetShown(t.instance))
                 {
                     t.lines.Hidden();
-                    t.card.Hidden();
+                    // A card taken away before its body came is said as it stood (lines::Card::Hidden);
+                    // a pause hides the HUD for a while and is no taking away.
+                    const bool paused = gamestate::Paused();
+                    if (!paused && t.card.Hidden(now) && !t.cardTitle.empty())
+                    {
+                        log::Info(L"hud: {} went before its body was drawn; said as it stood: \"{}\"", obj::ClassName(t.instance), t.cardTitle);
+                        g_saidAt = now;
+                        if (g_echo.Says(t.cardTitle, now)) speech::Announce(t.cardTitle);
+                    }
+                    if (!paused) t.cardTitle.clear();
                     t.fill.Hidden();
                     t.clock.Hidden();
                     if (IsPage(t.instance) && lines::PageComing(g_reading.Open(), false, now - drawnBefore, false)) pageComing = true;
@@ -239,8 +249,13 @@ namespace da::features
                     !t.card.Ready(now, !ui::DrawnTexts(body).empty() && obj::IsWidgetShown(body, true)))
                 {
                     cardComing = true;
+                    if (obj::IsWidgetShown(t.instance, true))
+                    {
+                        if (auto title = str::JoinSentences(Lines(t.instance)); !title.empty()) t.cardTitle = std::move(title);
+                    }
                     continue;
                 }
+                if (IsCard(t.instance)) t.cardTitle.clear();
                 // A title card still fading its words in holds the prompts (lines::TitleFill).
                 if (IsTitleCard(t.instance) && t.fill.Update(now, ui::VisibleTexts(t.instance), ui::DrawnTexts(t.instance))) titleFilling = true;
                 // Faded out to nothing, it shows no lines (a document's transcript hidden).

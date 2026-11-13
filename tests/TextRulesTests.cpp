@@ -327,9 +327,31 @@ TEST_CASE("lines: an update card is read once, with its name, when its body is d
     lines::Card card;
     CHECK_FALSE(card.Ready(0.0, false));
     CHECK(card.Ready(lines::kCardWait, false));
-    card.Hidden();
+    CHECK_FALSE(card.Hidden(5.0)); // read whole after the longest wait: nothing lost
     CHECK_FALSE(card.Ready(10.0, false));
     CHECK(card.Ready(10.1, true));
+    CHECK_FALSE(card.Hidden(12.0)); // its body was drawn and read
+}
+
+TEST_CASE("an update card taken away before its body is drawn is said as it stood: the butterfly card of Chris's shot, s73 11:56:47")
+{
+    // WBP_ButterflyHUDUpdate came up at 11:56:47.510 with its title and key; the level's change took
+    // it away at 11:56:49.202, before its name (1.8 to 2.3 s after the card in every other card of
+    // the session), and nothing was said.
+    lines::Card card;
+    const double up = 1000.0;
+    for (double t = up; t < up + 1.7; t += 0.1)
+        CHECK_FALSE(card.Ready(t, false));
+    CHECK(card.Hidden(up + 1.7));
+    // Hidden at the next poll too: said once.
+    CHECK_FALSE(card.Hidden(up + 1.8));
+    // A card that flickers up for less than kCardSeen is no card seen.
+    lines::Card flicker;
+    CHECK_FALSE(flicker.Ready(up, false));
+    CHECK_FALSE(flicker.Hidden(up + lines::kCardSeen - 0.1));
+    // A card never polled shown is no card lost.
+    lines::Card never;
+    CHECK_FALSE(never.Hidden(up));
 }
 
 TEST_CASE("a HUD hint shown with a control's prompt is still to be said until it settles, and the prompt waits for it")

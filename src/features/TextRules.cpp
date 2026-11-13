@@ -214,7 +214,9 @@ namespace da::lines
     bool Card::Ready(double now, bool bodyDrawn)
     {
         if (m_since < 0.0) m_since = now;
-        return bodyDrawn || now - m_since >= kCardWait;
+        const bool ready = bodyDrawn || now - m_since >= kCardWait;
+        if (ready) m_bodySeen = true;
+        return ready;
     }
 
     bool Echo::Says(const std::wstring& text, double now)
