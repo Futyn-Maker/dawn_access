@@ -241,3 +241,43 @@ TEST_CASE("qte: a settings example is said once it has stood a moment, never one
     CHECK(qte::Example(59.0, 59.2, true) == qte::ExampleStep::Wait);
     CHECK(qte::Example(59.0, 59.0 + qte::kExampleSettle + 0.01, true) == qte::ExampleStep::Say);
 }
+
+TEST_CASE("qte: a warm-up says the key once and the cue again as the press is taken, then every second: the stages' own warm-ups, s73")
+{
+    // 14:40:05.575: a prompt with a warm-up of 0.43 s; the game took the press from 0.41 s. A long
+    // warm-up (55 of the game's stages set 2 s or more) asked for presses every second that the game
+    // would not take (UBatesQTEStage::ProcessQTEPressed counts one only once the stage runs).
+    qte::Prompt p;
+    p.setUpAt = 0.0;
+    p.spokenAt = 0.0;
+    p.warmup = 2.5;
+    const auto warming = Play(p, 0.0, 2.5, true, Driven());
+    CHECK(warming.repeats.empty()); // nothing through the warm-up
+    // The game opens it: the cue again there, and the key every second after.
+    CHECK(qte::CuesOpening(2.5));
+    p.opened = true;
+    p.spokenAt = 2.5;
+    const auto running = Play(p, 2.5, 4.6, true, Driven());
+    REQUIRE(running.repeats.size() == 2);
+    CHECK(running.repeats[0] == doctest::Approx(3.5).epsilon(0.02));
+    CHECK(running.repeats[1] == doctest::Approx(4.5).epsilon(0.02));
+    // The warm-up over with no word of the opening (its event unheard): the key every second all the
+    // same, from the end of the warm-up on.
+    qte::Prompt q;
+    q.setUpAt = 0.0;
+    q.spokenAt = 0.0;
+    q.warmup = 1.5;
+    const auto unheard = Play(q, 0.0, 2.1, true, Driven());
+    REQUIRE(unheard.repeats.size() == 1);
+    CHECK(unheard.repeats[0] == doctest::Approx(1.5).epsilon(0.03));
+    // No warm-up: every second from the set-up, the opening's cue folded into the set-up's.
+    CHECK_FALSE(qte::CuesOpening(0.0));
+    CHECK_FALSE(qte::CuesOpening(qte::kOpeningApart - 0.01));
+    qte::Prompt r;
+    r.setUpAt = 0.0;
+    r.spokenAt = 0.0;
+    r.opened = true;
+    const auto plain = Play(r, 0.0, 2.1, true, Driven());
+    REQUIRE(plain.repeats.size() == 2);
+    CHECK(plain.repeats[0] == doctest::Approx(1.0).epsilon(0.03));
+}

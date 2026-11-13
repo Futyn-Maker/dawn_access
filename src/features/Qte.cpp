@@ -39,7 +39,6 @@ namespace da::features
             std::wstring action;      // the input action the game asks for
             std::wstring text;        // what is said for it: the key or button
             sounds::Cue cue = sounds::Cue::Up;
-            bool opened = false;       // the game has begun taking the press
             bool exampleWaits = false; // an example not said yet (qte::Example)
         };
         std::vector<Qte> g_qtes;
@@ -127,6 +126,7 @@ namespace da::features
             qte.text = actionName.empty() ? std::wstring() : input::KeyForAction(actionName);
             qte.cue = CueOf(actionName);
             qte.setUpAt = now;
+            qte.warmup = warmup;
             // A prompt inside a page of the settings is the game's example of what its
             // prompts look like: said once as it is shown, never repeated, never judged.
             qte.demonstration = ui::InsideMenuPage(widget);
@@ -182,9 +182,12 @@ namespace da::features
             {
                 qte->opened = true;
                 if (qte->demonstration) return;
-                log::Info(L"qte: {} takes the press from {:.2f} s after its set-up", obj::ObjectName(self), gamethread::NowSeconds() - qte->setUpAt);
-                sounds::Play(qte->cue);
-                qte->spokenAt = gamethread::NowSeconds();
+                const double now = gamethread::NowSeconds();
+                const bool cue = qte::CuesOpening(now - qte->setUpAt);
+                log::Info(L"qte: {} takes the press from {:.2f} s after its set-up{}", obj::ObjectName(self), now - qte->setUpAt,
+                          cue ? L": its cue again" : L", its cue at the set-up standing for it");
+                if (cue) sounds::Play(qte->cue);
+                qte->spokenAt = now;
             }
         }
 

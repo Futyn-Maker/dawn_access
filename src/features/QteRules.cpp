@@ -78,8 +78,13 @@ namespace da::qte
             step.from = L"the prompt, which went away";
             return step;
         }
-        step.repeat = !p.paused && !p.demonstration && now - p.spokenAt >= kRepeat;
+        step.repeat = !p.paused && !p.demonstration && now - p.spokenAt >= kRepeat && (p.opened || now - p.setUpAt >= p.warmup);
         return step;
+    }
+
+    bool CuesOpening(double sinceSetUp)
+    {
+        return sinceSetUp >= kOpeningApart;
     }
 
     bool Examples::Says(const std::wstring& text, double now)
