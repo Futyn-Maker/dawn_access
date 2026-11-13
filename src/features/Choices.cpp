@@ -119,12 +119,20 @@ namespace da::features
             Option* option = nullptr;
             Choice* choice = g_book.Of(self, &option);
             if (!choice || !option || choice->finished) return;
+            const double before = option->selection;
+            const double peak = std::max(option->peak, before);
             if (choice::Hold(*option, progress))
             {
                 // With the players' share where the game shows it (choice::HeldWords).
                 const auto words = choice::HeldWords(*option);
                 log::Verbose(L"choices: holding toward \"{}\"", words);
                 if (!words.empty()) speech::Focus(words);
+            }
+            else if (progress <= 0.05 && before > 0.05)
+            {
+                // A hold let go before its ring filled, and how far it got: what a choice run out
+                // after a hold leaves to be told apart (s73 15:42:04, Mike's way through the ward).
+                log::Verbose(L"choices: the hold toward \"{}\" is let go, its ring {:.0f}% full at most", option->text, peak * 100.0);
             }
         }
 
