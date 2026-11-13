@@ -99,9 +99,40 @@ function Get-DawnUE4SSDir([string]$Win64) {
     return $sub
 }
 
+# The timestamp the linker gave the mod's last build (main.map's "Timestamp is ..."), as eight hex
+# digits; empty when there is no map. A crash dump names the main.dll it ran by the same number.
+function Get-DaBuildStamp {
+    $map = Join-Path $DaRoot "build\src\main.map"
+    if (-not (Test-Path $map)) { return "" }
+    return [regex]::Match(((Get-Content $map -TotalCount 8) -join "`n"), 'Timestamp is ([0-9a-f]{8})').Groups[1].Value
+}
+
 # True while the game runs: its DLLs are locked then, and its saves must not be touched.
 function Test-DawnRunning {
     return [bool]((Get-Process -Name $DaExeName -ErrorAction SilentlyContinue) -or (Get-Process -Name $DaLauncherName -ErrorAction SilentlyContinue))
+}
+
+# The files of a folder of the repository that a release takes: the ones git tracks there, so that a
+# file left in the folder by hand is never shipped (said, when there is one); every file when the
+# repository has no git to ask.
+function Get-DaShippedFiles([string]$Folder) {
+    $ErrorActionPreference = "Continue"
+    $root = (Resolve-Path $Folder).Path
+    $all = @(Get-ChildItem $root -Recurse -File)
+    $git = Get-Command git -ErrorAction SilentlyContinue
+    if (-not $git) { return $all }
+    $relative = $root.Substring($DaRoot.Length).TrimStart('')
+    $tracked = @(& git -C $DaRoot ls-files -- $relative 2>$null)
+    if ($LASTEXITCODE -ne 0 -or $tracked.Count -eq 0) { return $all }
+    $set = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+    foreach ($path in $tracked) { [void]$set.Add(($path -replace '/', '')) }
+    $shipped = New-Object System.Collections.Generic.List[object]
+    foreach ($file in $all) {
+        $name = $file.FullName.Substring($DaRoot.Length).TrimStart('')
+        if ($set.Contains($name)) { $shipped.Add($file) }
+        else { Write-Warning "Not shipped, as git does not track it: $name" }
+    }
+    return $shipped
 }
 
 # Every file of an installed copy of the mod: its source, its place under the game's
@@ -125,14 +156,14 @@ function Get-DaInstallFiles {
     $config = Join-Path $DaRoot "ue4ss"
     if (-not (Test-Path $config)) { throw "UE4SS's configuration for the game is missing: $config" }
     $config = (Resolve-Path $config).Path
-    foreach ($file in Get-ChildItem $config -Recurse -File) {
+    foreach ($file in Get-DaShippedFiles $config) {
         & $add $file.FullName ("ue4ss\" + $file.FullName.Substring($config.Length + 1)) Settings
     }
 
     & $add (Join-Path $DaRoot "build\src\main.dll") "$modDest\dlls\main.dll" Program
     & $add (Join-Path $DaRoot "third_party\prism\bin\prism.dll") "$modDest\dlls\prism.dll" Program
     $mod = (Resolve-Path (Join-Path $DaRoot "mod")).Path
-    foreach ($file in Get-ChildItem $mod -Recurse -File) {
+    foreach ($file in Get-DaShippedFiles $mod) {
         $relative = $file.FullName.Substring($mod.Length + 1)
         $kind = "Program"
         if ($relative -eq "$DaModName.ini") { $kind = "Settings" }

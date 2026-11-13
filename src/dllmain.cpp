@@ -62,6 +62,21 @@ namespace
         return std::filesystem::path(buffer).parent_path().wstring();
     }
 
+    // The timestamp the linker gave this main.dll, as a crash dump names the module by it and as the
+    // kept symbols are named (build\symbols\<timestamp>, tools\exe\crash.py): the version alone stays
+    // the same across test builds.
+    DWORD ModuleTimestamp()
+    {
+        HMODULE module = nullptr;
+        GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, reinterpret_cast<LPCWSTR>(&ModuleDirectory),
+                           &module);
+        if (!module) return 0;
+        const auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(module);
+        if (dos->e_magic != IMAGE_DOS_SIGNATURE) return 0;
+        const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS*>(reinterpret_cast<const uint8_t*>(module) + dos->e_lfanew);
+        return nt->Signature == IMAGE_NT_SIGNATURE ? nt->FileHeader.TimeDateStamp : 0;
+    }
+
     // What the game's settings and its UI framework say about the session, for the log.
     void LogGameState()
     {
@@ -139,7 +154,7 @@ public:
         da::log::Init(m_modDir + L"\\DawnAccess.log", settings.logFile, level);
         da::diag::SetModDir(m_modDir);
 
-        da::log::Info(L"DawnAccess {} starting; mod dir {}", ModVersion, m_modDir);
+        da::log::Info(L"DawnAccess {} (build {:08x}) starting; mod dir {}", ModVersion, ModuleTimestamp(), m_modDir);
         if (!configError.empty()) da::log::Error(L"config: {} (defaults in use)", configError);
 
         da::speech::SetPreferSapi(settings.preferSapi);

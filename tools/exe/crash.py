@@ -51,6 +51,10 @@ SYMBOLS = os.environ.get("DA_SYMBOLS", os.path.join(REPO, "research", "symbols")
 FUNCS = os.path.join(SYMBOLS, "functions.tsv")
 KEPT = os.path.join(REPO, "research", "crashes")
 MAPS = [os.path.join(REPO, "build", "maps"), os.path.join(REPO, "build", "src")]
+# The symbols kept by every package and deploy (build/symbols/<timestamp>), and those of the releases
+# laid out in dist (DawnAccess-<version>-symbols).
+MAPS += sorted(glob.glob(os.path.join(REPO, "build", "symbols", "*")))
+MAPS += sorted(glob.glob(os.path.join(REPO, "dist", "*-symbols")))
 GAME = os.environ.get(
     "DA_GAME_DIR", r"C:\Program Files (x86)\Steam\steamapps\common\Until Dawn"
 )
@@ -204,7 +208,7 @@ def read(path, given_map=None, out=print):
             )
         else:
             out(
-                "main.dll of build %08x: no map of that build (build/maps); the mod's frames are left unnamed"
+                "main.dll of build %08x: no map of that build (build/maps, build/symbols, dist/*-symbols); the mod's frames are left unnamed"
                 % main[3]
             )
     else:

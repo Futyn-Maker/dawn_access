@@ -45,15 +45,27 @@ foreach ($file in Get-DaInstallFiles) {
 }
 Write-Host "Deployed $copied files; UE4SS in $ue4ssDir"
 
-# The linker map of the mod's build just installed, kept by the build's timestamp: a crash dump of
-# this build names the mod's frames by it later, whatever was built since (tools\exe\crash.py).
-$map = Join-Path $DaRoot "build\src\main.map"
-if (Test-Path $map) {
-    $stamp = [regex]::Match(((Get-Content $map -TotalCount 8) -join "`n"), 'Timestamp is ([0-9a-f]{8})').Groups[1].Value
-    if ($stamp) {
-        $maps = Join-Path $DaRoot "build\maps"
-        New-Item -ItemType Directory -Force $maps | Out-Null
-        Copy-Item $map (Join-Path $maps "main-$stamp.map") -Force
-        Write-Host "Kept the build's map as build\maps\main-$stamp.map"
+# The linker map and the symbols of the mod's build just installed, kept by the build's timestamp: a
+# crash dump of this build names the mod's frames by them later, whatever was built since
+# (tools\exe\crash.py).
+$stamp = Get-DaBuildStamp
+if ($stamp) {
+    $maps = Join-Path $DaRoot "build\maps"
+    New-Item -ItemType Directory -Force $maps | Out-Null
+    Copy-Item (Join-Path $DaRoot "build\src\main.map") (Join-Path $maps "main-$stamp.map") -Force
+    $kept = Join-Path $DaRoot "build\symbols\$stamp"
+    New-Item -ItemType Directory -Force $kept | Out-Null
+    foreach ($symbol in "src\main.pdb", "src\main.map") {
+        $path = Join-Path $DaRoot "build\$symbol"
+        if (Test-Path $path) { Copy-Item $path $kept -Force }
     }
+    Write-Host "Kept the build's map and symbols as build\maps\main-$stamp.map and build\symbols\$stamp"
+}
+
+# The UE4SS settings the game has, where they differ from the repository's: kept, as the player's,
+# but said, since a release's archive would replace them.
+$settings = Join-Path $ue4ssDir "UE4SS-settings.ini"
+$ours = Join-Path $DaRoot "ue4ss\UE4SS-settings.ini"
+if ((Test-Path $settings) -and (Test-Path $ours) -and ((Get-FileHash $settings).Hash -ne (Get-FileHash $ours).Hash)) {
+    Write-Warning "The game's UE4SS-settings.ini differs from the repository's and was kept: $settings"
 }
