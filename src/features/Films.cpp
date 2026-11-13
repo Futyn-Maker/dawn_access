@@ -389,6 +389,20 @@ namespace da::features
         }
     }
 
+    void FilmsLookedAtAgain()
+    {
+        for (auto& [film, showing] : g_showings)
+            showing.Again();
+        // A film of the world playing on waits to be said again as it is seen (picture::Sight); a film
+        // said on the key is the player's to ask for.
+        for (auto& p : g_players)
+        {
+            if (!p.playing || !p.inWorld || p.onKey || FilmWords(p.film).empty()) continue;
+            p.sight.Begin(true);
+            log::Info(L"films: \"{}\" is said again as it is seen in the new look", p.film);
+        }
+    }
+
     std::wstring Words(std::wstring_view key)
     {
         // A description may be one of the game's own strings, said in the game's language, or the

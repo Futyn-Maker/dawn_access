@@ -633,3 +633,28 @@ TEST_CASE("pictures: a picture still waiting as its interaction ends is said the
     picture::Due none;
     CHECK_FALSE(none.AtEnd(shown));
 }
+
+TEST_CASE("pictures: every look at a thing says its picture again, and a film playing on is said again in a new look: the projector's film, s73 15:36:14")
+{
+    // One use: each picture once.
+    picture::Uses uses;
+    uses.Begin();
+    CHECK(uses.Takes(L"i_wine_rack"));
+    CHECK_FALSE(uses.Takes(L"i_wine_rack"));
+    CHECK(uses.Takes(L"i_dollhouse_complete.open"));
+    // The same thing used again, or another and then it: said again.
+    uses.Begin();
+    CHECK(uses.Takes(L"i_wine_rack"));
+    uses.Begin();
+    CHECK(uses.Takes(L"i_dollhouse_complete.open"));
+    CHECK(uses.Takes(L"i_wine_rack"));
+    // A film's showing says each part once; a new look at the world says them again while it plays on.
+    picture::Showing showing;
+    showing.Playing(10.0);
+    CHECK(showing.Says(-1));
+    CHECK_FALSE(showing.Says(-1));
+    showing.Again();
+    CHECK(showing.Says(-1));
+    CHECK(showing.Says(0));
+    CHECK_FALSE(showing.Says(0));
+}

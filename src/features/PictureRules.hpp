@@ -99,10 +99,39 @@ namespace da::picture
         {
             return m_playedAt >= 0.0 && now - m_playedAt > kShowingGap;
         }
+        // The player has begun another look at the world (an interaction): the film playing on is said
+        // again as it is seen. The chapter 9 projector's film went on looping on the ward's wall, and its
+        // look-at, the film watched again, said nothing: the showing had never stopped (research/
+        // sessions/s73-play.log, 15:35:29 and 15:36:14).
+        void Again()
+        {
+            m_said.clear();
+        }
 
     private:
         std::set<int> m_said;
         double m_playedAt = -1.0;
+    };
+
+    // The pictures of one use of a thing: each said once in the use, and every one again at the next use
+    // of it, whichever thing was used between (Andrey, 2026-11-13: no picture may go unsaid when it is
+    // looked at again).
+    class Uses
+    {
+    public:
+        // A use begins (the character uses a thing).
+        void Begin()
+        {
+            m_said.clear();
+        }
+        // Whether the picture is said now: not yet in this use.
+        bool Takes(const std::wstring& key)
+        {
+            return m_said.insert(key).second;
+        }
+
+    private:
+        std::set<std::wstring> m_said;
     };
 
     // Where the screen a film in the world plays on stands for the player: the thing the game's movie

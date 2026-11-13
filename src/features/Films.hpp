@@ -37,4 +37,7 @@ namespace da::features
     // A description from the mod's tables by its key; one that names a string of the game's (@key) is
     // that string, in the game's language.
     std::wstring Words(std::wstring_view key);
+    // The player begins another look at the world (an interaction): the films playing on are said again
+    // as they are seen (picture::Showing::Again).
+    void FilmsLookedAtAgain();
 }

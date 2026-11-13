@@ -80,7 +80,7 @@ namespace da::features
 
         std::optional<picture::LookPlan> g_look; // the plan for the interaction in use, if any (its first)
         std::vector<picture::LookPlan> g_looks;  // every plan for it: pictures at states of its own (picture::PlansFor)
-        std::set<std::wstring> g_looksSaid;      // the plans whose moment has come this use
+        picture::Uses g_looksSaid;               // the plans whose moment has come this use (picture::Uses)
         std::wstring g_lookWords;                // the words of the picture shown now, for the screen's readout
         std::wstring g_lookSpoken;               // the words last given to speech, which a spread turned cuts short
         int g_lookPage = 0;                      // the spread shown last, for a book read spread by spread
@@ -99,7 +99,9 @@ namespace da::features
         // still wait as the interaction ends is said then, when it was shown just before (picture::Due::AtEnd).
         void PlanLook(UObject* bound)
         {
-            g_looksSaid.clear();
+            g_looksSaid.Begin();
+            // A film playing on is said again in the new look (picture::Showing::Again).
+            if (bound) FilmsLookedAtAgain();
             g_looks.clear();
             g_lookWords.clear();
             g_lookSpoken.clear();
@@ -155,7 +157,7 @@ namespace da::features
 
         void SayLook(const picture::LookPlan& plan, const wchar_t* why)
         {
-            if (!g_looksSaid.insert(plan.key).second) return;
+            if (!g_looksSaid.Takes(plan.key)) return;
             const auto key = picture::LookKey(plan.key);
             std::wstring words;
             // The board of the friends' photos is a clue, described in the game's own menu, but it shows
