@@ -49,7 +49,7 @@ namespace da::picture
 
         // The interactions whose pictures the mod describes, and when; the moments are the game's own
         // states, as the logs of chapters 5 and 6 show them.
-        constexpr std::array<Planned, 46> kPlans = {
+        constexpr std::array<Planned, 54> kPlans = {
             // Dr. Hill's card is picked up face down and turned over with the stick (act20_1,
             // BP_PsychSession_PickUp, which no other level places: its examine stage reveals). It has no
             // core name; its activity starts it as I_psychsession_1_Interaction.
@@ -86,25 +86,25 @@ namespace da::picture
             // The silent things of chapters 1 and 2, found by the audit of sessions 67 to 71 (a picture the
             // game showed and said nothing of; research by textures decoded from the game and its own clue
             // images), each when its look stands or its item is held to the face that shows it: Emily's
-            // things in the car at the lower station (act1_3, no core name), the hotel poster and the torn
-            // wanted poster (act1_3), the empty axe case (act2_11, act2_3), the prom and beach photos, whose
-            // photo side the game leaves unsaid as it reads their backs (act2_11; the prom photo's copy of
-            // chapter 5 too), the mine's danger map, the cigar stub's band and the painted symbol (Act2_2),
-            // the postcard's other side, Dr. Hill's painting (act2_4), the bench's carved heart on its second
-            // wipe and the pig's head note's back (act2_3).
+            // things in the car at the lower station (act1_3, no core name), the hotel poster (act1_3) and the
+            // bench's carved heart on its second wipe (act2_3). A clue is described by the game in its menu
+            // (DT_ClueData's text and details), so a clue's picture is said only for what it shows of the
+            // story that those words leave out (Andrey, 2026-11-09 and 2026-11-13): of the prom and beach
+            // photos (act2_11; the prom photo's copy in chapter 5, the beach photo Ashley picks up in chapter 6
+            // too) Hannah's butterfly tattoo, which the clue's words name only after the wendigo is shown to
+            // be her; the painted symbol of the mine (Act2_2), which the words leave "not clear"; the
+            // postcard's other side (act2_4), Dr. Hill's own painting, said in the card's words. The
+            // Washingtons' portrait above is a clue too, described at Andrey's request (2026-11-11). Their
+            // wanted poster, axe holder, mine danger map, cigar stub and pig's head note show nothing the
+            // game's words leave out.
             Planned{L"i_car_lookat", L"bp_car_lookat_c", Moment::State, L"examine_idle"},
             Planned{L"i_hotel_poster", L"bp_hotel_poster_c", Moment::State, L"examine_idle"},
-            Planned{L"i_wanted_poster_lookat_new", L"bp_wanted_poster_lookat_new_c", Moment::State, L"examine_idle"},
-            Planned{L"i_missing_axe", L"bp_missing_axe_c", Moment::State, L"examine_idle"},
             Planned{L"i_prom_night_photo", L"bp_prom_night_photo_c", Moment::State, L"ik_animation"},
             Planned{L"i_prom_night_photo_female", L"bp_prom_night_photo_female_c", Moment::State, L"ik_animation"},
             Planned{L"i_hannah_and_beth_beach_photo", L"bp_hannah_and_beth_beach_photo_c", Moment::State, L"ik_animation"},
-            Planned{L"i_minemap", L"bp_minemap_c", Moment::State, L"look_idle1"},
-            Planned{L"i_cigarstub", L"bp_cigarstub_c", Moment::State, L"ik_animation_run"},
             Planned{L"i_mysticalsymbols", L"bp_mysticalsymbols_c", Moment::State, L"examine_idle"},
             Planned{L"i_childsdrawing", L"bp_childsdrawing_c", Moment::Reveals, L""},
             Planned{L"i_snowybench", L"bp_snowybench_c", Moment::State, L"BenchWipe2"},
-            Planned{L"i_readnote", L"bp_readnote_c", Moment::Reveals, L""},
             // Andrey's four of session 71. Hannah's pinboard (act2_4): the invitation read, Sam lifts it and
             // a photo of Mike shows under it (lift_paper, lift_paper_idle; "О, Ханна... любовь-любовь..."),
             // said then with the board around it, after the invitation's text as he asked. The dollhouse in
@@ -127,17 +127,18 @@ namespace da::picture
             Planned{L"i_telescope.act2_3", L"/game/gameplay/gameobjects/interactions/act2_3/telescope/bp_telescope", Moment::Begins, L""},
             // The silent things of chapter 6, found in session 72 and the first playthrough's s57 to s58
             // (research by the levels' placements, the interactions' own cameras and the props' decoded
-            // meshes, textures and animations). The tower's death whistle turned to its face, the locker's
-            // poster of Hannah after its transcript (act5_2); in the lodge (act5_3) the smashed vase, Sam's
-            // bracelet wherever it lies (one class), the cellar's painting before it falls, the dollhouse
-            // looked into at its first use and opened with the key at its second, its keyhole, the key
-            // behind the painting, the wine rack and the wine cellar's door, the hidden camera, the doll's
-            // head turned to its face and the cockroaches it lets out, Sam under the sack; the board of the
-            // friends' photos, whose crossed-out one alone is said (a clue the game describes in its
-            // menu, as every clue: its card and nothing more, Andrey 2026-11-13, but the photo crossed
-            // out is shown on the board alone), after the card; the beach photo Ashley picks up.
+            // meshes, textures and animations). The tower's death whistle turned to its face (act5_2); in the
+            // lodge (act5_3) the smashed vase, Sam's bracelet wherever it lies (one class), the cellar's
+            // painting before it falls, the dollhouse looked into at its first use and opened with the key at
+            // its second (the dolls with the friends' hair: Chris's "Это мы"), its keyhole, the key behind
+            // the painting, the wine rack and the wine cellar's door, the doll's head turned to its face and
+            // the cockroaches it lets out, Sam under the sack; the board of the friends' photos, whose
+            // crossed-out one alone is said (a clue the game describes in its menu, as every clue: its card
+            // and nothing more, Andrey 2026-11-13, but the photo crossed out is shown on the board alone; the
+            // menu's picture of it crosses out none), after the card; the beach photo Ashley picks up. Hannah's
+            // missing poster and the hidden camera are clues whose pictures show nothing the game's words
+            // leave out.
             Planned{L"i_death_whistle", L"bp_death_whistle_c", Moment::Reveals, L""},
-            Planned{L"i_view_hannah_poster_part2", L"bp_view_hannah_poster_part2_c", Moment::State, L"ExaminePosterIdleLoop2", true},
             Planned{L"i_smashed_vase", L"bp_smashed_vase_v2_c", Moment::State, L"ik_idle"},
             Planned{L"i_sams_bracelet", L"bp_bracelet_c", Moment::State, L"ik_idle"},
             Planned{L"i_picture_lookat", L"bp_picture_lookat_c", Moment::State, L"examine_idle"},
@@ -147,13 +148,57 @@ namespace da::picture
             Planned{L"i_doll_house_key", L"bp_doll_house_key_c", Moment::State, L"ik_animation"},
             Planned{L"i_wine_rack", L"bp_wine_rack_c", Moment::State, L"examine_idle"},
             Planned{L"i_wine_cellar_door", L"bp_wine_cellar_door_lookat_c", Moment::State, L"examine_idle"},
-            Planned{L"i_secret_camera", L"bp_secret_camera_c", Moment::State, L"camera_ik_idle"},
             Planned{L"i_doll_head", L"bp_dolls_head_c", Moment::Reveals, L""},
             Planned{L"i_doll_head.roaches", L"bp_dolls_head_c", Moment::State, L"cockroach_panic"},
             Planned{L"i_sams_sack", L"bp_samsack_c", Moment::State, L"EndPose"},
             Planned{L"i_photos_of_friends_lookat_first", L"bp_photos_lookat_first_c", Moment::State, L"examine_idle", true},
             Planned{L"i_photos_of_friends_lookat", L"bp_photos_lookat_c", Moment::State, L"examine_idle", true},
             Planned{L"i_hannah_and_beth_beach_photo_female", L"bp_hannah_and_beth_beach_photo_female_c", Moment::State, L"ik_animation"},
+            // The silent looks of chapters 7 to 10, found in session 73 (none a clue: none shows a clue's
+            // card or sets its flag; research from the levels' placements, the looks' own cameras, the props'
+            // decoded meshes and textures, and walkthroughs of the remake), each when its look stands, the
+            // game's "Назад" some 0.7 s on. Emily in the mines (act6_1): the cart's track seen through the
+            // mesh, the miner's helmet on the stones (the look is called the torn clothes), the broken piece
+            // of a danger sign in Hannah's lair, and the views through the mesh where the look is called the
+            // head and the wheel. The lodge's path (act4_1 and act6_4, one look in the levels both stream):
+            // the scarecrow, whose head is the one Dr. Hill's fear question chose (kVariants). Chris at the
+            // hanging shed (act6_4): the dead crows (no core name; the level calls them I_Dead_crow_lookat),
+            // the chair and blood, the fake torso, the saw blade. Mike in the sanatorium (act7_2): the dead
+            // wolf and the clawed cell door. Sam at the sanatorium's back (act8_1): the fence by its gate, the
+            // oil can held up (its prompt with it) and the cockroaches it lets out.
+            Planned{L"i_peer_at_cart", L"bp_peeratcart_c", Moment::State, L"look_idle"},
+            Planned{L"i_torn_miner_clothes", L"bp_tornminerclothes_lookat_c", Moment::State, L"examine_idle"},
+            Planned{L"i_sign", L"bp_sign_c", Moment::State, L"examine_idle"},
+            Planned{L"i_peer_at_head", L"bp_peerathead_c", Moment::State, L"look_idle"},
+            Planned{L"i_peer_at_wheel", L"bp_peeratwheel_c", Moment::State, L"look_idle"},
+            Planned{L"i_scarecrow_lookat", L"bp_scarecrow_lookat_c", Moment::State, L"examine_idle"},
+            Planned{L"i_dead_crow_lookat", L"bp_dead_crow_lookat_c", Moment::State, L"examine_idle"},
+            Planned{L"i_chair_and_blood", L"bp_interaction_chairandblood_c", Moment::State, L"examine_idle"},
+            Planned{L"i_fake_torso", L"bp_interaction_faketorso_c", Moment::State, L"examine_idle"},
+            Planned{L"i_saw_blades", L"bp_interaction_sawblades_c", Moment::State, L"examine_idle"},
+            Planned{L"i_dead_wolf_inspect", L"bp_dead_wolf_inspect_c", Moment::State, L"examine_idle"},
+            Planned{L"i_damaged_doors", L"bp_damaged_doors_c", Moment::State, L"examine_idle"},
+            Planned{L"i_sanlookat", L"bp_lookat_san_entrance_gate_c", Moment::State, L"examine_idle"},
+            Planned{L"i_oilflask", L"bp_oilflask_c", Moment::State, L"IKswing"},
+            Planned{L"i_oilflask.roaches", L"bp_oilflask_c", Moment::State, L"LookCloserThrowAwayPickUpWeapon"},
+        };
+
+        // A picture the game draws one of several ways by the player's earlier answers: the callforward its
+        // scene reads (the global state's name, as SF_IsCallforwardEqualTo reads it), in the order it reads
+        // them, and the suffix of that drawing's description.
+        struct Variant
+        {
+            std::wstring_view key;
+            std::wstring_view callforward;
+            std::wstring_view suffix;
+        };
+        constexpr std::array<Variant, 2> kVariants = {
+            // The scarecrow by the lodge's path wears a hat and a sack for a head unless Dr. Hill's fear
+            // question chose the clown or the zombie (act20_2 Activity_Session2_Part2-Custom sets ChoseClown
+            // or ChoseZombie); the scenes swap its head by them, the clown asked first (act4_1
+            // scene01_scarecrow state 9, act6_4 scene02_scarecrow state 8).
+            Variant{L"i_scarecrow_lookat", L"CallforwardChoseClown", L".clown"},
+            Variant{L"i_scarecrow_lookat", L"CallforwardChoseZombie", L".zombie"},
         };
     }
 
@@ -332,6 +377,15 @@ namespace da::picture
         return plans;
     }
 
+    std::wstring VariantKey(std::wstring_view planKey, const std::function<bool(std::wstring_view)>& isSet)
+    {
+        for (const auto& v : kVariants)
+        {
+            if (v.key == planKey && isSet(v.callforward)) return std::wstring(planKey) + std::wstring(v.suffix);
+        }
+        return std::wstring(planKey);
+    }
+
     int CrossedOut(const std::array<bool, 8>& dislikes)
     {
         for (size_t i = 0; i < dislikes.size(); ++i)
@@ -384,6 +438,19 @@ namespace da::picture
     std::wstring PageKey(std::wstring_view coreName, int page)
     {
         return LookKey(coreName) + L"." + std::to_wstring(page);
+    }
+
+    std::vector<std::wstring> DescribedKeys()
+    {
+        std::vector<std::wstring> keys;
+        for (const auto& p : kPlans)
+        {
+            if (IsFriendsBoard(p.key)) continue;
+            AddKey(keys, p.moment == Moment::Pages ? PageKey(p.key, 1) : LookKey(p.key));
+        }
+        for (const auto& v : kVariants) AddKey(keys, LookKey(std::wstring(v.key) + std::wstring(v.suffix)));
+        AddKey(keys, L"look.crossedout");
+        return keys;
     }
 
     std::optional<int> PhotoPager::Update(bool holding, int index, double now, double promptAt, bool keyHeld)

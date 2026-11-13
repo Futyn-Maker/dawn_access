@@ -253,6 +253,12 @@ namespace da::picture
     constexpr std::array<const wchar_t*, 8> kDislikeOrder = {L"Ash", L"Chris", L"Jessica", L"Emily", L"Josh", L"Matt", L"Mike", L"Sam"};
     constexpr std::array<const wchar_t*, 8> kDislikeNames = {L"Ashley", L"Chris", L"Jessica", L"Emily", L"Josh", L"Matt", L"Mike", L"Sam"};
     int CrossedOut(const std::array<bool, 8>& dislikes);
+
+    // The key of the picture a plan shows as the game draws it: a thing drawn one of several ways by the
+    // player's earlier answers (the scarecrow's head, by Dr. Hill's fear question) takes the suffix of the
+    // first callforward `isSet` answers set, asked in the order its scene asks them; none set, and any
+    // other plan, its own key. `isSet` is asked only for a plan that varies.
+    std::wstring VariantKey(std::wstring_view planKey, const std::function<bool(std::wstring_view)>& isSet);
     // The board of the friends' photos (i_photos_of_friends_lookat_first at the first look,
     // i_photos_of_friends_lookat after): a clue whose crossed-out photo alone is said.
     bool IsFriendsBoard(std::wstring_view planKey);
@@ -275,6 +281,11 @@ namespace da::picture
     // the book is shut or put down. The description's key adds the spread ("look.i_sams_sketchbook.2").
     std::optional<int> PageOf(std::wstring_view state);
     std::wstring PageKey(std::wstring_view coreName, int page);
+
+    // Every description a plan can say, as its key in the tables: each plan's look key (a book's first
+    // spread for a book), each drawing a plan varies by (VariantKey), and the friends' board's line.
+    // The tests hold the shipped table to it both ways.
+    std::vector<std::wstring> DescribedKeys();
 
     // The prologue's camera (ABatesInteractionCamera) pages through its photos while it is held; a
     // photo is described as the camera is raised and each time the page turns to another, never

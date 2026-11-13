@@ -3,7 +3,12 @@
 #include "Support.hpp"
 #include "features/PictureRules.hpp"
 
+#include <algorithm>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -157,10 +162,7 @@ TEST_CASE("pictures: a photo is known by its texture, a thing in the hand by any
     CHECK_FALSE(picture::PlanFor(Names{L"I_Telescope", L"I_Telescope", L"BP_Telescope_C", L""}).has_value());
     // The silent things of chapters 1 and 2, as the logs of sessions 68 to 71 name them.
     CHECK(picture::PlanFor(Names{L"", L"I_Car_lookat", L"BP_Car_lookat_C"})->key == L"i_car_lookat");
-    CHECK(picture::PlanFor(Names{L"I_MineMap", L"I_MineMap", L"BP_Minemap_C"})->state == L"look_idle1");
-    CHECK(picture::PlanFor(Names{L"I_CigarStub", L"I_CigarStub", L"BP_Cigarstub_C"})->state == L"ik_animation_run");
     CHECK(picture::PlanFor(Names{L"I_childsdrawing", L"I_childsdrawing", L"BP_Childsdrawing_C"})->moment == picture::Moment::Reveals);
-    CHECK(picture::PlanFor(Names{L"I_ReadNote", L"I_ReadNote", L"BP_Readnote_C"})->moment == picture::Moment::Reveals);
     CHECK(picture::PlanFor(Names{L"I_SnowyBench", L"I_SnowyBench", L"BP_Snowybench_C"})->state == L"BenchWipe2");
     CHECK(picture::PlanFor(Names{L"i_prom_night_photo_female", L"I_Prom_night_photo_female", L"BP_Prom_night_photo_female_C"})->key ==
           L"i_prom_night_photo_female");
@@ -169,6 +171,152 @@ TEST_CASE("pictures: a photo is known by its texture, a thing in the hand by any
     CHECK_FALSE(picture::PlanFor(Names{L"I_carved_graffiti", L"", L"BP_Examine_wall_item_left_C"}).has_value());
     CHECK_FALSE(picture::PlanFor(Names{L"", L"", L""}).has_value());
     CHECK_FALSE(picture::PlanFor(Names{}).has_value());
+}
+
+TEST_CASE("pictures: a clue's picture is said only for what the game's words leave out: Andrey, 2026-11-13")
+{
+    using Names = std::vector<std::wstring>;
+    // The game describes every clue in its menu (DT_ClueData's text and details) and shows its card when
+    // it is found. These clues' pictures show nothing those words leave out, by the names the logs gave
+    // them (s67 to s72): the wanted poster, the axe holder, the mine danger map, the cigar stub, the pig's
+    // head note, Hannah's missing poster, the hidden camera.
+    CHECK_FALSE(picture::PlanFor(Names{L"I_wanted_poster_lookat_new", L"I_wanted_poster_lookat_new", L"BP_Wanted_poster_lookat_new_C"}).has_value());
+    CHECK_FALSE(picture::PlanFor(Names{L"I_missing_axe", L"I_missing_axe", L"BP_Missing_axe_C"}).has_value());
+    CHECK_FALSE(picture::PlanFor(Names{L"I_MineMap", L"I_MineMap", L"BP_Minemap_C"}).has_value());
+    CHECK_FALSE(picture::PlanFor(Names{L"I_CigarStub", L"I_CigarStub", L"BP_Cigarstub_C"}).has_value());
+    CHECK_FALSE(picture::PlanFor(Names{L"I_ReadNote", L"I_ReadNote", L"BP_Readnote_C"}).has_value());
+    CHECK_FALSE(picture::PlanFor(Names{L"I_view_hannah_poster_part2", L"I_view_hannah_poster_part2", L"BP_View_hannah_poster_part2_C"}).has_value());
+    CHECK_FALSE(picture::PlanFor(Names{L"I_secret_camera", L"I_secret_camera", L"BP_Secret_camera_C"}).has_value());
+    // Those whose pictures do show more stay: the prom and beach photos for Hannah's tattoo (its link to the
+    // wendigo the clue's words give only after the reveal), the mine's painted symbol ("not clear what they
+    // mean"), the postcard's painting (Dr. Hill's own card), the portrait Andrey asked for, and the board of
+    // the friends' photos for the one crossed out.
+    CHECK(picture::PlanFor(Names{L"I_Prom_night_photo", L"I_Prom_night_photo", L"BP_Prom_night_photo_C"})->key == L"i_prom_night_photo");
+    CHECK(picture::PlanFor(Names{L"I_Hannah_and_beth_beach_photo", L"", L"BP_Hannah_and_beth_beach_photo_C"})->key == L"i_hannah_and_beth_beach_photo");
+    CHECK(picture::PlanFor(Names{L"I_MysticalSymbols", L"I_MysticalSymbols", L"BP_Mysticalsymbols_C"})->state == L"examine_idle");
+    CHECK(picture::PlanFor(Names{L"I_childsdrawing", L"I_childsdrawing", L"BP_Childsdrawing_C"})->key == L"i_childsdrawing");
+    CHECK(picture::PlanFor(Names{L"I_family_portrait", L"I_family_portrait", L"BP_Family_portrait_C"})->key == L"i_family_portrait");
+    CHECK(picture::IsFriendsBoard(picture::PlanFor(Names{L"I_photos_of_friends_lookat", L"", L"BP_Photos_lookat_C"})->key));
+}
+
+TEST_CASE("pictures: the silent looks of chapters 7 to 10 are described as their looks stand, by the names the s73 log gives them")
+{
+    using Names = std::vector<std::wstring>;
+    // research/sessions/s73-play.log, each "goes by core name" line: the core name, the level's name and
+    // the class, and the state the look stands in (the anim graph's) as the game's prompt comes.
+    const auto look = [](const Names& names) { return picture::PlanFor(names); };
+    struct Seen
+    {
+        Names names;
+        const wchar_t* key;
+        const wchar_t* state;
+    };
+    const Seen seen[] = {
+        {{L"I_peer_at_cart", L"I_peer_at_cart", L"BP_Peeratcart_C"}, L"i_peer_at_cart", L"look_idle"},
+        {{L"I_torn_miner_clothes", L"I_torn_miner_clothes", L"BP_Tornminerclothes_lookat_C"}, L"i_torn_miner_clothes", L"examine_idle"},
+        {{L"I_sign", L"I_sign", L"BP_Sign_C"}, L"i_sign", L"examine_idle"},
+        {{L"I_peer_at_head", L"I_peer_at_head", L"BP_Peerathead_C"}, L"i_peer_at_head", L"look_idle"},
+        {{L"I_peer_at_wheel", L"I_peer_at_wheel", L"BP_Peeratwheel_C"}, L"i_peer_at_wheel", L"look_idle"},
+        {{L"I_scarecrow_lookat", L"I_scarecrow_lookat", L"BP_Scarecrow_lookat_C"}, L"i_scarecrow_lookat", L"examine_idle"},
+        // The dead crows have no core name (14:58:14): the level's name finds them, and so does the class.
+        {{L"", L"I_Dead_crow_lookat", L"BP_Dead_crow_lookat_C"}, L"i_dead_crow_lookat", L"examine_idle"},
+        {{L"", L"", L"BP_Dead_crow_lookat_C"}, L"i_dead_crow_lookat", L"examine_idle"},
+        {{L"I_chair_and_blood", L"I_chair_and_blood", L"BP_Interaction_chairandblood_C"}, L"i_chair_and_blood", L"examine_idle"},
+        {{L"I_fake_torso", L"I_fake_torso", L"BP_Interaction_faketorso_C"}, L"i_fake_torso", L"examine_idle"},
+        {{L"I_saw_blades", L"I_saw_blades", L"BP_Interaction_sawblades_C"}, L"i_saw_blades", L"examine_idle"},
+        {{L"I_dead_wolf_inspect", L"I_dead_wolf_inspect", L"BP_Dead_wolf_inspect_C"}, L"i_dead_wolf_inspect", L"examine_idle"},
+        {{L"I_damaged_doors", L"I_damaged_doors", L"BP_Damaged_doors_C"}, L"i_damaged_doors", L"examine_idle"},
+        {{L"I_SanLookAt", L"I_SanLookAt", L"BP_Lookat_san_entrance_gate_C"}, L"i_sanlookat", L"examine_idle"},
+    };
+    for (const auto& s : seen)
+    {
+        CAPTURE(s.key);
+        const auto plan = look(s.names);
+        REQUIRE(plan.has_value());
+        CHECK(plan->key == s.key);
+        CHECK(plan->moment == picture::Moment::State);
+        CHECK(plan->state == s.state);
+    }
+    // The oil can (16:03:31): held up with the stick's prompt, then the cockroaches pour out of it, each
+    // picture at its own state.
+    const auto can = picture::PlansFor(Names{L"I_OilFlask", L"I_OilFlask", L"BP_Oilflask_C"});
+    REQUIRE(can.size() == 2);
+    CHECK(can[0].key == L"i_oilflask");
+    CHECK(can[0].state == L"IKswing");
+    CHECK(can[1].key == L"i_oilflask.roaches");
+    CHECK(can[1].state == L"LookCloserThrowAwayPickUpWeapon");
+    // Second looks at clues found before, the hub's notice and the looks that show a clue are not these:
+    // Beth's head and her cross looked at again, the hub's printed sign (its words the game shows).
+    CHECK_FALSE(look(Names{L"I_beths_head_lookat", L"I_beths_head_lookat", L"BP_Bethshead_lookat_C"}).has_value());
+    CHECK_FALSE(look(Names{L"I_BethsHeadstone_lookat", L"", L"BP_Bethsheadstone_lookat_C"}).has_value());
+    CHECK_FALSE(look(Names{L"I_danger_sign", L"I_danger_sign", L"BP_Sign_hub_C"}).has_value());
+}
+
+TEST_CASE("pictures: every plan has its words in the shipped table, and the table describes nothing no plan shows")
+{
+    // A plan whose key the table lacks says nothing where the game shows the picture (the log's "no words
+    // for it"), and words no plan names are never said: either way a typo would go unheard.
+    std::ifstream in(std::filesystem::path(DA_REPO_ROOT) / "mod" / "lang" / "pictures" / "en_US.ini", std::ios::binary);
+    REQUIRE(in);
+    std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    std::set<std::wstring> looks;
+    size_t at = 0;
+    while (at < text.size())
+    {
+        size_t end = text.find('\n', at);
+        if (end == std::string::npos) end = text.size();
+        std::string line = text.substr(at, end - at);
+        at = end + 1;
+        if (line.starts_with("\xEF\xBB\xBF")) line.erase(0, 3);
+        if (!line.starts_with("look.")) continue;
+        const auto eq = line.find('=');
+        REQUIRE(eq != std::string::npos);
+        looks.insert(std::wstring(line.begin(), line.begin() + static_cast<std::ptrdiff_t>(eq)));
+    }
+    const auto described = picture::DescribedKeys();
+    REQUIRE(described.size() > 50);
+    for (const auto& key : described)
+    {
+        CAPTURE(key);
+        CHECK(looks.contains(key));
+    }
+    // A book's further spreads (look.<core>.<n>) belong to the plan whose first spread is described.
+    const auto isDescribed = [&](const std::wstring& key) { return std::find(described.begin(), described.end(), key) != described.end(); };
+    for (const auto& key : looks)
+    {
+        CAPTURE(key);
+        const auto dot = key.find_last_of(L'.');
+        const bool page = dot != std::wstring::npos && dot + 1 < key.size() &&
+                          std::all_of(key.begin() + static_cast<std::ptrdiff_t>(dot) + 1, key.end(), [](wchar_t c) { return c >= L'0' && c <= L'9'; });
+        CHECK((isDescribed(key) || (page && isDescribed(key.substr(0, dot) + L".1"))));
+    }
+}
+
+TEST_CASE("pictures: the scarecrow is described with the head Dr. Hill's fear question gave it, the clown asked first")
+{
+    std::vector<std::wstring> asked;
+    const auto by = [&](std::set<std::wstring> set)
+    {
+        return [&asked, set](std::wstring_view callforward)
+        {
+            asked.emplace_back(callforward);
+            return set.contains(std::wstring(callforward));
+        };
+    };
+    // Neither chosen (the scarecrow itself, or no answer): the hat and the sack.
+    CHECK(picture::VariantKey(L"i_scarecrow_lookat", by({})) == L"i_scarecrow_lookat");
+    CHECK(asked == std::vector<std::wstring>{L"CallforwardChoseClown", L"CallforwardChoseZombie"});
+    asked.clear();
+    CHECK(picture::VariantKey(L"i_scarecrow_lookat", by({L"CallforwardChoseClown"})) == L"i_scarecrow_lookat.clown");
+    CHECK(asked == std::vector<std::wstring>{L"CallforwardChoseClown"});
+    CHECK(picture::VariantKey(L"i_scarecrow_lookat", by({L"CallforwardChoseZombie"})) == L"i_scarecrow_lookat.zombie");
+    // The scenes ask the clown first, so the clown it is should both be set.
+    CHECK(picture::VariantKey(L"i_scarecrow_lookat", by({L"CallforwardChoseZombie", L"CallforwardChoseClown"})) == L"i_scarecrow_lookat.clown");
+    // Any other picture is its own, and nothing is asked for it.
+    asked.clear();
+    CHECK(picture::VariantKey(L"i_wine_rack", by({L"CallforwardChoseClown"})) == L"i_wine_rack");
+    CHECK(asked.empty());
+    CHECK(picture::LookKey(picture::VariantKey(L"i_scarecrow_lookat", by({L"CallforwardChoseClown"}))) == L"look.i_scarecrow_lookat.clown");
 }
 
 TEST_CASE("pictures: an interaction shows a picture at each of its states that has one: chapter 6's dollhouse and doll's head, 2026-11-12")
@@ -189,15 +337,15 @@ TEST_CASE("pictures: an interaction shows a picture at each of its states that h
     REQUIRE(head.size() == 2);
     CHECK(head[0].moment == picture::Moment::Reveals);
     CHECK(head[1].state == L"cockroach_panic");
-    // Sam's bracelet by its class wherever it lies; the hidden camera and the sack, whose core names
-    // the level leaves empty, by theirs.
+    // Sam's bracelet by its class wherever it lies; the sack, whose core name the level leaves empty, by
+    // its class. The hidden camera, a clue, is not described (the game's menu describes it).
     CHECK(picture::PlansFor(Names{L"I_SamsBracelet_Cinema", L"I_SamsBracelet_Cinema", L"BP_Bracelet_C"}).front().key == L"i_sams_bracelet");
-    CHECK(picture::PlansFor(Names{L"", L"I_secret_camera", L"BP_Secret_camera_C"}).front().state == L"camera_ik_idle");
+    CHECK(picture::PlansFor(Names{L"", L"I_secret_camera", L"BP_Secret_camera_C"}).empty());
     CHECK(picture::PlansFor(Names{L"", L"", L"BP_Samsack_C"}).front().state == L"EndPose");
-    // The board of the friends' photos and the locker's poster are said after the HUD's own words (the
-    // card, the transcript); the dollhouse after nothing of the HUD's.
+    // The board of the friends' photos is said after the HUD's own words (the card); the dollhouse after
+    // nothing of the HUD's. The locker's poster of Hannah, a clue, is not described.
     CHECK(picture::PlansFor(Names{L"I_photos_of_friends_lookat_first", L"I_photos_of_friends_lookat_first", L"BP_Photos_lookat_first_C"}).front().afterHud);
-    CHECK(picture::PlansFor(Names{L"I_view_hannah_poster_part2", L"I_view_hannah_poster_part2", L"BP_View_hannah_poster_part2_C"}).front().afterHud);
+    CHECK(picture::PlansFor(Names{L"I_view_hannah_poster_part2", L"I_view_hannah_poster_part2", L"BP_View_hannah_poster_part2_C"}).empty());
     CHECK_FALSE(house[0].afterHud);
     // The old hotel's other clues show their card and nothing more: the game describes a clue in its
     // menu, and the mod never copies those words into the world (Andrey, 2026-11-13).

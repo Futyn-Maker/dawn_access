@@ -167,9 +167,19 @@ namespace da::features
             {
                 if (const auto name = CrossedOutFriend(); !name.empty()) words = locale::Mod(L"look.crossedout", name);
             }
-            else if (locale::Has(key))
+            else
             {
-                words = Words(key);
+                // A thing the game draws by the player's earlier answers is said as it is drawn now.
+                const auto drawn = picture::LookKey(picture::VariantKey(plan.key,
+                                                                        [](std::wstring_view callforward)
+                                                                        {
+                                                                            bool set = false;
+                                                                            const bool got = GlobalBool(std::wstring(callforward).c_str(), set);
+                                                                            log::Info(L"interactions: the callforward {} is {}", callforward,
+                                                                                      got ? (set ? L"set" : L"not set") : L"unread");
+                                                                            return got && set;
+                                                                        }));
+                if (locale::Has(drawn)) words = Words(drawn);
             }
             log::Info(L"interactions: the picture of {} is shown ({}); {}", plan.key, why,
                       !words.empty() ? L"its words wait for the game's prompt and the player's key" : L"no words for it");
