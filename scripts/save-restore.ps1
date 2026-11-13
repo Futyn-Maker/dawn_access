@@ -52,9 +52,14 @@ if ($Checkpoint) {
 
 $savesRoot = Join-Path $DaRoot "research\saves"
 if (-not $Backup) {
-    $newest = Get-ChildItem $savesRoot -Directory -ErrorAction SilentlyContinue | Sort-Object Name | Select-Object -Last 1
+    # The newest backup save-backup.ps1 made (its folders are named by the time, yyyyMMdd-HHmmss-...),
+    # never one a restore made of what it replaced: a second plain restore repeats the first.
+    $newest = Get-ChildItem $savesRoot -Directory -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match '^\d{8}-\d{6}' -and $_.Name -notlike '*-before-restore' -and (Test-Path (Join-Path $_.FullName "SaveGames")) } |
+        Sort-Object Name | Select-Object -Last 1
     if (-not $newest) { throw "No backups in $savesRoot" }
     $Backup = $newest.FullName
+    Write-Host "The newest backup: $Backup"
 }
 elseif (-not (Test-Path $Backup)) { $Backup = Join-Path $savesRoot $Backup }
 if (-not (Test-Path (Join-Path $Backup "SaveGames"))) { throw "Not a backup folder (no SaveGames in it): $Backup" }

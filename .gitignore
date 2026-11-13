@@ -17,7 +17,6 @@ CMakeUserPresets.json
 
 # Local artifacts
 *.log
-/screenshots/
 # Tools, extracted game files, symbol tables, dumps and save backups for researching the game
 /research/
 

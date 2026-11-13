@@ -16,3 +16,8 @@ trim_trailing_whitespace = false
 
 [*.ini]
 indent_size = 2
+
+# The mod's settings and language tables begin with a byte order mark, which the game's UE4SS and the
+# mod's reader both expect; an editor must keep it.
+[mod/**.ini]
+charset = utf-8-bom
