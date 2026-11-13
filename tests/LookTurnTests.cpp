@@ -1357,3 +1357,35 @@ TEST_CASE("look: a last stretch with no way to step back along steps back away f
     CHECK(fromSpot.x == doctest::Approx(spot.x - look::kBackOff));
     CHECK(fromSpot.y == doctest::Approx(spot.y).epsilon(1e-6));
 }
+
+TEST_CASE("look: a glint the game has not put up for her is stepped into, not taken for one off the shot: Sam's drop-down, s73 16:32:17 to 16:33:43")
+{
+    // The drop-down's use location took her, its glint's own volume did not: "the glint not put up for her
+    // (she stands outside its volume)" on the exploration camera. The walk ended "could not get there" five
+    // times 1 m from it, taking the glint for one the shot left out.
+    look::Parts p;
+    p.measured = true;
+    p.atHand = true;
+    p.byGlint = true;
+    p.explorationView = true;
+    p.characterOk = true;
+    p.glintAway = true;
+    CHECK_FALSE(look::CanBeLed(p)); // no turn leads to a glint that is not there
+    CHECK_FALSE(look::OffShot(p, true));
+    CHECK(look::StretchStepOf(p, true) == look::StretchStep::IntoGlint);
+    // The glint up on a fixed shot that leaves it out: toward the spot it is used from.
+    look::Parts fixed = p;
+    fixed.glintAway = false;
+    fixed.explorationView = false;
+    fixed.onScreen = false;
+    CHECK(look::OffShot(fixed, true));
+    CHECK(look::StretchStepOf(fixed, true) == look::StretchStep::ToUseSpot);
+    // On the exploration camera, the glint up: her turn to it.
+    look::Parts open = p;
+    open.glintAway = false;
+    CHECK_FALSE(look::OffShot(open, true));
+    CHECK(look::StretchStepOf(open, true) == look::StretchStep::TurnToGlint);
+    // Outside the place: toward her spot, whatever the glint.
+    CHECK(look::StretchStepOf(p, false) == look::StretchStep::ToSpot);
+    CHECK_FALSE(look::OffShot(fixed, false));
+}

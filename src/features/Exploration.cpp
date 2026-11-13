@@ -7259,7 +7259,7 @@ namespace da::features
             // On a fixed shot whose picture leaves the glint out, no turn of the player's completes the
             // look (look::CanBeLed): she steps on toward the spot the game puts her on to use the
             // thing, where the shot may take the glint in.
-            const bool offShot = p.inside && p.measured && !LookCanBeLed(p);
+            const bool offShot = look::OffShot(PartsOf(p), p.inside);
             // A framing camera that ends only as she goes a distance from where it began keeps the glint
             // off its shot however she turns or steps about the place (look::Framing): the walk steps her
             // out past that distance, by the first way out that is walkable, and walks in again.
@@ -7383,7 +7383,7 @@ namespace da::features
                 return true;
             }
             // The glint the press needs is away: she steps into its volume (look::GlintStepPoint).
-            const bool intoGlint = p.inside && !offShot && p.glintAway;
+            const bool intoGlint = look::StretchStepOf(PartsOf(p), p.inside) == look::StretchStep::IntoGlint;
             const Vec toward = offShot ? Aim(t) : intoGlint ? GlintStepOf(t, here) : p.inside ? LookAtPoint(t) : spot;
             const double bearing = BearingDegrees(here, toward, yaw);
             // Every goal but her turn to the glint is a step, which only moving her brings nearer.
@@ -8902,7 +8902,7 @@ namespace da::features
                 g_faced = g_press.verdict;
                 log::Info(L"explore: \"{}\" {}", target->label, g_faced ? L"would take the press now" : L"would not take the press now");
             }
-            const bool offShot = !g_press.verdict && g_press.AtHand() && g_press.measured && !LookCanBeLed(g_press);
+            const bool offShot = !g_press.verdict && g_press.AtHand() && look::OffShot(PartsOf(g_press), true);
             if (offShot && !g_lookOffShot)
                 log::Info(L"explore: \"{}\" is at hand, but its glint lies off the fixed shot, which no turn of the player's brings in: no look is led", target->label);
             g_lookOffShot = offShot;

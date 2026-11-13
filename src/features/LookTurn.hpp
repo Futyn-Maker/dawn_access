@@ -78,6 +78,28 @@ namespace da::look
     // (research/sessions/s58-whole.log, 11:43:17; LV_Cameras_oldhotel's BP_InitialFramingCamera_Mover).
     bool CanBeLed(const Parts& p);
 
+    // What the walk's last stretch steps her toward once she is inside the place, as the press's parts
+    // stand: into the glint's own volume where the game has not put the glint up for her (`glintAway`: no
+    // shot leaves out a glint that is not there); toward the spot the thing is used from where a fixed
+    // shot leaves the glint out, which no turn of hers brings in (OffShot); else her turn to the glint.
+    // Outside the place, a step toward her spot. The two came from the one rule (CanBeLed), which counts a
+    // glint not put up for her as no turn to lead: the walk took every glint not put up for her for one
+    // off the shot, and the step into the glint's volume made for Sam's drop-down in act8_6 never ran. In
+    // the second playthrough the walk to the drop-down ended "could not get there" five times, 1 m from it,
+    // until she walked to the totem and back through the glint's volume, as in the first (research/
+    // sessions/s73-play.log, 16:32:17 to 16:33:43; s65-play.log, 14:57:20).
+    enum class StretchStep
+    {
+        IntoGlint,   // into the glint's own volume
+        ToUseSpot,   // toward the spot it is used from: the shot leaves the glint out
+        TurnToGlint, // her turn to the glint, inside
+        ToSpot,      // toward her spot, outside the place
+    };
+    StretchStep StretchStepOf(const Parts& p, bool inside);
+    // A fixed shot leaves the glint out, the glint up for her: no turn of hers brings it (inside the place,
+    // its look measured).
+    bool OffShot(const Parts& p, bool inside);
+
     // The turn the look beacon follows: the camera's while its part is not in place, else the
     // character's; on a fixed shot only the character's.
     Lead Leads(const Parts& p);

@@ -25,6 +25,19 @@ namespace da::look
         return !(p.byGlint && !p.explorationView && !p.framingEndsOnLook && !p.onScreen);
     }
 
+    bool OffShot(const Parts& p, bool inside)
+    {
+        return inside && p.measured && !p.glintAway && !CanBeLed(p);
+    }
+
+    StretchStep StretchStepOf(const Parts& p, bool inside)
+    {
+        if (!inside) return StretchStep::ToSpot;
+        if (p.byGlint && p.glintAway) return StretchStep::IntoGlint;
+        if (OffShot(p, inside)) return StretchStep::ToUseSpot;
+        return StretchStep::TurnToGlint;
+    }
+
     Lead Leads(const Parts& p)
     {
         if (!CanBeLed(p)) return Lead::None;
