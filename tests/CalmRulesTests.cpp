@@ -422,3 +422,15 @@ TEST_CASE("calm: a pull that ends and comes again the same way says its word aga
     REQUIRE(step.steered);
     CHECK(step.word == calm::Way::Left);
 }
+
+TEST_CASE("calm: the widget's own stage gives the verdict the game's events may not reach: Sam's two runs in the lodge, s73 16:40:42 and 16:43:16")
+{
+    using calm::StageVerdict;
+    // WBP_DontMove: 0 its intro, 1 running; Tick sets 2 as the time over the threshold reaches its
+    // limit (Anim_Failed, TriggerFailure); Success, which only BP_Success calls, sets 3.
+    CHECK(calm::VerdictOfStage(0) == StageVerdict::None);
+    CHECK(calm::VerdictOfStage(1) == StageVerdict::None);
+    CHECK(calm::VerdictOfStage(2) == StageVerdict::Failure);
+    CHECK(calm::VerdictOfStage(3) == StageVerdict::Success);
+    CHECK(calm::VerdictOfStage(-1) == StageVerdict::None); // not read
+}

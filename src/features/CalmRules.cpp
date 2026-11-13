@@ -5,6 +5,13 @@
 
 namespace da::calm
 {
+    StageVerdict VerdictOfStage(long long stage)
+    {
+        if (stage == 3) return StageVerdict::Success;
+        if (stage == 2) return StageVerdict::Failure;
+        return StageVerdict::None;
+    }
+
     StartWords StartWordsOf(bool drawn, bool said, bool modeKnown, bool passive)
     {
         if (said) return StartWords::Wait;

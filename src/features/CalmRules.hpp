@@ -50,6 +50,20 @@ namespace da::calm
     };
     StartWords StartWordsOf(bool drawn, bool said, bool modeKnown, bool passive);
 
+    // The verdict the widget's own Stage shows (WBP_DontMove): 0 its intro, 1 running, 2 failed (its
+    // Tick, as the time over the threshold reaches its limit: Anim_Failed, then TriggerFailure), 3
+    // succeeded (its Success function, which only BP_Success calls: Anim_Success). The game's hooks
+    // tell the verdict first; this is their polled twin, which heard both of Sam's runs in the lodge
+    // that the hooks did not (research/sessions/s73-play.log, 16:40:42 and 16:43:16: stage 3, the
+    // widget hidden a moment later, "hidden without a verdict").
+    enum class StageVerdict
+    {
+        None,
+        Success,
+        Failure,
+    };
+    StageVerdict VerdictOfStage(long long stage);
+
     // The marker's share of the way to the edge within which it counts as in the middle; the
     // pace of its blip from the middle to the edge; the pace of the double ping inside; the pace
     // of the steering signal and of the thudded blip past the edge; how long nothing else sounds

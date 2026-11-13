@@ -399,6 +399,16 @@ namespace da::features
                 if (e.setUp && !e.modeKnown) ReadMode(e);
                 if (!e.started && shown) Start(e);
                 if (!e.instructed) Instruct(e);
+                // The widget's own stage, the twin of the game's events (calm::VerdictOfStage).
+                if (e.started && !e.finished)
+                {
+                    int64_t stage = -1;
+                    if (obj::ReadInt(e.widget, L"Stage", stage))
+                    {
+                        const calm::StageVerdict verdict = calm::VerdictOfStage(stage);
+                        if (verdict != calm::StageVerdict::None) Finish(e, verdict == calm::StageVerdict::Success, L"the widget's stage");
+                    }
+                }
                 if (e.started && !e.finished && !shown && now - e.startedAt > 1.0)
                 {
                     log::Info(L"dontmove: {} hidden without a verdict", obj::ObjectName(e.widget));
