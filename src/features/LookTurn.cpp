@@ -36,7 +36,8 @@ namespace da::look
     {
         // Away because she stands outside the glint's own volume, it is hers to step into, not missing;
         // its billboard out of the picture, the camera's look is what is missing.
-        return p.byGlint && !p.glintAway && p.explorationView && p.measured && p.atHand && !p.verdict && insideEllipse && billboardInView && !p.onScreen;
+        return p.byGlint && !p.glintAway && p.explorationView && p.measured && p.atHand && !p.verdict && insideEllipse && billboardInView &&
+               (!p.onScreen || p.sightBlocked);
     }
 
     WalkKey WalkKeyAt(bool reached, bool way, bool pressTaken, Lead missing)
@@ -171,6 +172,34 @@ namespace da::look
     std::vector<Vec> BackOffLine(const Vec& from, const Vec& back)
     {
         return {from, back};
+    }
+
+    double FramingLeft(const Framing& f, const Vec& here)
+    {
+        if (!f.waitsForDistance || f.distance <= 0.0) return 0.0;
+        const double gone = std::sqrt((here.x - f.start.x) * (here.x - f.start.x) + (here.y - f.start.y) * (here.y - f.start.y) +
+                                      (here.z - f.start.z) * (here.z - f.start.z));
+        return std::max(0.0, f.distance - gone);
+    }
+
+    Vec FramingExit(const Framing& f, const Vec& here, double facingYaw, double turn)
+    {
+        double dx = here.x - f.start.x;
+        double dy = here.y - f.start.y;
+        double length = std::hypot(dx, dy);
+        if (length < 1.0)
+        {
+            const double radians = facingYaw * std::numbers::pi / 180.0;
+            dx = std::cos(radians);
+            dy = std::sin(radians);
+            length = 1.0;
+        }
+        const double radians = turn * std::numbers::pi / 180.0;
+        const double ux = dx / length, uy = dy / length;
+        const double rx = ux * std::cos(radians) - uy * std::sin(radians);
+        const double ry = ux * std::sin(radians) + uy * std::cos(radians);
+        const double reach = f.distance + kFramingMargin;
+        return Vec{f.start.x + rx * reach, f.start.y + ry * reach, here.z};
     }
 
     std::optional<Vec> BackOffPoint(const std::vector<Vec>& route, double back)

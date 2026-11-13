@@ -318,6 +318,23 @@ TEST_CASE("look: the turn missing, as the glint judges it")
         p.verdict = true;
         CHECK_FALSE(look::GlintMissing(p, true, true));
     }
+    SUBCASE("the camera looks at it, its widget on the screen, its line of sight blocked: no glint is drawn: the cellar's wine rack, 2026-11-12")
+    {
+        // research/sessions/s73-play.log, 17:18:35 to 17:22:26: "within the ellipse yes, on the screen yes,
+        // the line of sight blocked" for two minutes whichever way the camera turned; the mod said only
+        // "look at it".
+        look::Parts p = AtHand();
+        p.explorationView = true;
+        p.characterOk = true;
+        p.onScreen = true;
+        p.sightBlocked = true;
+        CHECK(look::GlintMissing(p, true, true));
+        // Turned off the ellipse, the camera's look is what is missing.
+        CHECK_FALSE(look::GlintMissing(p, false, true));
+        // The line clear and the widget on the screen: the glint is up.
+        p.sightBlocked = false;
+        CHECK_FALSE(look::GlintMissing(p, true, true));
+    }
     SUBCASE("inside the look's ellipse but out of the picture: the camera's look is missing, not the glint: the guidance totem by the cable car, 2026-11-11")
     {
         // research/sessions/s68-play.log, 01:17:25 to 01:17:48: the glint 24 degrees off across and 24
@@ -1282,4 +1299,42 @@ TEST_CASE("last stretch: given up out of the place, the walk steps back along it
     CHECK(near->y == doctest::Approx(-9421.0));
     // No way: nothing to step back along.
     CHECK_FALSE(look::BackOffPoint({}));
+}
+
+TEST_CASE("look: a framing camera that ends only by distance is walked out of: the old hotel kitchen's chains and knives, s73 11:35:35 to 11:37:34")
+{
+    // The shot Ashley's scene left lay over the kitchen until she walked 4 m to the photos; the chains'
+    // glint lay off it, and every step about their place moved her nowhere. The game ends such a shot
+    // once she stands farther than DistanceToTravel from where it began (in three dimensions).
+    look::Framing f;
+    f.waitsForDistance = true;
+    f.distance = 300.0;
+    f.start = look::Vec{-2458.0, -6675.0, 1804.0};
+    const look::Vec atChains{-2472.0, -6596.0, 1804.0};
+    CHECK(look::FramingLeft(f, atChains) == doctest::Approx(300.0 - std::hypot(14.0, 79.0)));
+    // Far enough: nothing left; on another floor the height counts too.
+    CHECK(look::FramingLeft(f, look::Vec{-2458.0, -6975.0, 1804.0}) == 0.0);
+    CHECK(look::FramingLeft(f, look::Vec{-2458.0, -6675.0, 1804.0 + 400.0}) == 0.0);
+    // A shot that ends at a push of the stick waits for no distance.
+    look::Framing push = f;
+    push.waitsForDistance = false;
+    CHECK(look::FramingLeft(push, atChains) == 0.0);
+    // The way out: on the line from where it began through her, kFramingMargin past its distance, at her
+    // height; turned about where it began where that is walled.
+    const look::Vec straight = look::FramingExit(f, atChains, 0.0, 0.0);
+    CHECK(std::hypot(straight.x - f.start.x, straight.y - f.start.y) == doctest::Approx(f.distance + look::kFramingMargin));
+    CHECK(straight.z == atChains.z);
+    const double outward = std::atan2(atChains.y - f.start.y, atChains.x - f.start.x);
+    CHECK(std::atan2(straight.y - f.start.y, straight.x - f.start.x) == doctest::Approx(outward));
+    const look::Vec turned = look::FramingExit(f, atChains, 0.0, 90.0);
+    CHECK(std::hypot(turned.x - f.start.x, turned.y - f.start.y) == doctest::Approx(f.distance + look::kFramingMargin));
+    CHECK(std::remainder(std::atan2(turned.y - f.start.y, turned.x - f.start.x) - (outward + std::numbers::pi / 2.0), 2.0 * std::numbers::pi) ==
+          doctest::Approx(0.0).epsilon(1e-9));
+    // Standing where it began: straight on from her forward.
+    const look::Vec fromStart = look::FramingExit(f, f.start, 90.0, 0.0);
+    CHECK(fromStart.x == doctest::Approx(f.start.x));
+    CHECK(fromStart.y == doctest::Approx(f.start.y + f.distance + look::kFramingMargin));
+    // The turns tried begin with the straight way and go both ways.
+    CHECK(look::kFramingTurns.front() == 0.0);
+    CHECK(look::kFramingTurns[1] == -look::kFramingTurns[2]);
 }

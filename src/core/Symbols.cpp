@@ -197,6 +197,11 @@ namespace da::sym
             // A glint is spawned while the player's character stands in its own volume
             // (ABatesGlint::OnCharacterVolumeStateChanged): only then does the game draw it.
             {L"ABatesGlint.bIsSpawned", 0x47a}, // bool
+            // Where she stood as a framing camera began, and how long it has held the view: it ends
+            // by distance only once she stands farther than DistanceToTravel from there, and never
+            // before MinTimeBeforeExit (ABatesInitialFramingCamera::Tick and ClearCameraLayer).
+            {L"ABatesInitialFramingCamera.InitialPlayerLocation", 0xb50}, // FVector (doubles)
+            {L"ABatesInitialFramingCamera.TimeSinceFramingStarted", 0xb04}, // float
             // A glint's widget shows its prompt while the glint's intensity is full, the same
             // moment the glint authorises the press (UBatesGlintWidget::Update, 0x46bf680), fades
             // it in by CurrentShowPrompt, and is going away while bIsDestroying is set. The

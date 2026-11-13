@@ -6,6 +6,7 @@
 
 #include "features/Vec.hpp"
 
+#include <array>
 #include <deque>
 #include <optional>
 #include <vector>
@@ -42,6 +43,9 @@ namespace da::look
         // playthrough she stopped inside it, in the second a few centimetres off, told to look at a glint
         // the game never drew (research/sessions/s65-play.log, 14:57:20 to 15:01:54).
         bool glintAway = false;
+        // The exploration camera's line to the glint's billboard is blocked (the glint's own line of
+        // sight check: CurrentIntensity -1): the glint is not drawn, though the camera may look at it.
+        bool sightBlocked = false;
     };
 
     // Whether the game takes a press at a use location from the player's character, as its
@@ -92,6 +96,10 @@ namespace da::look
     // kGlintMissingAfter of it, she standing still: a glint coming up takes a moment (the library's
     // guidance totem in s46 was off the screen inside the ellipse for 2.5 s before it showed), the
     // dollhouse's stayed so for 5 to 14 s at a time over 93 s.
+    // The same where the widget is on the screen but the glint's own line of sight from the camera to
+    // it is blocked (`sightBlocked`): the wine rack of the lodge's cellar on 2026-11-12 drew no glint
+    // for two minutes, its line of sight blocked whichever way the camera turned, and the mod said
+    // only "look at it" (research/sessions/s73-play.log, 17:18:35 to 17:22:26).
     bool GlintMissing(const Parts& p, bool insideEllipse, bool billboardInView);
     constexpr double kGlintMissingAfter = 5.0;
 
@@ -261,6 +269,35 @@ namespace da::look
     // kBackOff off: a way round of the point alone was dropped the moment it was set, and the walk
     // turned in again from where it had given up.
     std::vector<Vec> BackOffLine(const Vec& from, const Vec& back);
+
+    // A framing camera (ABatesInitialFramingCamera: put up as a scene or an interaction ends, or as she
+    // comes into an area) holds the view until the game ends it (its Tick, ProcessCharacterMovementInput,
+    // ProcessCameraInput and ClearCameraLayer): never before MinTimeBeforeExit of it; then by a turn of
+    // the camera where bCameraMovementEndsFramingCamera is set; by any push of the stick, unless
+    // bMustWaitForDistanceToBeTravelled is, and then only once she stands farther than DistanceToTravel
+    // from where she stood as it began (InitialPlayerLocation, measured in three dimensions). A glint off
+    // its shot is no glint a turn brings in, and no step about the place either: in the old hotel's
+    // kitchen on 2026-11-13 the chains and knives' glint lay off the shot Ashley's scene had left, four
+    // walks to it ended "could not get there", and the glint came on screen once she had walked to the
+    // photos 4 m away and come back (research/sessions/s73-play.log, 11:35:35 to 11:37:34). So a walk
+    // that finds a glint off such a shot steps her out past its distance, as that player did, and walks
+    // in again.
+    struct Framing
+    {
+        bool waitsForDistance = false; // bMustWaitForDistanceToBeTravelled
+        double distance = 0.0;         // DistanceToTravel
+        Vec start;                     // InitialPlayerLocation
+    };
+    constexpr double kFramingMargin = 60.0;
+    // How far she must still go from `here` for the framing to end by her going: 0 when it ends by a
+    // push of the stick, or she has gone far enough.
+    double FramingLeft(const Framing& f, const Vec& here);
+    // The point to step out to: on the line from where the framing began through her, kFramingMargin
+    // past its distance, turned by `turn` degrees about where it began, at her height; straight on from
+    // her forward (`facingYaw`, degrees) when she stands where it began.
+    Vec FramingExit(const Framing& f, const Vec& here, double facingYaw, double turn);
+    // The turns tried, in order, where the straight way out is walled: the nearest first, both ways.
+    constexpr std::array<double, 10> kFramingTurns = {0.0, 35.0, -35.0, 70.0, -70.0, 105.0, -105.0, 140.0, -140.0, 180.0};
 
     // Held to a path, level with a thing the game has not offered: the walk lets the stick go and
     // gives up only once she has come to rest, at least kPathLevelSettle after it let go, or

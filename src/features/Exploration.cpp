@@ -464,6 +464,7 @@ namespace da::features
         double g_walkBestWay = 1e9;
         double g_walkBestWayAt = 0.0;
         bool g_backedOff = false;     // this walk has stepped back once to walk in again (look::BackOffPoint)
+        bool g_framingStepped = false; // this walk has stepped her out past a framing camera's distance (look::Framing)
         bool g_backOffActive = false; // ... and is on its way back now, its detour the line back to the point
         Vec g_backOffPoint;           // the point stepped back to (look::BackOffLine)
         double g_walkTargetSince = 0.0; // since when the walk has gone to its thing (set off, or turned to another)
@@ -6399,6 +6400,7 @@ namespace da::features
             parts.needCamera = p.needCamera;
             parts.framingEndsOnLook = p.framingEndsOnLook;
             parts.glintAway = p.glintAway;
+            parts.sightBlocked = p.sightBlocked;
             return parts;
         }
 
@@ -6481,6 +6483,20 @@ namespace da::features
             if (controller)
                 obj::CallReturn(controller, L"GetViewTarget", [&](void* params, FProperty* returnValue) { obj::ReadObjectAt(params, returnValue, view); });
             return obj::IsLive(view) ? view : nullptr;
+        }
+
+        // The measure of the framing camera the view stands on (look::Framing): nothing when the view
+        // is another camera, or where its start cannot be read.
+        std::optional<look::Framing> ReadFraming(UObject* view)
+        {
+            if (!view || !obj::IsA(view, L"BatesInitialFramingCamera")) return std::nullopt;
+            look::Framing f;
+            obj::ReadBool(view, L"bMustWaitForDistanceToBeTravelled", f.waitsForDistance);
+            obj::ReadFloat(view, L"DistanceToTravel", f.distance);
+            const auto* start = static_cast<const double*>(sym::MemberOf(view, L"ABatesInitialFramingCamera.InitialPlayerLocation"));
+            if (!start) return std::nullopt;
+            f.start = Vec{start[0], start[1], start[2]};
+            return f;
         }
 
         UObject* ExplorationCameraActor()
@@ -7036,6 +7052,51 @@ namespace da::features
         }
 
         // Runs the last stretch; false while the walk is still on its way there.
+        // Steps her out past the distance the framing camera on the view waits for (look::Framing), along
+        // the first way out that lies on the ground the map reached and that a capsule sweep finds clear:
+        // the walk's way back (look::BackOffLine), after which it walks in again (FollowGrid). False when
+        // the view is no such camera, she has gone far enough, or no way out is walkable.
+        bool StepOutOfFraming(UObject* pawn, Target& t, const Vec& here, double now)
+        {
+            UObject* view = ViewTarget();
+            const auto framing = ReadFraming(view);
+            if (!framing) return false;
+            const double left = look::FramingLeft(*framing, here);
+            g_framingStepped = true;
+            log::Info(L"explore: \"{}\" lies off the shot of the framing camera {}, which ends {}; she stands {:.0f} cm from where it began", t.label,
+                      obj::ObjectName(view),
+                      framing->waitsForDistance ? std::format(L"once she goes {:.0f} cm from where it began", framing->distance)
+                                                : std::wstring(L"at a push of the stick"),
+                      Distance(here, framing->start));
+            if (left <= 0.0) return false;
+            const double lift = g_grid.stepHeight / 2.0;
+            const Vec from{here.x, here.y, here.z + lift};
+            for (const double turn : look::kFramingTurns)
+            {
+                const Vec exit = look::FramingExit(*framing, here, FacingYaw(pawn), turn);
+                if (!OnMappedGround(exit, g_grid.capsuleHalf)) continue;
+                const Vec to{exit.x, exit.y, exit.z + lift};
+                const double clear = SweepClear(pawn, from, to, g_grid.radius, SweepHalfHeight());
+                if (clear < 0.0 || clear < Distance(from, to) - 1.0) continue;
+                g_backOffActive = true;
+                g_backOffPoint = exit;
+                t.detour = look::BackOffLine(here, exit);
+                g_arriveSince = -1.0;
+                g_walkMeasure = {0, 0.0};
+                g_walkMovingAt = now;
+                g_walkLeanedAt = now;
+                g_walkBestWay = 1e9;
+                g_walkBestWayAt = now;
+                g_slide.Spoiled();
+                log::Info(L"explore: the walk to \"{}\" steps her out to ({:.0f}, {:.0f}), {:.0f} cm on, turned {:+.0f} deg, past the framing camera's distance, "
+                          L"and walks in again",
+                          t.label, exit.x, exit.y, FlatDistance(here, exit), turn);
+                return true;
+            }
+            log::Info(L"explore: no way out of the framing camera's distance from where she stands is walkable");
+            return false;
+        }
+
         bool PollArrival(UObject* pawn, Target& t, const Vec& here, double yaw, double now)
         {
             // Once begun, the last stretch keeps her near her spot though she slides out of the place
@@ -7150,6 +7211,10 @@ namespace da::features
             // look (look::CanBeLed): she steps on toward the spot the game puts her on to use the
             // thing, where the shot may take the glint in.
             const bool offShot = p.inside && p.measured && !LookCanBeLed(p);
+            // A framing camera that ends only as she goes a distance from where it began keeps the glint
+            // off its shot however she turns or steps about the place (look::Framing): the walk steps her
+            // out past that distance, by the first way out that is walkable, and walks in again.
+            if (offShot && !g_framingStepped && !g_backOffActive && StepOutOfFraming(pawn, t, here, now)) return false;
             if (now - g_arriveSince > look::kArriveMost)
             {
                 // Its time is up: no more pushes, and it gives up once she has settled after the last
@@ -7953,6 +8018,7 @@ namespace da::features
             }
             g_walking = true;
             g_backedOff = false;
+            g_framingStepped = false;
             g_backOffActive = false;
             g_walkFor = target->actor;
             g_walkForLabel = target->label;
