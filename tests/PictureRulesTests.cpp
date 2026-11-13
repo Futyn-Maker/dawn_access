@@ -247,6 +247,35 @@ TEST_CASE("pictures: the silent looks of chapters 7 to 10 are described as their
     CHECK(can[0].state == L"IKswing");
     CHECK(can[1].key == L"i_oilflask.roaches");
     CHECK(can[1].state == L"LookCloserThrowAwayPickUpWeapon");
+    // The looks the audit of every placed interaction found: two Andrey used in chapter 5 with nothing said
+    // (s52 18:32:13 and s71 22:28:44 the card reader, s71 22:51:15 the morgue tray), and those of branches
+    // he never took, by the names the levels give them.
+    const Seen audited[] = {
+        {{L"I_admin_area_jacksdoor_lookat_reader", L"I_admin_area_jacksdoor_lookat_reader", L"BP_Keycard_reader_lookat_C"},
+         L"i_admin_area_jacksdoor_lookat_reader",
+         L"examine_idle"},
+        {{L"I_morgue_open_morgue_drawer_lookat", L"I_morgue_open_morgue_drawer_lookat", L"BP_Open_morgue_drawer_lookat_C"},
+         L"i_morgue_open_morgue_drawer_lookat",
+         L"examine_idle"},
+        {{L"I_jackslair_exit_lock_lookat", L"", L"BP_Rear_exit_lock_lookat_C"}, L"i_jackslair_exit_lock_lookat", L"examine_idle"},
+        {{L"I_motivation_board", L"I_motivation_board", L"BP_Motivation_board_C"}, L"i_motivation_board", L"lookatboard"},
+        {{L"I_motivation_board_lookat", L"", L"BP_Motivation_board_lookat_C"}, L"i_motivation_board_lookat", L"examine_idle"},
+    };
+    for (const auto& s : audited)
+    {
+        CAPTURE(s.key);
+        const auto plan = look(s.names);
+        REQUIRE(plan.has_value());
+        CHECK(plan->key == s.key);
+        CHECK(plan->state == s.state);
+    }
+    // The second telescope at the vista, whatever its core name, by its class; Mike's first keeps its own.
+    const auto lookOnly = look(Names{L"I_Telescope", L"", L"BP_Telescope_look_only_C", L"/Game/Gameplay/Gameobjects/interactions/Act2_2/Telescope/BP_Telescope_look_only"});
+    REQUIRE(lookOnly.has_value());
+    CHECK(lookOnly->key == L"i_telescope_look_only");
+    CHECK(lookOnly->moment == picture::Moment::Begins);
+    // The morgue drawer's own opening (BP_Open_morgue_drawer_C) is an action, not this look.
+    CHECK_FALSE(look(Names{L"I_morgue_open_morgue_drawer", L"I_morgue_open_morgue_drawer", L"BP_Open_morgue_drawer_C"}).has_value());
     // Second looks at clues found before, the hub's notice and the looks that show a clue are not these:
     // Beth's head and her cross looked at again, the hub's printed sign (its words the game shows).
     CHECK_FALSE(look(Names{L"I_beths_head_lookat", L"I_beths_head_lookat", L"BP_Bethshead_lookat_C"}).has_value());

@@ -49,7 +49,7 @@ namespace da::picture
 
         // The interactions whose pictures the mod describes, and when; the moments are the game's own
         // states, as the logs of chapters 5 and 6 show them.
-        constexpr std::array<Planned, 55> kPlans = {
+        constexpr std::array<Planned, 61> kPlans = {
             // Dr. Hill's card is picked up face down and turned over with the stick (act20_1,
             // BP_PsychSession_PickUp, which no other level places: its examine stage reveals). It has no
             // core name; its activity starts it as I_psychsession_1_Interaction.
@@ -183,6 +183,22 @@ namespace da::picture
             Planned{L"i_sanlookat", L"bp_lookat_san_entrance_gate_c", Moment::State, L"examine_idle"},
             Planned{L"i_oilflask", L"bp_oilflask_c", Moment::State, L"IKswing"},
             Planned{L"i_oilflask.roaches", L"bp_oilflask_c", Moment::State, L"LookCloserThrowAwayPickUpWeapon"},
+            // The audit of every interaction the levels place (s73: 432, of them 64 never used in the two
+            // playthroughs): the silent looks no earlier audit had reached, and those of branches Andrey
+            // never took, each placed once. Mike in the sanatorium (act4_2): the card reader at the chapel's
+            // door (its LOCKED and the door's sign, the only words: the game draws no text of its own), the
+            // corpse on the morgue tray once the drawer is opened, the padlocked gate out of Jack's lair.
+            // Mike's second telescope at the vista (Act2_2: the same prop, spot and view as the first, without
+            // its scare; asleep once the mine's beam has fallen). Sam's board in the psycho's lair (act6_2, a
+            // clue, only when she got away at the end of chapter 5): what its words leave out, the missing
+            // posters with Hannah's tattoo, the note, the clippings and Hannah circled in a photo, said as the
+            // board shows after its card and at its second look.
+            Planned{L"i_admin_area_jacksdoor_lookat_reader", L"bp_keycard_reader_lookat_c", Moment::State, L"examine_idle"},
+            Planned{L"i_morgue_open_morgue_drawer_lookat", L"bp_open_morgue_drawer_lookat_c", Moment::State, L"examine_idle"},
+            Planned{L"i_jackslair_exit_lock_lookat", L"bp_rear_exit_lock_lookat_c", Moment::State, L"examine_idle"},
+            Planned{L"i_telescope_look_only", L"bp_telescope_look_only_c", Moment::Begins, L""},
+            Planned{L"i_motivation_board", L"bp_motivation_board_c", Moment::State, L"lookatboard"},
+            Planned{L"i_motivation_board_lookat", L"bp_motivation_board_lookat_c", Moment::State, L"examine_idle"},
         };
 
         // A picture the game draws one of several ways by the player's earlier answers: the callforward its
