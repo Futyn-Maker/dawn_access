@@ -1,5 +1,6 @@
 #include "diag/SaveCopies.hpp"
 
+#include "core/Config.hpp"
 #include "core/GameThread.hpp"
 #include "core/Log.hpp"
 #include "diag/Diagnostics.hpp"
@@ -137,6 +138,8 @@ namespace da::diag
 
         void Poll(float)
         {
+            // A developer's copies, off unless [Diag] SaveCopies turns them on.
+            if (!cfg::Get().saveCopies) return;
             const double now = gamethread::NowSeconds();
             if (now - g_lookedAt < kEvery) return;
             g_lookedAt = now;

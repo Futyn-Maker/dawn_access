@@ -134,3 +134,21 @@ TEST_CASE("ToggleVerbosity turns the level over and keeps it in the file")
     CHECK(cfg::Detailed());
     CHECK(dir.Read("DawnAccess.ini") == "[General]\nVerbosity=Full\n");
 }
+
+TEST_CASE("The developer's records are off unless the ini turns them on: a tester's dumps folder grew to 2 GB")
+{
+    TempDir dir;
+    std::wstring error;
+    // Off by default, and in the shipped ini.
+    const auto none = cfg::LoadSettings((dir.Path() / "DawnAccess.ini").wstring(), &error);
+    CHECK_FALSE(none.groundRecords);
+    CHECK_FALSE(none.saveCopies);
+    const auto shipped = cfg::LoadSettings(std::filesystem::path(DA_REPO_ROOT).append("mod").append("DawnAccess.ini").wstring(), &error);
+    CHECK_FALSE(shipped.groundRecords);
+    CHECK_FALSE(shipped.saveCopies);
+    // On where the ini turns them on.
+    const auto path = dir.Write("DawnAccess.ini", "[Diag]\nGroundRecords=1\nSaveCopies=1\n");
+    const auto on = cfg::LoadSettings(path.wstring(), &error);
+    CHECK(on.groundRecords);
+    CHECK(on.saveCopies);
+}

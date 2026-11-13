@@ -687,6 +687,27 @@ namespace da::features
 
         // The ground as it is felt out, written to a file of the dumps folder so that the
         // search can be run over it again without the game.
+        // The ground records kept in the dumps folder: the newest, the rest let go as a new one begins.
+        constexpr size_t kRecordsKept = 20;
+        void PruneRecords(const std::wstring& dir)
+        {
+            std::error_code error;
+            std::vector<std::filesystem::path> records;
+            for (const auto& entry : std::filesystem::directory_iterator(dir, error))
+            {
+                const auto name = entry.path().filename().wstring();
+                if (entry.is_regular_file(error) && name.starts_with(L"ground-") && name.ends_with(L".tsv")) records.push_back(entry.path());
+            }
+            if (records.size() < kRecordsKept) return;
+            // The stamp in the name orders them by time.
+            std::sort(records.begin(), records.end());
+            for (size_t i = 0; i + kRecordsKept <= records.size(); ++i)
+            {
+                std::filesystem::remove(records[i], error);
+                if (!error) log::Info(L"explore: the old ground record {} is let go", records[i].filename().wstring());
+            }
+        }
+
         class GroundRecorder
         {
         public:
@@ -711,8 +732,12 @@ namespace da::features
                 if (m_file.is_open()) return true;
                 if (m_tried) return false;
                 m_tried = true;
+                // A developer's record, off unless [Diag] GroundRecords turns it on; the oldest records
+                // beyond kRecordsKept are let go as a new one begins.
+                if (!cfg::Get().groundRecords) return false;
                 const std::wstring dir = diag::DumpsDirectory();
                 if (dir.empty()) return false;
+                PruneRecords(dir);
                 std::time_t now = std::time(nullptr);
                 std::tm local{};
                 localtime_s(&local, &now);

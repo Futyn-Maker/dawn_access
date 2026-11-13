@@ -56,6 +56,11 @@ namespace da::cfg
         // [Diag]
         std::vector<std::wstring> traceClassPrefixes{L"WBP_", L"BMUI"};
         bool firstLaunch = false; // the game's first-launch screens once more, for a test
+        // The ground the mod feels out, recorded to dumps\ground-<time>.tsv for the walk's tests, and
+        // copies of the game's save at each checkpoint (diag/SaveCopies): a developer's records, which
+        // grew to gigabytes in a tester's game folder; off unless the ini turns them on.
+        bool groundRecords = false;
+        bool saveCopies = false;
 
         bool FeatureEnabled(std::wstring_view name) const;
         // A [Hotkeys] setting by name, or the default given when the file does not set it.
