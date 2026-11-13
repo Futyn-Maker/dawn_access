@@ -612,3 +612,24 @@ TEST_CASE("pictures: a description's words are followed through to the end and n
     CHECK(picture::ResolveWords(L"look.bare", mod, game).empty());
     CHECK(picture::ResolveWords(L"look.none", mod, game).empty());
 }
+
+TEST_CASE("pictures: a picture still waiting as its interaction ends is said then: Sam under the sack, s73 11:53:37")
+{
+    // The sack's EndPose showed Sam at 11:53:37.332; the interaction ended 6 ms later and its words, waiting
+    // for a prompt that never came, were dropped.
+    picture::Due due;
+    const double shown = 1000.0;
+    due.Set(shown, true);
+    CHECK_FALSE(due.Ready(shown + 0.006, -1.0, false, -1.0));
+    CHECK(due.Pending());
+    CHECK(due.AtEnd(shown + 0.006));
+    CHECK_FALSE(due.Pending());
+    // Shown long before the end, the scene has moved on from it: not said, and nothing waits.
+    picture::Due old;
+    old.Set(shown, true);
+    CHECK_FALSE(old.AtEnd(shown + picture::kAtEndMost + 0.5));
+    CHECK_FALSE(old.Pending());
+    // Nothing waiting: nothing said.
+    picture::Due none;
+    CHECK_FALSE(none.AtEnd(shown));
+}

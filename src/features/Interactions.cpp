@@ -96,7 +96,7 @@ namespace da::features
         // The picture's plan, by every name the game gives the interaction (picture::PlanFor): its core
         // name, its name in the level's actor database, its class. The names go to the log, so that the
         // next session's log shows which the game gives where nothing is described. A picture whose words
-        // still wait as the interaction ends is not described.
+        // still wait as the interaction ends is said then, when it was shown just before (picture::Due::AtEnd).
         void PlanLook(UObject* bound)
         {
             g_looksSaid.clear();
@@ -1414,6 +1414,20 @@ namespace da::features
                 const auto key = obj::KeyOf(bound);
                 if (key != g_interactionKey)
                 {
+                    // A picture still waiting as its interaction ends is said now (picture::Due::AtEnd).
+                    if (g_lookDue.Pending())
+                    {
+                        if (g_lookDue.AtEnd(now))
+                        {
+                            log::Info(L"interactions: the picture of {} is said as its interaction ends, {:.2f} s after it was shown", g_lookDueName,
+                                      now - g_lookDue.Since());
+                            speech::Announce(g_lookDueWords);
+                        }
+                        else
+                        {
+                            log::Info(L"interactions: the picture of {} was shown too long before its interaction ended to be said", g_lookDueName);
+                        }
+                    }
                     g_interactionKey = key;
                     g_interaction = bound;
                     ++g_bindings;

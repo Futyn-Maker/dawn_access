@@ -290,6 +290,12 @@ namespace da::picture
     // to .452). The key is waited for at most kKeyWaitMost: a key held on longer is not let go for it.
     constexpr double kLookPromptWaitMost = 1.0;
     constexpr double kKeyWaitMost = 4.0;
+    // A picture still waiting for its prompt or the key as its interaction ends, within kAtEndMost of
+    // being shown, is said as the interaction ends: what is shown at an interaction's last state stays
+    // on the screen as the scene goes on. Sam under the sack (act5_3: EndPose, then the scene with the
+    // psycho) was shown at 11:53:37.332 and the interaction ended 6 ms later, and nothing was said
+    // (research/sessions/s73-play.log). Longer ago, the scene has moved on from it.
+    constexpr double kAtEndMost = 3.0;
     // A picture shown with words of the HUD's own (LookPlan::afterHud) waits for them, at most kHudWaitMost:
     // a clue's card came 1.2 s into the look at the old hotel's dead pig, its picture before it by the
     // prompt's rule (research/sessions/s58-whole.log, 11:44:24.879 to 26.076), and the locker's poster
@@ -317,6 +323,9 @@ namespace da::picture
         }
         // Whether the words wait for the player's key at this poll (for the log).
         bool WaitsForKey(double now, bool keyHeld) const;
+        // The interaction ends: whether the picture still waiting is said now (kAtEndMost); it waits no
+        // more either way.
+        bool AtEnd(double now);
         void Reset();
 
     private:

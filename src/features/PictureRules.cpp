@@ -454,6 +454,13 @@ namespace da::picture
         return m_pending && keyHeld && now - m_at < kKeyWaitMost;
     }
 
+    bool Due::AtEnd(double now)
+    {
+        const bool says = m_pending && now - m_at <= kAtEndMost;
+        m_pending = false;
+        return says;
+    }
+
     void Due::Reset()
     {
         m_pending = false;
