@@ -67,7 +67,7 @@ namespace da::input
             Negate,
             Other,
         } kind = Kind::Other;
-        int order = 0;              // Swizzle: EInputAxisSwizzle
+        int order = 0;                     // Swizzle: EInputAxisSwizzle
         bool x = true, y = true, z = true; // Negate: the axes it flips
     };
     std::wstring WayOfKey(const std::vector<KeyModifier>& modifiers);
@@ -102,8 +102,8 @@ namespace da::input
         uint16_t HeldBack(uint16_t buttons, bool holdDown, uint16_t graced, bool kept = true);
 
     private:
-        uint16_t m_given = 0;      // down and given to the game, or taken by the chord
-        uint8_t m_held[16] = {};   // the readings each has been kept from so far
+        uint16_t m_given = 0;    // down and given to the game, or taken by the chord
+        uint8_t m_held[16] = {}; // the readings each has been kept from so far
     };
 
     // The waits of every pad the game reads, one each: XInput's four by their index, the PlayStation

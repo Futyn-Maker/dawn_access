@@ -195,8 +195,7 @@ namespace
     // is given), `card(t)` the card that changes the character is up, `handed` when the player is
     // handed the character; free play runs where `free(t)` and no card is up.
     template <typename Objective, typename Free, typename Card>
-    std::vector<Said> RunTurn(lines::Objective& rule, double from, double to, Objective objective, Free free, Card card, double loadedAt,
-                              double handed)
+    std::vector<Said> RunTurn(lines::Objective& rule, double from, double to, Objective objective, Free free, Card card, double loadedAt, double handed)
     {
         std::vector<Said> said;
         for (double t = from; t < to; t += kObjectivePoll)
@@ -264,8 +263,9 @@ TEST_CASE("lines: with no card in a turn its objective comes at the hand-over, a
     CHECK(said[0].at < 31.5);
     CHECK_FALSE(rule.Opens());
     // The boiler's objective, set after a talk in the middle of Sam's turn (23:23:41): said at once.
-    said = Run(rule, 40.0, 50.0, [](double t) { return t >= 41.0 ? std::wstring(L"Light the boiler with Josh") : std::wstring(L"Follow Emily"); },
-               [](double) { return true; });
+    said = Run(
+        rule, 40.0, 50.0, [](double t) { return t >= 41.0 ? std::wstring(L"Light the boiler with Josh") : std::wstring(L"Follow Emily"); },
+        [](double) { return true; });
     REQUIRE(said.size() == 1);
     CHECK(said[0].at < 42.5);
 }

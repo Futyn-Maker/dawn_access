@@ -173,12 +173,8 @@ namespace da::features
                 const std::wstring words = cfg::Detailed() && !chosen.empty() ? locale::Mod(L"choice.chosen", chosen) : std::wstring();
                 switch (g_chosen.Take(words, gamethread::NowSeconds(), keyhook::KeyRepeating()))
                 {
-                case choice::Taking::Say:
-                    speech::Now(words);
-                    break;
-                case choice::Taking::Cut:
-                    speech::Cut(L"a side of the choice taken");
-                    break;
+                case choice::Taking::Say: speech::Now(words); break;
+                case choice::Taking::Cut: speech::Cut(L"a side of the choice taken"); break;
                 case choice::Taking::Wait:
                     // The key the side was taken with still repeats, and a screen reader stops at
                     // each repeat: the words, and what the game says after them, wait for it.

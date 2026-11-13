@@ -52,8 +52,8 @@ namespace da::features
         double g_blipAt = 0.0;
         double g_loggedAt = 0.0;
         double g_missLoggedAt = 0.0;
-        nudge::TotemLead g_lead; // the aim sound's way, on the totem and off it
-        bool g_pointMeasured = false; // the premonition's point found as the game finds it, as logged
+        nudge::TotemLead g_lead;                 // the aim sound's way, on the totem and off it
+        bool g_pointMeasured = false;            // the premonition's point found as the game finds it, as logged
         const wchar_t* g_measuredFrom = nullptr; // what the premonition is placed against, as logged
 
         std::wstring TotemName(UObject* totem)
@@ -332,8 +332,8 @@ namespace da::features
             if (measured != g_pointMeasured)
             {
                 g_pointMeasured = measured;
-                log::Info(L"totems: the premonition is measured {}", measured ? L"at the point the game traces through its arrow"
-                                                                             : L"at its arrow (the game's trace through it found nothing)");
+                log::Info(L"totems: the premonition is measured {}",
+                          measured ? L"at the point the game traces through its arrow" : L"at its arrow (the game's trace through it found nothing)");
             }
             Vec forward, right, up;
             ViewBasis(pitch, yaw, forward, right, up);
@@ -347,9 +347,7 @@ namespace da::features
             const bool lineKnown = !hitKnown && VecProperty(g_totem, L"CachedTotemInspectionQueryLocation", query);
             const Vec centreAhead{eye.x + forward.x * 100.0, eye.y + forward.y * 100.0, eye.z + forward.z * 100.0};
             const Vec d = hitKnown ? Minus(discovery, hit) : nudge::AcrossLine(discovery, eye, lineKnown ? query : centreAhead, forward);
-            const wchar_t* from = hitKnown    ? L"the point the game's line meets the totem at"
-                                  : lineKnown ? L"the game's line"
-                                              : L"the view's centre line";
+            const wchar_t* from = hitKnown ? L"the point the game's line meets the totem at" : lineKnown ? L"the game's line" : L"the view's centre line";
             if (from != g_measuredFrom)
             {
                 g_measuredFrom = from;
@@ -373,16 +371,16 @@ namespace da::features
             const auto aim = g_lead.Update(sample);
             if (g_lead.WayX() != wayX || g_lead.WayY() != wayY)
                 log::Info(L"totems: a push toward the premonition's side brings it nearer {} across and {} up and down, by how it answered the pose",
-                          g_lead.WayX() > 0 ? L"as it should" : L"never (led the other way)", g_lead.WayY() > 0 ? L"as it should" : L"never (led the other way)");
+                          g_lead.WayX() > 0 ? L"as it should" : L"never (led the other way)",
+                          g_lead.WayY() > 0 ? L"as it should" : L"never (led the other way)");
             if (now - g_loggedAt >= 1.0)
             {
                 g_loggedAt = now;
                 const auto pad = input::ReadPad();
                 log::Info(L"totems: the point lies {:+.0f} cm across, {:+.0f} up and {:+.0f} deep of the view's point{}; closeness {:.2f}, time {:.0f}%, {}; "
                           L"stick ({}, {}){}; led pan {:+.2f}, level {:.2f}",
-                          sample.lateral, sample.vertical, sample.depth, hitKnown ? L"" : L" (the game's line misses the totem)", closeness,
-                          progress * 100.0, onPoint ? L"on the point" : L"off it", pad.valid ? pad.leftX : 0, pad.valid ? pad.leftY : 0, TurnState(g_totem),
-                          aim.pan, aim.level);
+                          sample.lateral, sample.vertical, sample.depth, hitKnown ? L"" : L" (the game's line misses the totem)", closeness, progress * 100.0,
+                          onPoint ? L"on the point" : L"off it", pad.valid ? pad.leftX : 0, pad.valid ? pad.leftY : 0, TurnState(g_totem), aim.pan, aim.level);
             }
             if (!LookBeaconOn()) return;
             const double interval = onPoint ? 0.12 : 0.09 + 0.4 * std::clamp(1.0 - closeness, 0.0, 1.0);

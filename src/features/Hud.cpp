@@ -32,27 +32,13 @@ namespace da::features
     {
         // The elements the player acts on, read by their own features, and the pages of the
         // menus: never read here, whatever text they carry.
-        const wchar_t* const kOwnedElsewhere[] = {L"BatesSubtitlesWidget",
-                                                  L"BatesQTEWidget",
-                                                  L"BatesDirectionalChoiceWidget",
-                                                  L"BatesDontMoveWidget",
-                                                  L"BatesDontMoveTutorialWidget",
-                                                  L"BatesInteractionWidget",
-                                                  L"BatesGlintWidget",
-                                                  L"BMUIPage",
-                                                  L"BMUIActionBarWidget",
-                                                  L"BatesPersistentCentreDotWidget",
-                                                  L"BatesShootingStageTargetWidget",
-                                                  L"BatesShootingStageReticuleWidget",
-                                                  L"BatesTTSIconWidget",
-                                                  L"BMUIHUDContainer",
-                                                  L"BatesHUDContainer",
+        const wchar_t* const kOwnedElsewhere[] = {L"BatesSubtitlesWidget", L"BatesQTEWidget", L"BatesDirectionalChoiceWidget", L"BatesDontMoveWidget",
+                                                  L"BatesDontMoveTutorialWidget", L"BatesInteractionWidget", L"BatesGlintWidget", L"BMUIPage",
+                                                  L"BMUIActionBarWidget", L"BatesPersistentCentreDotWidget", L"BatesShootingStageTargetWidget",
+                                                  L"BatesShootingStageReticuleWidget", L"BatesTTSIconWidget", L"BMUIHUDContainer", L"BatesHUDContainer",
                                                   // The epilogue's credits, its interviews' overlay and
                                                   // its videos of the dead (features/Credits).
-                                                  L"BatesCreditWidget",
-                                                  L"BatesCreditLineWidget",
-                                                  L"BatesCreditEntryWidget",
-                                                  L"BatesCreditOverlayWidget"};
+                                                  L"BatesCreditWidget", L"BatesCreditLineWidget", L"BatesCreditEntryWidget", L"BatesCreditOverlayWidget"};
 
         bool OwnedElsewhere(UObject* widget)
         {
@@ -68,9 +54,9 @@ namespace da::features
         {
             UObject* instance = nullptr;
             lines::Element lines;
-            lines::Card card;      // for an update card, which waits for its body (Text_Body)
-            std::wstring cardTitle; // what the card drew while its body was still to come
-            lines::TitleFill fill; // for a title card, which fades its words in one after another
+            lines::Card card;        // for an update card, which waits for its body (Text_Body)
+            std::wstring cardTitle;  // what the card drew while its body was still to come
+            lines::TitleFill fill;   // for a title card, which fades its words in one after another
             lines::ClockTicks clock; // a clock it shows, said as its hours and minutes change
         };
 
@@ -136,8 +122,8 @@ namespace da::features
 
         // An element is read once its words have stopped changing, line by new line
         // (lines::Element).
-        double g_settlingSince = -1.0; // since when a shown element's words are still to be said
-        double g_saidAt = -1000.0;     // when an element's words were last said
+        double g_settlingSince = -1.0;      // since when a shown element's words are still to be said
+        double g_saidAt = -1000.0;          // when an element's words were last said
         double g_documentDrawnAt = -1000.0; // when a document's transcript was last drawn
 
         // A clue's card and the page it comes with, said together, the card first (lines::CardFirst);
@@ -145,13 +131,13 @@ namespace da::features
         // (lines::LeaveShownAgain), is not said again, and the prompts the bar shows with it again
         // are not either (PageResumedAt).
         lines::CardFirst g_cardFirst;
-        double g_titleFillUntil = -1.0;    // a title card still fades its words in (lines::TitleFill)
-        double g_pageComingUntil = -1.0;   // a reading's page is still to come (lines::PageComing)
-        std::wstring g_pageText;           // the page's own words, as last said
-        double g_pageSaidAt = -1000.0;     // when they were
-        double g_pageResumedAt = -1000.0;  // when a page was shown again while it was being read
-        bool g_pageWasDrawn = false;       // a page was drawn at the last poll
-        double g_pageHiddenAt = -1000.0;   // when the page drawn last was last seen before it went
+        double g_titleFillUntil = -1.0;   // a title card still fades its words in (lines::TitleFill)
+        double g_pageComingUntil = -1.0;  // a reading's page is still to come (lines::PageComing)
+        std::wstring g_pageText;          // the page's own words, as last said
+        double g_pageSaidAt = -1000.0;    // when they were
+        double g_pageResumedAt = -1000.0; // when a page was shown again while it was being read
+        bool g_pageWasDrawn = false;      // a page was drawn at the last poll
+        double g_pageHiddenAt = -1000.0;  // when the page drawn last was last seen before it went
 
         bool IsCard(UObject* widget)
         {

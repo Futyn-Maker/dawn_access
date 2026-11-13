@@ -74,8 +74,8 @@ namespace da::ways
                 if (way.way && way.onRoadOf < 0 && !way.behind && !way.unreachable && !way.unjudged && !way.superseded) listedWays.insert(i);
                 continue;
             }
-            const bool judged = way.way && way.hasBox && !way.behind && !way.unreachable && !way.unjudged && !way.superseded && !way.reached &&
-                                !way.chosen && !way.goal;
+            const bool judged =
+                way.way && way.hasBox && !way.behind && !way.unreachable && !way.unjudged && !way.superseded && !way.reached && !way.chosen && !way.goal;
             if (judged)
             {
                 for (const size_t j : order)
@@ -112,8 +112,8 @@ namespace da::ways
 
     std::vector<bool> StreamsSuperseded(const std::vector<Entry>& entries)
     {
-        const bool leads = std::any_of(entries.begin(), entries.end(), [](const Entry& e)
-                                       { return e.way && !e.streams && !e.unreachable && !e.behind && !e.unjudged && !e.closedOff; });
+        const bool leads = std::any_of(entries.begin(), entries.end(),
+                                       [](const Entry& e) { return e.way && !e.streams && !e.unreachable && !e.behind && !e.unjudged && !e.closedOff; });
         std::vector<bool> out(entries.size(), false);
         for (size_t i = 0; i < entries.size(); ++i)
             out[i] = leads && entries[i].way && entries[i].streams;
@@ -244,8 +244,7 @@ namespace da::ways
         // A verdict on the road of a trigger given way to the story's is not kept (RowRule).
         for (auto& e : entries)
         {
-            const bool roadGone =
-                e.onRoadOf >= 0 && static_cast<size_t>(e.onRoadOf) < entries.size() && entries[static_cast<size_t>(e.onRoadOf)].superseded;
+            const bool roadGone = e.onRoadOf >= 0 && static_cast<size_t>(e.onRoadOf) < entries.size() && entries[static_cast<size_t>(e.onRoadOf)].superseded;
             e.kept = Weighed(e) && (m_frozen || (e.way && e.shown)) && !roadGone;
         }
         const auto onRoadOf = RowRule(entries, enters);
@@ -290,8 +289,7 @@ namespace da::ways
         return straight;
     }
 
-    std::optional<double> MapMeasure(bool judged, bool reached, double targetCost, bool running, bool cutShort, double frontier,
-                                     std::optional<double> herCost)
+    std::optional<double> MapMeasure(bool judged, bool reached, double targetCost, bool running, bool cutShort, double frontier, std::optional<double> herCost)
     {
         if (!herCost) return std::nullopt;
         if (judged)

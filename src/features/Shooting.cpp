@@ -398,16 +398,17 @@ namespace da::features
                 // Chris, right: Ashley" left him asking what makes the choice), each by the key that
                 // turns the aim that way, for the game draws no prompt for the aim (Andrey, 2026-11-13:
                 // the stick and the buttons first; shoot::DilemmaWords).
-                const auto words = shoot::DilemmaWords(input::KeyForActionWay(L"IA_SequenceAim", L"Left"), input::KeyForActionWay(L"IA_SequenceAim", L"Right"),
-                                                       left, right);
+                const auto words =
+                    shoot::DilemmaWords(input::KeyForActionWay(L"IA_SequenceAim", L"Left"), input::KeyForActionWay(L"IA_SequenceAim", L"Right"), left, right);
                 if (!words.empty()) speech::Announce(words.size() == 4 ? locale::Mod(L"shoot.dilemma.keys", words) : locale::Mod(L"shoot.dilemma", words));
             }
             s.snaps = shoot::Snaps({s.targets.size(), s.aimingOnly, s.targetsHidden, s.finishOnHighlight, s.dilemma});
             log::Info(L"shooting: {} begins ({}): type {}, {} target(s) [{}]; {}; aim assist {}; aiming only {}; targets {}, reticle {}; the aim between yaw "
                       L"{:g} and {:g}, pitch {:g} and {:g}; {}",
                       s.name, why, type, s.targets.size(), str::Join(logged, L"; "),
-                      s.timed ? std::format(L"{:.1f} s on the clock", s.timeLimit) : std::wstring(L"no clock"), Flag(stage, L"UBatesShootingStage.bUseAimAssist"),
-                      s.aimingOnly, s.targetsHidden ? L"hidden" : L"shown", s.reticleHidden ? L"hidden" : L"shown", s.minYaw, s.maxYaw, s.minPitch, s.maxPitch,
+                      s.timed ? std::format(L"{:.1f} s on the clock", s.timeLimit) : std::wstring(L"no clock"),
+                      Flag(stage, L"UBatesShootingStage.bUseAimAssist"), s.aimingOnly, s.targetsHidden ? L"hidden" : L"shown",
+                      s.reticleHidden ? L"hidden" : L"shown", s.minYaw, s.maxYaw, s.minPitch, s.maxPitch,
                       s.snaps ? L"the walk key puts the aim on a target" : L"the walk key puts the aim on nothing here");
             // A timed stage draws its clock on every target as a ring: the timer cue marks it, as it
             // marks a timed choice. The key a shot takes is what the circles show, said once.
@@ -527,8 +528,8 @@ namespace da::features
             const double px = FloatAt(s.stage, L"UBatesShootingStage.CachedScreenDistanceToClosestTarget");
             log::Verbose(L"shooting: aim yaw {:.2f} pitch {:.2f} (the game's), {}, {:.1f} of {:.1f} s; {}", FloatAt(s.stage, L"UBatesShootingStage.CachedYaw"),
                          FloatAt(s.stage, L"UBatesShootingStage.CachedPitch"),
-                         px < 1e6 ? std::format(L"{:.1f} px from the nearest target", px) : std::wstring(L"no target on the screen"), FloatAt(s.stage, kSecondsIn),
-                         s.timeLimit, str::Join(parts, L"; "));
+                         px < 1e6 ? std::format(L"{:.1f} px from the nearest target", px) : std::wstring(L"no target on the screen"),
+                         FloatAt(s.stage, kSecondsIn), s.timeLimit, str::Join(parts, L"; "));
         }
 
         // ---- the aim put on a target --------------------------------------------------------
@@ -966,8 +967,8 @@ namespace da::features
             }
             s.locked = t->index;
             s.fire.Reset();
-            log::Info(L"shooting: the aim is put on target {} \"{}\" (yaw {:.2f}, pitch {:.2f}) and held there until the player aims herself", t->index, t->label,
-                      angles.yaw, angles.pitch);
+            log::Info(L"shooting: the aim is put on target {} \"{}\" (yaw {:.2f}, pitch {:.2f}) and held there until the player aims herself", t->index,
+                      t->label, angles.yaw, angles.pitch);
             return true;
         }
     }

@@ -394,7 +394,8 @@ TEST_CASE("hold: where the game stops her at a thing it offers, the press is her
     // The cabin of chapter 3 (research/inventory/act2_5.md): the volumes at Jessica's phone and beside
     // the shutters ignore movement as she enters (BatesSetMoveInputTriggerAction) and the story goes on
     // only by the press there. Taken back after a second, the hold would leave the press unread.
-    const auto stopped = [] {
+    const auto stopped = []
+    {
         hold::Frame f = InputIgnored();
         f.offered = true;
         return f;

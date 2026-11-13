@@ -592,7 +592,6 @@ TEST_CASE("prompts: the snow globe's hidden shake is named by what takes it, cha
     CHECK(std::wstring(prompt::ShakeHelp(true, true, false)) == L"help.shake.ps.off");
 }
 
-
 TEST_CASE("prompts: a staged stage standing past its first step names its way back: Jack's journal, 2026-11-08")
 {
     // BP_Readjournal opens at its second page (InitialAnimationStage 1): its foreword lies a push right
@@ -643,16 +642,16 @@ TEST_CASE("a staged stage's own prompt is said once while it stands, a step's ow
         std::wstring actions;
     };
     const std::vector<Drawn> desk{
-        {both, main},             // the stage begins
+        {both, main},               // the stage begins
         {right, L"IA_Swipe_Right"}, // page 0
-        {both, main},             // page 1
-        {both, main},             // page 2
-        {left, L"IA_Swipe_Left"},  // page 3
-        {both, main},             // its idle: the stage's own again
-        {both, main},             // back to page 2
-        {both, main},             // page 1
+        {both, main},               // page 1
+        {both, main},               // page 2
+        {left, L"IA_Swipe_Left"},   // page 3
+        {both, main},               // its idle: the stage's own again
+        {both, main},               // back to page 2
+        {both, main},               // page 1
         {right, L"IA_Swipe_Right"}, // page 0
-        {both, main},             // its idle
+        {both, main},               // its idle
     };
     prompt::StagePrompt last;
     std::vector<std::wstring> said;
@@ -815,8 +814,8 @@ TEST_CASE("prompts: an interaction's prompt asks where the game draws it on a la
     // nor did Jessica's phone (21:14:48) or the bolt (23:44:45), and the clock run out went unsaid.
     prompt::TimedCue lever;
     CHECK_FALSE(lever.Update(0, prompt::Asking(false, false, false, false, false))); // the stage begins, nothing drawn
-    CHECK(lever.Update(0, prompt::Asking(false, false, true, false, true)));          // R2 drawn: the cue
-    CHECK(lever.Asked(0));                                                            // its 30 s run out is said
+    CHECK(lever.Update(0, prompt::Asking(false, false, true, false, true)));         // R2 drawn: the cue
+    CHECK(lever.Asked(0));                                                           // its 30 s run out is said
     // Drawn in the viewport's tree: asks as well.
     CHECK(prompt::Asking(false, false, true, true, false));
     // Sent away, or without words, or a glint's, or drawn nowhere: asks nothing.

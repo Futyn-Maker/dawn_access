@@ -42,9 +42,9 @@ namespace da::features
 
         // ---- the roll ----
 
-        credits::Roll g_lines;      // the roll's lines, each once in its order
-        credits::Taker g_taker;     // which lines of the container are kept already
-        credits::LineIds g_lineIds; // which line each pooled line widget shows now
+        credits::Roll g_lines;                        // the roll's lines, each once in its order
+        credits::Taker g_taker;                       // which lines of the container are kept already
+        credits::LineIds g_lineIds;                   // which line each pooled line widget shows now
         std::map<obj::ObjectKey, uint64_t> g_widgets; // a number for each line widget of the roll
         uint64_t g_nextWidget = 1;
         bool g_rollShown = false;

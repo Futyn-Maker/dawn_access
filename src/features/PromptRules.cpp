@@ -181,8 +181,7 @@ namespace da::prompt
         return nullptr;
     }
 
-    std::vector<std::wstring> NotSaidWithin(const std::vector<std::wstring>& fresh, const std::map<std::wstring, double>& saidAt, double now,
-                                            double within)
+    std::vector<std::wstring> NotSaidWithin(const std::vector<std::wstring>& fresh, const std::map<std::wstring, double>& saidAt, double now, double within)
     {
         std::vector<std::wstring> out;
         for (const auto& line : fresh)

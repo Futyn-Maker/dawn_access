@@ -43,7 +43,7 @@ namespace da::features
         };
         SteamApi g_api;
         bool g_resolved = false;
-        double g_lookedAt = -1.0;     // when steam_api64.dll was last looked for
+        double g_lookedAt = -1.0; // when steam_api64.dll was last looked for
         bool g_absentLogged = false;
         achieve::Watch g_watch;
 

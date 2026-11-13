@@ -147,8 +147,10 @@ namespace da::features::world
                 {
                     if (!prop) continue;
                     const auto name = prop->GetName();
-                    if (name == L"WorldLocation") WriteVec(obj::ValuePtrAt(params, prop), prop, point);
-                    else if (name == L"bPlayerViewportRelative") obj::WriteBoolAt(params, prop, true);
+                    if (name == L"WorldLocation")
+                        WriteVec(obj::ValuePtrAt(params, prop), prop, point);
+                    else if (name == L"bPlayerViewportRelative")
+                        obj::WriteBoolAt(params, prop, true);
                 }
             },
             [&](void* params)
@@ -157,7 +159,8 @@ namespace da::features::world
                 {
                     if (!prop) continue;
                     const auto name = prop->GetName();
-                    if (name == L"ReturnValue") obj::ReadBoolAt(params, prop, projected);
+                    if (name == L"ReturnValue")
+                        obj::ReadBoolAt(params, prop, projected);
                     else if (name == L"ScreenLocation")
                     {
                         void* at = obj::ValuePtrAt(params, prop);
@@ -176,8 +179,10 @@ namespace da::features::world
                     {
                         if (!prop) continue;
                         const auto name = prop->GetName();
-                        if (name == L"SizeX") obj::ReadIntAt(params, prop, width);
-                        else if (name == L"SizeY") obj::ReadIntAt(params, prop, height);
+                        if (name == L"SizeX")
+                            obj::ReadIntAt(params, prop, width);
+                        else if (name == L"SizeY")
+                            obj::ReadIntAt(params, prop, height);
                     }
                 }) ||
             width <= 0 || height <= 0)

@@ -30,14 +30,14 @@ namespace da::features
         struct Player
         {
             obj::ObjectKey key;
-            std::wstring film;    // the film it last had open (picture::FilmName)
-            bool playing = false; // as last polled
+            std::wstring film;         // the film it last had open (picture::FilmName)
+            bool playing = false;      // as last polled
             std::vector<double> parts; // a long film's parts (picture::PartsOf), for one described as it plays
             picture::PartTracker said;
-            bool onKey = false;     // its parts are said on the player's key (picture::OnKey)
-            double keyDueAt = -1.0; // when the key is named, once the page over the film has been read
-            bool inWorld = false;   // a film of the world's own (picture::FilmOwner::Films), asked where it is seen
-            picture::Sight sight;   // whether its screen is drawn, and its words waiting for it
+            bool onKey = false;                                // its parts are said on the player's key (picture::OnKey)
+            double keyDueAt = -1.0;                            // when the key is named, once the page over the film has been read
+            bool inWorld = false;                              // a film of the world's own (picture::FilmOwner::Films), asked where it is seen
+            picture::Sight sight;                              // whether its screen is drawn, and its words waiting for it
             picture::Screen screen = picture::Screen::Unknown; // as last polled, for the log
         };
 
@@ -185,7 +185,8 @@ namespace da::features
         {
             g_scanned = true;
             const auto all = obj::FindAllLive(L"BinkMediaPlayer");
-            for (UObject* player : all) Track(player);
+            for (UObject* player : all)
+                Track(player);
             log::Info(L"films: {} film player(s) found", all.size());
         }
 
@@ -228,7 +229,8 @@ namespace da::features
             p.inWorld = !p.onKey;
             if (p.onKey)
             {
-                log::Info(L"films: {} of {} plays \"{}\"; its {} parts are said on the key", obj::ObjectName(player), OwnerName(player), p.film, p.parts.size());
+                log::Info(L"films: {} of {} plays \"{}\"; its {} parts are said on the key", obj::ObjectName(player), OwnerName(player), p.film,
+                          p.parts.size());
                 return;
             }
             FindScreens(player, p.film);
@@ -286,7 +288,8 @@ namespace da::features
                           obj::ObjectName(player));
                 return;
             }
-            log::Info(L"films: \"{}\" comes to its part {} at {:.1f} s; {}", p.film, *part + 1, position, described ? L"its words are said" : L"no words for it");
+            log::Info(L"films: \"{}\" comes to its part {} at {:.1f} s; {}", p.film, *part + 1, position,
+                      described ? L"its words are said" : L"no words for it");
             if (described) Say(p, Words(key));
         }
 

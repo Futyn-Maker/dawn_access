@@ -9,8 +9,8 @@
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
-#include <functional>
 #include <fstream>
+#include <functional>
 #include <iterator>
 #include <map>
 #include <memory>
@@ -77,7 +77,7 @@ TEST_CASE("recheck: the columns a stopped walk asks again run from her along the
     CHECK(columns.count({-57, -53})); // the doorway
     CHECK(columns.count({-56, -54}));
     CHECK(columns.count({-55, -53}));
-    CHECK(columns.count({-44, -52})); // on across the hall, within the reach
+    CHECK(columns.count({-44, -52}));       // on across the hall, within the reach
     CHECK_FALSE(columns.count({-40, -52})); // past it
     CHECK_FALSE(columns.count({-58, -47})); // beside the way, past its breadth
 }
@@ -209,8 +209,8 @@ TEST_CASE("recheck: a prop moved by a passage swept free one way only leaves the
     CHECK(reask.Changed().empty());
     // Two steps into (51, 194), whose floor the ground keyed on levels 43 and 44, were swept onto 44
     // and are answered 43 by the step back asked before them: free either way, no change.
-    const auto relanded = std::count_if(reask.Steps().begin(), reask.Steps().end(),
-                                        [](const recheck::Reask::Step& s) { return s.kept != recheck::kRefused && s.now != recheck::kRefused && s.kept != s.now; });
+    const auto relanded = std::count_if(reask.Steps().begin(), reask.Steps().end(), [](const recheck::Reask::Step& s)
+                                        { return s.kept != recheck::kRefused && s.now != recheck::kRefused && s.kept != s.now; });
     CHECK(relanded == 2);
     CHECK(reask.Opened() == 0);
     CHECK(reask.Shut() == 0);
@@ -476,7 +476,8 @@ TEST_CASE("ways: a way round a companion standing at a corridor's mouth: Chris i
     auto record = ReadFixture("ground-cellar-chris.tsv");
     const recheck::Vec origin{463.79, -9065.50, 0.0};
     const auto middle = [&](const grid::Cell& c) { return recheck::Vec{origin.x + (c.x + 0.5) * 20.0, origin.y + (c.y + 0.5) * 20.0, 0.0}; };
-    const auto cellOf = [&](double x, double y) { return grid::Cell{static_cast<int>(std::floor((x - origin.x) / 20.0)), static_cast<int>(std::floor((y - origin.y) / 20.0)), 43}; };
+    const auto cellOf = [&](double x, double y)
+    { return grid::Cell{static_cast<int>(std::floor((x - origin.x) / 20.0)), static_cast<int>(std::floor((y - origin.y) / 20.0)), 43}; };
     const grid::Cell her = cellOf(986, -6292);
     const recheck::Vec chris{1067, -6316, 0};
     // The corridor to the creaky door, a few metres on.
@@ -535,7 +536,8 @@ TEST_CASE("ways: a way past Chris standing a hand nearer the corridor's corner: 
     auto record = ReadFixture("ground-cellar-chris-mouth.tsv");
     const recheck::Vec origin{2119.15, -8090.76, 0.0};
     const auto middle = [&](const grid::Cell& c) { return recheck::Vec{origin.x + (c.x + 0.5) * 20.0, origin.y + (c.y + 0.5) * 20.0, 0.0}; };
-    const auto cellOf = [&](double x, double y) { return grid::Cell{static_cast<int>(std::floor((x - origin.x) / 20.0)), static_cast<int>(std::floor((y - origin.y) / 20.0)), 43}; };
+    const auto cellOf = [&](double x, double y)
+    { return grid::Cell{static_cast<int>(std::floor((x - origin.x) / 20.0)), static_cast<int>(std::floor((y - origin.y) / 20.0)), 43}; };
     const grid::Cell her = cellOf(1125, -6261);
     const recheck::Vec chris{1077, -6330, 0};
     const grid::Cell door = cellOf(-211, -5821); // where the way to the wine cellar's door ended
@@ -776,10 +778,28 @@ TEST_CASE("recheck: the shut door to the hall's vestibule closes the hall off on
     // And the leaf is found though the weak half is empty: by its path as the engine looks it up, else
     // by the live prop at that path; each asked only if the one before found nothing.
     int asked = 0;
-    CHECK(recheck::FindBound(false, [&] { ++asked; return true; }, [&] { ++asked; return true; }) == recheck::BoundBy::Path);
+    CHECK(recheck::FindBound(
+              false,
+              [&]
+              {
+                  ++asked;
+                  return true;
+              },
+              [&]
+              {
+                  ++asked;
+                  return true;
+              }) == recheck::BoundBy::Path);
     CHECK(asked == 1);
     CHECK(recheck::FindBound(false, [] { return false; }, [] { return true; }) == recheck::BoundBy::Name);
-    CHECK(recheck::FindBound(true, [&] { ++asked; return true; }, [] { return true; }) == recheck::BoundBy::Weak);
+    CHECK(recheck::FindBound(
+              true,
+              [&]
+              {
+                  ++asked;
+                  return true;
+              },
+              [] { return true; }) == recheck::BoundBy::Weak);
     CHECK(asked == 1);
     CHECK(recheck::FindBound(false, [] { return false; }, [] { return false; }) == recheck::BoundBy::None);
     CHECK(std::wstring(recheck::BoundByName(recheck::BoundBy::Path)) == L"path");

@@ -68,9 +68,8 @@ TEST_CASE("pictures: a censored cut has words of its own where the table has the
     CHECK(picture::FilmKeys(L"death_act3_2_jessica_liftshaft_tshirt_ja") ==
           Keys{L"film.death_act3_2_jessica_liftshaft_tshirt_ja", L"film.death_act3_2_jessica_liftshaft_ja", L"film.death_act3_2_jessica_liftshaft_tshirt",
                L"film.death_act3_2_jessica_liftshaft"});
-    CHECK(picture::FilmKeys(L"death_act6_3_emily_eyegauge_3_ja") ==
-          Keys{L"film.death_act6_3_emily_eyegauge_3_ja", L"film.death_act6_3_emily_eyegauge_ja", L"film.death_act6_3_emily_eyegauge_3",
-               L"film.death_act6_3_emily_eyegauge"});
+    CHECK(picture::FilmKeys(L"death_act6_3_emily_eyegauge_3_ja") == Keys{L"film.death_act6_3_emily_eyegauge_3_ja", L"film.death_act6_3_emily_eyegauge_ja",
+                                                                         L"film.death_act6_3_emily_eyegauge_3", L"film.death_act6_3_emily_eyegauge"});
     CHECK(picture::FilmKeys(L"death_act8_4_josh_wendigo_ja") == Keys{L"film.death_act8_4_josh_wendigo_ja", L"film.death_act8_4_josh_wendigo"});
     CHECK(picture::VisionKeys(L"totem_death_5_ja") == Keys{L"totem.totem_death_5_ja", L"totem.totem_death_5"});
     CHECK(picture::VisionKeys(L"totem_tragedy_4_JA") == Keys{L"totem.totem_tragedy_4_ja", L"totem.totem_tragedy_4"});
@@ -153,12 +152,13 @@ TEST_CASE("pictures: a photo is known by its texture, a thing in the hand by any
     CHECK(picture::PlanFor(Names{L"I_controls_lookat", L"I_controls_lookat", L"BP_controls_lookat_C"})->state == L"examine_idle");
     // The telescopes: Ashley's by its own core name; Mike's and Matt's, alike in every other name, by their
     // class's package (s71 15:21:08 and 20:25:18 logged both as I_Telescope, BP_Telescope_C).
-    CHECK(picture::PlanFor(Names{L"A_telescope", L"A_telescope", L"BP_Telescope_C", L"/Game/Gameplay/Gameobjects/Activities/act2_1/Scenic_view/Telescope/BP_Telescope"})->key ==
-          L"a_telescope");
-    CHECK(picture::PlanFor(Names{L"I_Telescope", L"I_Telescope", L"BP_Telescope_C", L"/Game/Gameplay/Gameobjects/interactions/Act2_2/Telescope/BP_Telescope"})->key ==
-          L"i_telescope.act2_2");
-    CHECK(picture::PlanFor(Names{L"I_Telescope", L"I_Telescope", L"BP_Telescope_C", L"/Game/Gameplay/Gameobjects/interactions/act2_3/Telescope/BP_Telescope"})->key ==
-          L"i_telescope.act2_3");
+    CHECK(picture::PlanFor(
+              Names{L"A_telescope", L"A_telescope", L"BP_Telescope_C", L"/Game/Gameplay/Gameobjects/Activities/act2_1/Scenic_view/Telescope/BP_Telescope"})
+              ->key == L"a_telescope");
+    CHECK(picture::PlanFor(Names{L"I_Telescope", L"I_Telescope", L"BP_Telescope_C", L"/Game/Gameplay/Gameobjects/interactions/Act2_2/Telescope/BP_Telescope"})
+              ->key == L"i_telescope.act2_2");
+    CHECK(picture::PlanFor(Names{L"I_Telescope", L"I_Telescope", L"BP_Telescope_C", L"/Game/Gameplay/Gameobjects/interactions/act2_3/Telescope/BP_Telescope"})
+              ->key == L"i_telescope.act2_3");
     CHECK_FALSE(picture::PlanFor(Names{L"I_Telescope", L"I_Telescope", L"BP_Telescope_C", L""}).has_value());
     // The silent things of chapters 1 and 2, as the logs of sessions 68 to 71 name them.
     CHECK(picture::PlanFor(Names{L"", L"I_Car_lookat", L"BP_Car_lookat_C"})->key == L"i_car_lookat");
@@ -270,7 +270,8 @@ TEST_CASE("pictures: the silent looks of chapters 7 to 10 are described as their
         CHECK(plan->state == s.state);
     }
     // The second telescope at the vista, whatever its core name, by its class; Mike's first keeps its own.
-    const auto lookOnly = look(Names{L"I_Telescope", L"", L"BP_Telescope_look_only_C", L"/Game/Gameplay/Gameobjects/interactions/Act2_2/Telescope/BP_Telescope_look_only"});
+    const auto lookOnly =
+        look(Names{L"I_Telescope", L"", L"BP_Telescope_look_only_C", L"/Game/Gameplay/Gameobjects/interactions/Act2_2/Telescope/BP_Telescope_look_only"});
     REQUIRE(lookOnly.has_value());
     CHECK(lookOnly->key == L"i_telescope_look_only");
     CHECK(lookOnly->moment == picture::Moment::Begins);
@@ -442,11 +443,24 @@ TEST_CASE("pictures: Sam's sketchbook says each spread as its graph comes to it,
     CHECK(picture::PageKey(L"I_sams_sketchbook", 2) == L"look.i_sams_sketchbook.2");
     // The book's states as session 58 played them (research/sessions/s58-whole.log, 11:48:09 to
     // 11:49:35): opened on the second spread, on to the fourth, back to the first, put down.
-    const std::vector<std::wstring> states = {
-        L"start_to_reach1",  L"reach_idle1",      L"reach_to_closed_ik1",          L"closed_ik_idle",   L"closed_ik_topage2_right",
-        L"page2_idle_right", L"turn_2nd_right_to_3rd_right", L"page3_idle_right", L"turn_3rd_right_to_4th_left", L"page4_idle_left1",
-        L"turn_4th_left_to_3rd_left", L"page3_idle_left", L"turn_3rd_left_to_2nd_left", L"page2_idle_left", L"turn_2nd_left_to_1st_right",
-        L"page1_idle_right", L"page1_idle_right_to_exit", L"Start_Pose"};
+    const std::vector<std::wstring> states = {L"start_to_reach1",
+                                              L"reach_idle1",
+                                              L"reach_to_closed_ik1",
+                                              L"closed_ik_idle",
+                                              L"closed_ik_topage2_right",
+                                              L"page2_idle_right",
+                                              L"turn_2nd_right_to_3rd_right",
+                                              L"page3_idle_right",
+                                              L"turn_3rd_right_to_4th_left",
+                                              L"page4_idle_left1",
+                                              L"turn_4th_left_to_3rd_left",
+                                              L"page3_idle_left",
+                                              L"turn_3rd_left_to_2nd_left",
+                                              L"page2_idle_left",
+                                              L"turn_2nd_left_to_1st_right",
+                                              L"page1_idle_right",
+                                              L"page1_idle_right_to_exit",
+                                              L"Start_Pose"};
     std::vector<int> said;
     int last = 0;
     for (const auto& state : states)
@@ -710,16 +724,36 @@ TEST_CASE("films: every flashback of the butterfly effect and every part of a fi
     // The 31 flashbacks of the game's Movies folder (causaleffect_*.bk2), played as a consequence comes:
     // six of them played unsaid in sessions 70 to 73 ("no words for it").
     const wchar_t* flashbacks[] = {
-        L"causaleffect_act1_3_samattackedbycrow",     L"causaleffect_act2_1_mattlooksthroughtelescope", L"causaleffect_act2_2_minetunnel",
-        L"causaleffect_act2_4_samfindsbaseballbat",   L"causaleffect_act2_5_jessthroughwindow_coat",    L"causaleffect_act2_5_jessthroughwindow_pants",
-        L"causaleffect_act2_5_jessthroughwindow_vest", L"causaleffect_act2_5_telescope",                L"causaleffect_act3_2_bridgefail",
-        L"causaleffect_act3_2_clifffail",             L"causaleffect_act3_2_cliffsafe",                 L"causaleffect_act3_2_grabfencefail",
-        L"causaleffect_act3_2_grabrootfail",          L"causaleffect_act3_2_jumpclifffail",             L"causaleffect_act3_2_mikefallsover",
-        L"causaleffect_act3_2_mikeisfast",            L"causaleffect_act3_2_pipefail",                  L"causaleffect_act3_2_shimmy",
-        L"causaleffect_act3_2_takestairs",            L"causaleffect_act3_2_wendigointower_fast",       L"causaleffect_act3_2_wendigointower_slow",
-        L"causaleffect_act3_4_lighterbehindboards",   L"causaleffect_act4_1_chrissavesash",             L"causaleffect_act4_2_mikebefriendswolf",
-        L"causaleffect_act4_2_mikekickswolf",         L"causaleffect_act4_2_mikelooksatswolf",          L"causaleffect_act4_2_mikestillhasmachete",
-        L"causaleffect_act4_2_wendigoheadinajar",     L"causaleffect_act5_2_emgivesflaretomatt",        L"causaleffect_act5_3_chrisshotashley",
+        L"causaleffect_act1_3_samattackedbycrow",
+        L"causaleffect_act2_1_mattlooksthroughtelescope",
+        L"causaleffect_act2_2_minetunnel",
+        L"causaleffect_act2_4_samfindsbaseballbat",
+        L"causaleffect_act2_5_jessthroughwindow_coat",
+        L"causaleffect_act2_5_jessthroughwindow_pants",
+        L"causaleffect_act2_5_jessthroughwindow_vest",
+        L"causaleffect_act2_5_telescope",
+        L"causaleffect_act3_2_bridgefail",
+        L"causaleffect_act3_2_clifffail",
+        L"causaleffect_act3_2_cliffsafe",
+        L"causaleffect_act3_2_grabfencefail",
+        L"causaleffect_act3_2_grabrootfail",
+        L"causaleffect_act3_2_jumpclifffail",
+        L"causaleffect_act3_2_mikefallsover",
+        L"causaleffect_act3_2_mikeisfast",
+        L"causaleffect_act3_2_pipefail",
+        L"causaleffect_act3_2_shimmy",
+        L"causaleffect_act3_2_takestairs",
+        L"causaleffect_act3_2_wendigointower_fast",
+        L"causaleffect_act3_2_wendigointower_slow",
+        L"causaleffect_act3_4_lighterbehindboards",
+        L"causaleffect_act4_1_chrissavesash",
+        L"causaleffect_act4_2_mikebefriendswolf",
+        L"causaleffect_act4_2_mikekickswolf",
+        L"causaleffect_act4_2_mikelooksatswolf",
+        L"causaleffect_act4_2_mikestillhasmachete",
+        L"causaleffect_act4_2_wendigoheadinajar",
+        L"causaleffect_act5_2_emgivesflaretomatt",
+        L"causaleffect_act5_3_chrisshotashley",
         L"causaleffect_act7_3_ashley_trapdoor",
     };
     for (const auto* film : flashbacks)

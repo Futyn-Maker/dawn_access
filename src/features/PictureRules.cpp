@@ -24,7 +24,8 @@ namespace da::picture
         std::optional<std::wstring> WithoutNumber(std::wstring_view name)
         {
             size_t end = name.size();
-            while (end > 0 && std::iswdigit(name[end - 1])) --end;
+            while (end > 0 && std::iswdigit(name[end - 1]))
+                --end;
             if (end == name.size() || end < 2 || name[end - 1] != L'_') return std::nullopt;
             return std::wstring(name.substr(0, end - 1));
         }
@@ -250,8 +251,10 @@ namespace da::picture
         if (const auto film = Uncensored(lower))
         {
             const auto plain = FilmKeys(*film);
-            for (const auto& key : plain) AddKey(keys, key + L"_ja");
-            for (const auto& key : plain) AddKey(keys, key);
+            for (const auto& key : plain)
+                AddKey(keys, key + L"_ja");
+            for (const auto& key : plain)
+                AddKey(keys, key);
             return keys;
         }
         AddKey(keys, L"film." + lower);
@@ -313,7 +316,8 @@ namespace da::picture
     {
         if (!shown || parts.empty() || position < parts.front()) return std::nullopt;
         size_t part = 0;
-        while (part + 1 < parts.size() && parts[part + 1] <= position) ++part;
+        while (part + 1 < parts.size() && parts[part + 1] <= position)
+            ++part;
         return part;
     }
 
@@ -347,8 +351,10 @@ namespace da::picture
         if (const auto vision = Uncensored(lower))
         {
             const auto plain = VisionKeys(*vision);
-            for (const auto& key : plain) AddKey(keys, key + L"_ja");
-            for (const auto& key : plain) AddKey(keys, key);
+            for (const auto& key : plain)
+                AddKey(keys, key + L"_ja");
+            for (const auto& key : plain)
+                AddKey(keys, key);
             return keys;
         }
         AddKey(keys, L"totem." + lower);
@@ -378,7 +384,8 @@ namespace da::picture
             const std::wstring lower = str::ToLower(name);
             for (const auto& p : kPlans)
             {
-                if (p.key == lower || (!p.className.empty() && p.className == lower)) return LookPlan{p.moment, std::wstring(p.state), std::wstring(p.key), p.afterHud};
+                if (p.key == lower || (!p.className.empty() && p.className == lower))
+                    return LookPlan{p.moment, std::wstring(p.state), std::wstring(p.key), p.afterHud};
             }
         }
         return std::nullopt;
@@ -452,7 +459,8 @@ namespace da::picture
         if (!state.starts_with(L"page")) return std::nullopt;
         size_t at = 4;
         int page = 0;
-        while (at < state.size() && std::iswdigit(state[at]) && page < 1000) page = page * 10 + static_cast<int>(state[at++] - L'0');
+        while (at < state.size() && std::iswdigit(state[at]) && page < 1000)
+            page = page * 10 + static_cast<int>(state[at++] - L'0');
         if (at == 4 || page <= 0) return std::nullopt;
         const auto rest = state.substr(at);
         if (!rest.starts_with(L"_idle") || rest.find(L"_to_") != std::wstring_view::npos) return std::nullopt;
@@ -472,7 +480,8 @@ namespace da::picture
             if (IsFriendsBoard(p.key)) continue;
             AddKey(keys, p.moment == Moment::Pages ? PageKey(p.key, 1) : LookKey(p.key));
         }
-        for (const auto& v : kVariants) AddKey(keys, LookKey(std::wstring(v.key) + std::wstring(v.suffix)));
+        for (const auto& v : kVariants)
+            AddKey(keys, LookKey(std::wstring(v.key) + std::wstring(v.suffix)));
         AddKey(keys, L"look.crossedout");
         return keys;
     }

@@ -18,8 +18,8 @@
 
 #include <algorithm>
 #include <atomic>
-#include <cmath>
 #include <chrono>
+#include <cmath>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -217,8 +217,10 @@ namespace da::input
                     for (auto* prop : fn->ForEachProperty())
                     {
                         if (!prop) continue;
-                        if (prop->GetName() == L"ReturnValue") read(params, prop);
-                        else if (prop->GetName() == L"Key") prop->DestroyValue(prop->ContainerPtrToValuePtr<void>(params));
+                        if (prop->GetName() == L"ReturnValue")
+                            read(params, prop);
+                        else if (prop->GetName() == L"Key")
+                            prop->DestroyValue(prop->ContainerPtrToValuePtr<void>(params));
                     }
                 });
         }
@@ -269,8 +271,7 @@ namespace da::input
             KeyTraits traits;
             traits.name = keyName;
             traits.gamepad = IsGamepadKey(keyName);
-            const bool digital =
-                CallOnKey(L"Key_IsDigital", keyName, [&](void* params, FProperty* prop) { obj::ReadBoolAt(params, prop, traits.digital); });
+            const bool digital = CallOnKey(L"Key_IsDigital", keyName, [&](void* params, FProperty* prop) { obj::ReadBoolAt(params, prop, traits.digital); });
             const bool mouse =
                 CallOnKey(L"Key_IsMouseButton", keyName, [&](void* params, FProperty* prop) { obj::ReadBoolAt(params, prop, traits.mouseButton); });
             if (digital && mouse)
@@ -303,7 +304,8 @@ namespace da::input
                                          FProperty* keyProp = obj::StructMember(inner, L"Key");
                                          FProperty* keyName = keyProp ? obj::StructMember(keyProp, L"KeyName") : nullptr;
                                          std::wstring key;
-                                         if (!keyName || !obj::ReadStringAt(obj::ValuePtrAt(element, keyProp), keyName, key) || key.empty() || key == L"None") return;
+                                         if (!keyName || !obj::ReadStringAt(obj::ValuePtrAt(element, keyProp), keyName, key) || key.empty() || key == L"None")
+                                             return;
                                          if (str::StartsWith(key, L"Gamepad_") || str::StartsWith(key, L"Mouse")) return;
                                          std::vector<KeyModifier> modifiers;
                                          FProperty* list = obj::StructMember(inner, L"Modifiers");
@@ -356,7 +358,7 @@ namespace da::input
         // ProcessedActionMappings, by action.
         struct ShownKey
         {
-            std::wstring key;      // the engine's name of the key
+            std::wstring key;         // the engine's name of the key
             UObject* chord = nullptr; // the action held for it to count, if any
         };
 
@@ -841,7 +843,8 @@ namespace da::input
         if (!settings || !obj::IsLive(settings)) settings = obj::FindFirstLive(L"BatesGameUserSettings");
         bool on = false;
         if (settings)
-            obj::CallReturn(settings, L"GetUseToggleGrabForInteractions", [&](void* params, FProperty* returnValue) { obj::ReadBoolAt(params, returnValue, on); });
+            obj::CallReturn(settings, L"GetUseToggleGrabForInteractions",
+                            [&](void* params, FProperty* returnValue) { obj::ReadBoolAt(params, returnValue, on); });
         return on;
     }
 

@@ -57,11 +57,8 @@ namespace da::credits
         if (newest != 0 && newest != m_newest) m_known.erase(newest);
         m_newest = newest;
         // A widget off the container is free: its next setting up is a new line.
-        std::erase_if(m_known,
-                      [&](const auto& entry)
-                      {
-                          return std::none_of(widgets.begin(), widgets.end(), [&](const LineWidget& w) { return w.widget == entry.first; });
-                      });
+        std::erase_if(m_known, [&](const auto& entry)
+                      { return std::none_of(widgets.begin(), widgets.end(), [&](const LineWidget& w) { return w.widget == entry.first; }); });
         std::vector<uint64_t> out;
         out.reserve(widgets.size());
         for (const auto& w : widgets)

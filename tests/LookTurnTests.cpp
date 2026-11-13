@@ -693,7 +693,8 @@ TEST_CASE("out of the music box's place the last stretch steps her toward ground
     ground::Record record;
     REQUIRE(record.Parse(text));
     const ground::Anchor a = record.anchors.back();
-    const auto cellOf = [&](double x, double y) { return std::pair{static_cast<int>(std::floor((x - a.x) / a.cell)), static_cast<int>(std::floor((y - a.y) / a.cell))}; };
+    const auto cellOf = [&](double x, double y)
+    { return std::pair{static_cast<int>(std::floor((x - a.x) / a.cell)), static_cast<int>(std::floor((y - a.y) / a.cell))}; };
     const auto [sx, sy] = cellOf(5051, -8040);
     const grid::Cell start{sx, sy, 69};
     grid::Flood flood(start, 500, 100000);

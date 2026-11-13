@@ -626,11 +626,8 @@ TEST_CASE("a way found beyond a door stays out while a new map has not got to it
         int reach; // the map's verdict as the target holds it: this map's once judged, else the last one's
     };
     const Way ways[] = {
-        {"BatesCharacterTriggerVolume_10", false, 3},
-        {"BatesCharacterTriggerVolume_11", false, 3},
-        {"BP_CharacterTriggerVolume_C_1", false, 3},
-        {"BatesCharacterTriggerVolume_1", false, 3},
-        {"BatesCharacterTriggerVolume_0", true, 1}, // reached by this map, 3184 cm on foot
+        {"BatesCharacterTriggerVolume_10", false, 3}, {"BatesCharacterTriggerVolume_11", false, 3}, {"BP_CharacterTriggerVolume_C_1", false, 3},
+        {"BatesCharacterTriggerVolume_1", false, 3},  {"BatesCharacterTriggerVolume_0", true, 1}, // reached by this map, 3184 cm on foot
     };
     std::vector<std::string> offered;
     for (const auto& w : ways)

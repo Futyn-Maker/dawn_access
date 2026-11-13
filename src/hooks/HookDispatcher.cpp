@@ -214,7 +214,8 @@ namespace da::hooks
                     }
                     found = &g_constructedMatches.Put(params.Class, identity, std::move(indices));
                 }
-                for (const size_t i : *found) matched.push_back(g_constructed[i].handler);
+                for (const size_t i : *found)
+                    matched.push_back(g_constructed[i].handler);
             }
             if (matched.empty()) return;
             gamethread::Post(

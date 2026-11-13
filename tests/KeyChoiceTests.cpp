@@ -16,8 +16,8 @@ namespace
     bool GamepadKey(const std::wstring& key)
     {
         static const std::set<std::wstring> pad = {
-            L"TouchPadRightCumulativeDelta", L"TouchPadLeftCumulativeDelta", L"TouchPadXAxisCumulativeDelta", L"TouchPadYAxisDelta",
-            L"MovementHalfCircleClockwise",  L"MovementHalfCircleAntiClockwise", L"MovementHalfCircleAxis", L"ControllerShake"};
+            L"TouchPadRightCumulativeDelta", L"TouchPadLeftCumulativeDelta",     L"TouchPadXAxisCumulativeDelta", L"TouchPadYAxisDelta",
+            L"MovementHalfCircleClockwise",  L"MovementHalfCircleAntiClockwise", L"MovementHalfCircleAxis",       L"ControllerShake"};
         return key.rfind(L"Gamepad_", 0) == 0 || pad.count(key) > 0;
     }
 

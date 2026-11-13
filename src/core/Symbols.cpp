@@ -150,14 +150,14 @@ namespace da::sym
             // no ramp of its own moves it (UBatesInteractionStageExamine::UpdateMovementInput,
             // 0x4659600): the share of the turn, and whether it is past the reveal (both handed to
             // the item's anim instances every frame as InteractionEvaluation and bIsRevealing).
-            {L"UBatesInteractionStageBase.bIsGrabbing", 0x1c9},                    // bool
+            {L"UBatesInteractionStageBase.bIsGrabbing", 0x1c9}, // bool
             // Who carries a held item, kept by the item itself rather than by attaching it
             // (ABatesHeldItemBase::HandleCarryingCharacterChange, 0x4618920).
-            {L"ABatesHeldItemBase.CachedCarryingCharacter", 0x478},                // TWeakObjectPtr<ABatesCharacter>
+            {L"ABatesHeldItemBase.CachedCarryingCharacter", 0x478}, // TWeakObjectPtr<ABatesCharacter>
             // Whether the stage toggles the grab rather than holding it (InitialiseStage, 0x46455c0:
             // the setting bUseToggleGrabForInteractions and not bStageShouldAlwaysUseHoldGrab).
-            {L"UBatesInteractionStageBase.bUsingToggleGrab", 0x1ca},               // bool
-            {L"UBatesInteractionStageBase.bIsFullyHolding", 0x1ce},                // bool
+            {L"UBatesInteractionStageBase.bUsingToggleGrab", 0x1ca}, // bool
+            {L"UBatesInteractionStageBase.bIsFullyHolding", 0x1ce},  // bool
             // The time a stage has run, which a stage on a clock times out by (SecondsUntilTimeout).
             {L"UBatesInteractionStageBase.TimeSpentInStage", 0x1d4},               // float
             {L"UBatesInteractionStageExamine.bIsRampingIK", 0x2a8},                // bool
@@ -181,7 +181,7 @@ namespace da::sym
             {L"UBatesShootingStage.CachedYaw", 0x390},                           // float
             {L"UBatesShootingStage.CachedPitch", 0x394},                         // float
             // Where the stage's aim starts: CachedYaw and CachedPitch turn the camera's line to it.
-            {L"UBatesShootingStage.InitialTargetWorldPosition", 0x330},          // TVector<double>
+            {L"UBatesShootingStage.InitialTargetWorldPosition", 0x330}, // TVector<double>
             // The fade the HUD lays over the picture between scenes: whether it goes to black
             // (or holds black) rather than coming back from it.
             {L"UBatesUIFade.bFadeToBlack", 0x2d1}, // bool
@@ -200,7 +200,7 @@ namespace da::sym
             // Where she stood as a framing camera began, and how long it has held the view: it ends
             // by distance only once she stands farther than DistanceToTravel from there, and never
             // before MinTimeBeforeExit (ABatesInitialFramingCamera::Tick and ClearCameraLayer).
-            {L"ABatesInitialFramingCamera.InitialPlayerLocation", 0xb50}, // FVector (doubles)
+            {L"ABatesInitialFramingCamera.InitialPlayerLocation", 0xb50},   // FVector (doubles)
             {L"ABatesInitialFramingCamera.TimeSinceFramingStarted", 0xb04}, // float
             // A glint's widget shows its prompt while the glint's intensity is full, the same
             // moment the glint authorises the press (UBatesGlintWidget::Update, 0x46bf680), fades
@@ -255,7 +255,7 @@ namespace da::sym
             // keyboard and mouse's key leads the value, the pad's follows; each is the key's FKey (its
             // name first) and the action held for it to count, its chord.
             {L"FProcessedActionMapping.Size", 0x128},
-            {L"FProcessedActionMapping.GamepadKey", 0x20},  // FKeyWithChord; KeyboardAndMouseKey at 0
+            {L"FProcessedActionMapping.GamepadKey", 0x20}, // FKeyWithChord; KeyboardAndMouseKey at 0
             {L"FKeyWithChord.ChordAction", 0x18},          // TObjectPtr<const UInputAction>
         };
 

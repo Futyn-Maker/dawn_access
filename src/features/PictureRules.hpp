@@ -293,8 +293,8 @@ namespace da::picture
     // keys to page with, and the way back), said as the camera comes up: the photo then, after it
     // (Andrey, 2026-11-10), or by itself once kPromptWaitMost has gone without one. Every photo waits
     // for the player's key to be let go (Due), at most kKeyWaitMost from the page it shows.
-    constexpr double kPromptSettle = 0.25;   // after the prompt, for the action bar's line said with it
-    constexpr double kPromptWaitMost = 2.0;  // from the camera raised
+    constexpr double kPromptSettle = 0.25;  // after the prompt, for the action bar's line said with it
+    constexpr double kPromptWaitMost = 2.0; // from the camera raised
     class PhotoPager
     {
     public:
@@ -313,7 +313,7 @@ namespace da::picture
         bool m_holding = false;
         double m_heldAt = 0.0;
         int m_said = -1;
-        int m_index = -1;      // the photo shown, said or not
+        int m_index = -1;       // the photo shown, said or not
         double m_indexAt = 0.0; // since when
     };
 

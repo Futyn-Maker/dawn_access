@@ -288,7 +288,8 @@ TEST_CASE("calm: the passive version's pool drains while the controller moves, t
             CHECK(step.moving);
             for (const auto& sound : step.sounds)
                 CHECK(sound.kind != Sound::Kind::Ping);
-            thuds += static_cast<int>(std::count_if(step.sounds.begin(), step.sounds.end(), [](const Sound& sound) { return sound.kind == Sound::Kind::Moving; }));
+            thuds +=
+                static_cast<int>(std::count_if(step.sounds.begin(), step.sounds.end(), [](const Sound& sound) { return sound.kind == Sound::Kind::Moving; }));
             CHECK(step.draining == (look.grace >= 0.5));
         }
         if (step.clockStep > 0) clockSteps.push_back(step.clockStep);

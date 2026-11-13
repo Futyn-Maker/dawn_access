@@ -9,8 +9,8 @@
 #include <array>
 #include <deque>
 #include <optional>
-#include <vector>
 #include <utility>
+#include <vector>
 
 namespace da::look
 {
@@ -555,9 +555,9 @@ namespace da::look
         int m_count = 0;
         bool m_pushing = false;
         bool m_began = false;
-        Push m_push;               // the push on now
-        double m_pushedAt = 0.0;   // when it began
-        Vec m_flickedFrom;         // where she stood at the last push
+        Push m_push;             // the push on now
+        double m_pushedAt = 0.0; // when it began
+        Vec m_flickedFrom;       // where she stood at the last push
         double m_flickedFacing = 0.0;
         int m_dead = 0;
     };

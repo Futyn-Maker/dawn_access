@@ -56,7 +56,7 @@ int main(int argc, char** argv)
     // companion sent on is weighed against the waits of its own act (scripts::WeighCompanions).
     std::vector<std::pair<std::wstring, std::vector<scripts::Poll>>> acts;
     std::vector<std::vector<scripts::EndWait>> ends; // each act's waits for a scene to be done
-    std::vector<scripts::Leading> leads;              // where a companion leads the player, in every act
+    std::vector<scripts::Leading> leads;             // where a companion leads the player, in every act
     for (const auto& file : files)
     {
         const auto script = ReadWide(file);

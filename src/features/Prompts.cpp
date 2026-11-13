@@ -460,7 +460,7 @@ namespace da::features
         // When each of the bar's lines was last said (prompt::NotSaidWithin), and when the bar last said any.
         std::map<std::wstring, double> g_barSaidAt;
         double g_lastBarAt = -1000.0;
-        std::wstring g_lastBarText;            // the bar's prompts as last said, and their lines
+        std::wstring g_lastBarText; // the bar's prompts as last said, and their lines
         std::vector<std::wstring> g_lastBarLines;
 
         std::wstring Line(const ui::Prompt& p)

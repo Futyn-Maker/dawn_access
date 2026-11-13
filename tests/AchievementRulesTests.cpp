@@ -48,8 +48,7 @@ TEST_CASE("achievements: said in the game's own words, by the trophy strings key
 {
     // The selfie (s70): Steam gave "One Hour Selfie. Take a bad selfie with Jessica" in English, the
     // game's Steam language; the game's own strings hold it in every language the game shows.
-    CHECK(achieve::TextKeys("TRP_SELFIE", achieve::Field::Name) ==
-          std::vector<std::wstring>{L"BATES_TROPHIES_ACH_SELFIE_N", L"BATES_TROPHIES_TRP_SELFIE_N"});
+    CHECK(achieve::TextKeys("TRP_SELFIE", achieve::Field::Name) == std::vector<std::wstring>{L"BATES_TROPHIES_ACH_SELFIE_N", L"BATES_TROPHIES_TRP_SELFIE_N"});
     CHECK(achieve::TextKeys("TRP_SELFIE", achieve::Field::Description) ==
           std::vector<std::wstring>{L"BATES_TROPHIES_ACH_SELFIE_D", L"BATES_TROPHIES_TRP_SELFIE_D"});
     // The platinum's PC wording ("... Achievements") comes before the console's ("... Trophies").

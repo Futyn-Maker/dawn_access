@@ -719,8 +719,7 @@ namespace da::scripts
                         // Turning on a thing to use once she stands there moves the scene on too: she can
                         // only bring it about by standing there.
                         const bool alone = MovesOn(path.calls, path.activities, false) || path.enables;
-                        p.story = !q.negated && waits && leaves && (alone || MovesOn(path.calls, path.activities, true)) &&
-                                  !ComesBack(machine, number, path);
+                        p.story = !q.negated && waits && leaves && (alone || MovesOn(path.calls, path.activities, true)) && !ComesBack(machine, number, path);
                         p.sentOnly = p.story && !alone;
                         if (p.sentOnly) p.sentOn = path.sentOn;
                         polls.push_back(std::move(p));
@@ -750,8 +749,8 @@ namespace da::scripts
                 if (found == machine->second.states.end()) continue;
                 std::vector<std::pair<const Block*, Question>> asked;
                 Questions(found->second.blocks, asked);
-                const bool kept =
-                    std::any_of(asked.begin(), asked.end(), [&](const auto& a) { return a.second.negated && SameCharacter(a.second.who, p.who) && asks(a.second); });
+                const bool kept = std::any_of(asked.begin(), asked.end(),
+                                              [&](const auto& a) { return a.second.negated && SameCharacter(a.second.who, p.who) && asks(a.second); });
                 if (!kept) continue;
                 for (const auto& block : found->second.blocks)
                 {
@@ -848,8 +847,8 @@ namespace da::scripts
                             w.state = number;
                             w.awaited = m[1].str();
                             const Path on = Follow(machine, number, block.text);
-                            w.story = MovesOn(on.calls, on.activities, false) ||
-                                      std::find(on.calls.begin(), on.calls.end(), L"SF_RunStatemachine") != on.calls.end();
+                            w.story =
+                                MovesOn(on.calls, on.activities, false) || std::find(on.calls.begin(), on.calls.end(), L"SF_RunStatemachine") != on.calls.end();
                             waits.push_back(std::move(w));
                         }
                         self(self, block.blocks);
@@ -988,9 +987,9 @@ namespace da::scripts
         for (auto& p : polls)
         {
             if (!p.story || !p.sentOnly) continue;
-            const bool waitedFor = std::any_of(p.sentOn.begin(), p.sentOn.end(),
-                                               [&](const std::wstring& c)
-                                               { return std::any_of(awaited.begin(), awaited.end(), [&](const std::wstring& a) { return str::EqualsNoCase(a, c); }); });
+            const bool waitedFor =
+                std::any_of(p.sentOn.begin(), p.sentOn.end(), [&](const std::wstring& c)
+                            { return std::any_of(awaited.begin(), awaited.end(), [&](const std::wstring& a) { return str::EqualsNoCase(a, c); }); });
             if (waitedFor) continue;
             p.story = false;
             ++demoted;
@@ -1173,8 +1172,8 @@ namespace da::scripts
         // The last question about her answered yes, and the scene has asked no more since: the wait
         // is met. A state that asks on while she stands in it (a compound condition, a wait for her to
         // leave) is still waiting.
-        if (const auto asked = m_asked.find(trigger); asked != m_asked.end() && asked->second.yes > -1000.0 &&
-                                                     asked->second.yes >= asked->second.player && now - asked->second.player > kAskedWithin)
+        if (const auto asked = m_asked.find(trigger);
+            asked != m_asked.end() && asked->second.yes > -1000.0 && asked->second.yes >= asked->second.player && now - asked->second.player > kAskedWithin)
         {
             verdict.kind = Kind::Met;
             return verdict;

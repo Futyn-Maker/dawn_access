@@ -1176,7 +1176,8 @@ gRegisteredStatemachines.Event_t_enteredlounge_enter = {
     REQUIRE(event.variables.size() == 1);
     CHECK(event.variables.front() == L"bAllowLostPhone");
     using Kind = scripts::Number::Kind;
-    const auto with = [](scripts::Number value) { return [value](const std::wstring& name) { return name == L"bAllowLostPhone" ? value : scripts::Number{}; }; };
+    const auto with = [](scripts::Number value)
+    { return [value](const std::wstring& name) { return name == L"bAllowLostPhone" ? value : scripts::Number{}; }; };
     // Armed: walking in starts the talk.
     CHECK(scripts::StoryNow(event, with({Kind::Value, 1.0})));
     // After the talk, and before it is armed (nothing set yet): nothing of the story happens there.
@@ -1216,9 +1217,10 @@ TEST_CASE("scripts: a comparison is weighed as the scripts' library weighs it")
     CHECK_FALSE(scripts::Holds(LR"(SF_Comparison(sm, {string2 = "inspect", string1 = sm.variables.name, type = "String"}))", vars).has_value());
     CHECK_FALSE(scripts::Holds(LR"(SF_Comparison(sm, {number2 = 0, number1 = gVariables.Other, type = "Number", operation = "Equal"}))", vars).has_value());
     CHECK_FALSE(scripts::Holds(LR"(SF_IsActivityComplete(sm, {activity = "A_x"}))", vars).has_value());
-    CHECK_FALSE(scripts::Holds(LR"(SF_Comparison(sm, {number2 = 1, number1 = gVariables.VisitsNOTE, type = "Number", operation = "Equal"}) and SF_Wait(sm, {seconds = 1}))",
-                               vars)
-                    .has_value());
+    CHECK_FALSE(
+        scripts::Holds(
+            LR"(SF_Comparison(sm, {number2 = 1, number1 = gVariables.VisitsNOTE, type = "Number", operation = "Equal"}) and SF_Wait(sm, {seconds = 1}))", vars)
+            .has_value());
 }
 
 TEST_CASE("scripts: a comparison that holds and jumps takes the machine past its next state")
@@ -2601,12 +2603,13 @@ TEST_CASE("scripts: a scene's wait for a companion leading the player on is the 
     const auto leads = scripts::ParseLeads(kJessicaLeads, L"aicontroller");
     const auto leadsIn = [&](int state)
     {
-        return std::any_of(leads.begin(), leads.end(), [&](const scripts::Leading& l) { return l.machine == L"Aicontroller" && l.state == state && l.character == L"Jessica"; });
+        return std::any_of(leads.begin(), leads.end(),
+                           [&](const scripts::Leading& l) { return l.machine == L"Aicontroller" && l.state == state && l.character == L"Jessica"; });
     };
-    CHECK(leadsIn(38)); // after the lead to the landslide
-    CHECK(leadsIn(16)); // after the lead to the mine's entrance
-    CHECK(leadsIn(11)); // after the lead to the pit's edge, waiting for the choice
-    CHECK(leadsIn(13)); // after the lead to the vista
+    CHECK(leadsIn(38));       // after the lead to the landslide
+    CHECK(leadsIn(16));       // after the lead to the mine's entrance
+    CHECK(leadsIn(11));       // after the lead to the pit's edge, waiting for the choice
+    CHECK(leadsIn(13));       // after the lead to the vista
     CHECK_FALSE(leadsIn(52)); // escorting him by the cart
     CHECK_FALSE(leadsIn(60)); // no way in known: no order to go by
     CHECK(scripts::LeadingNow(leads, {{L"Aicontroller", 11}}) == std::set<std::wstring>{L"Jessica"});

@@ -3,8 +3,8 @@
 #include "Support.hpp"
 #include "features/NudgeRules.hpp"
 
-#include <cmath>
 #include <algorithm>
+#include <cmath>
 
 using namespace da;
 

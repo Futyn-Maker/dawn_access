@@ -1620,10 +1620,10 @@ TEST_CASE("a character's turn is named before the keys and the choice: the cable
     // research/sessions/s54-full.log: Matt handed over at 22:04:04.7, his card up at 22:04:06.8 and gone
     // at 22:04:13.1, his objective said at 22:04:15.0; the keys and the choice had been said at 22:04:05.7.
     using ways::HintWaitsForTurn;
-    CHECK(HintWaitsForTurn(true, false, false, true, 1.0)); // the card not come yet
-    CHECK(HintWaitsForTurn(true, true, true, true, 2.1));   // the card up
-    CHECK(HintWaitsForTurn(true, true, true, false, 2.1));  // the card up, no objective to wait for
-    CHECK(HintWaitsForTurn(true, false, true, true, 8.4));  // the card gone, the objective due
+    CHECK(HintWaitsForTurn(true, false, false, true, 1.0));        // the card not come yet
+    CHECK(HintWaitsForTurn(true, true, true, true, 2.1));          // the card up
+    CHECK(HintWaitsForTurn(true, true, true, false, 2.1));         // the card up, no objective to wait for
+    CHECK(HintWaitsForTurn(true, false, true, true, 8.4));         // the card gone, the objective due
     CHECK_FALSE(HintWaitsForTurn(true, false, true, false, 10.4)); // the objective said
     // No card comes: the keys wait kCardWait for one.
     CHECK(HintWaitsForTurn(true, false, false, false, ways::kCardWait - 0.1));
@@ -2013,7 +2013,7 @@ TEST_CASE("the thing that stands for a way takes its place while its first verdi
     revelation.hidden = false;
     CHECK(ways::TakesWayPlace(revelation));
     // Left out for a reason of its own, it does not: the walk ends saying its target is gone.
-    const auto leftOutFor = [](bool ways::LeftOut::*reason)
+    const auto leftOutFor = [](bool ways::LeftOut::* reason)
     {
         ways::LeftOut thing;
         thing.hidden = true;

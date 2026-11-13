@@ -184,8 +184,8 @@ namespace da::grid
     {
         bool found = false;
         Cell cell;
-        bool deep = false;       // her middle inside the place
-        bool offInside = false;  // only from inside a volume the thing is off in
+        bool deep = false;      // her middle inside the place
+        bool offInside = false; // only from inside a volume the thing is off in
     };
     Arrival PickArrival(const Flood& flood, Cell goal, int reach, const std::function<bool(Cell)>& deep, const std::function<bool(Cell)>& touches,
                         const std::function<bool(Cell)>& off);

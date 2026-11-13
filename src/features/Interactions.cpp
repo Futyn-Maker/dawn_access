@@ -2,10 +2,10 @@
 
 #include "features/Exploration.hpp"
 #include "features/Films.hpp"
+#include "features/Hud.hpp"
 #include "features/NudgeRules.hpp"
 #include "features/PictureRules.hpp"
 #include "features/PromptRules.hpp"
-#include "features/Hud.hpp"
 #include "features/Prompts.hpp"
 #include "features/WorldRead.hpp"
 
@@ -31,11 +31,11 @@
 #include <Unreal/FWeakObjectPtr.hpp>
 #include <Unreal/NameTypes.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstring>
 #include <format>
-#include <algorithm>
 #include <map>
 #include <memory>
 #include <optional>
@@ -203,7 +203,8 @@ namespace da::features
                 return;
             }
             log::Info(L"interactions: the picture of {} is said {:.2f} s after it was shown{}", g_lookDueName, now - g_lookDue.Since(),
-                      promptAt >= g_lookDue.Since() ? std::format(L", {:.2f} s after the game's prompt", now - promptAt) : std::wstring(L", no prompt with it"));
+                      promptAt >= g_lookDue.Since() ? std::format(L", {:.2f} s after the game's prompt", now - promptAt)
+                                                    : std::wstring(L", no prompt with it"));
             if (g_lookSpoken.empty())
                 speech::Announce(g_lookDueWords);
             else
@@ -269,8 +270,7 @@ namespace da::features
             std::wstring words = Words(key);
             // The photo's place among them, drawn on it ("1/5"), is a detail like any other position,
             // said after the photo's words.
-            if (cfg::Detailed() && count > 1)
-                words = str::JoinSentences({words, locale::Mod(L"ui.pos", std::to_wstring(*shown + 1), std::to_wstring(count))});
+            if (cfg::Detailed() && count > 1) words = str::JoinSentences({words, locale::Mod(L"ui.pos", std::to_wstring(*shown + 1), std::to_wstring(count))});
             if (g_photoWords.empty())
                 speech::Announce(words);
             else
@@ -760,10 +760,10 @@ namespace da::features
         // goes on (prompt::LinearForward); the stage last seen current, since when, and whether its
         // way on has been said.
         std::map<int64_t, std::wstring> g_linearForward;
-        std::map<int64_t, std::wstring> g_linearBack; // and its way back, named where the stage stands past its first step
-        std::map<int64_t, int64_t> g_linearInitial;   // the step each stage begins at (InitialAnimationStage)
+        std::map<int64_t, std::wstring> g_linearBack;  // and its way back, named where the stage stands past its first step
+        std::map<int64_t, int64_t> g_linearInitial;    // the step each stage begins at (InitialAnimationStage)
         std::map<int64_t, std::wstring> g_linearInput; // the action of each staged stage's own prompt (InputActionAssigned)
-        std::set<int64_t> g_linearStepPrompts;        // the staged stages that draw prompts of their own at steps
+        std::set<int64_t> g_linearStepPrompts;         // the staged stages that draw prompts of their own at steps
         int64_t g_linearStage = -1;
         double g_linearSince = -1.0;
         bool g_linearSaid = false;
@@ -920,8 +920,8 @@ namespace da::features
                     if (graph && *graph == *last)
                         log::Info(L"interactions: the staged stage {}'s steps run to {}, the last its graph {} takes", current + 1, *last, from);
                     else
-                        log::Info(L"interactions: the staged stage {}'s steps run to {}, its MaxAnimationStage, no graph of it comparing the step",
-                                  current + 1, *last);
+                        log::Info(L"interactions: the staged stage {}'s steps run to {}, its MaxAnimationStage, no graph of it comparing the step", current + 1,
+                                  *last);
                 }
                 else
                 {
@@ -1202,8 +1202,8 @@ namespace da::features
                 g_turnKeyDue = now + nudge::kLookKeyAfter;
                 log::Info(L"interactions: the item of {} is in hand; its turn is led {} from {:.2f} to the reveal at {:.2f}, along the stick's {} axis "
                           L"(InputMultiplier {:.2f}, EvaluationMultiplier {:.2f}{}){}",
-                          obj::ObjectName(interaction), PushWord(g_turnLead), g_turn.share, g_turn.threshold, g_turn.vertical ? L"Y" : L"X",
-                          inputMultiplier, evaluationMultiplier, g_turn.reversed ? L": the item turns against the stick" : L"",
+                          obj::ObjectName(interaction), PushWord(g_turnLead), g_turn.share, g_turn.threshold, g_turn.vertical ? L"Y" : L"X", inputMultiplier,
+                          evaluationMultiplier, g_turn.reversed ? L": the item turns against the stick" : L"",
                           g_turn.inverted ? L", which the player's setting turns round" : L"");
                 break;
             }
@@ -1468,10 +1468,14 @@ namespace da::features
                     g_timedWatched = -1;
                     g_limitStage = -1;
                     g_statesAtLimit.clear();
-                    if (bound) FindTimedStages(bound);
-                    else g_timedStages.clear();
-                    if (bound) FindLinearStages(bound);
-                    else g_linearForward.clear();
+                    if (bound)
+                        FindTimedStages(bound);
+                    else
+                        g_timedStages.clear();
+                    if (bound)
+                        FindLinearStages(bound);
+                    else
+                        g_linearForward.clear();
                     g_dial = bound ? prompt::DialOf(obj::ClassName(bound)) : std::nullopt;
                     g_dialPos = -1;
                     g_dialAskedSince = -1.0;

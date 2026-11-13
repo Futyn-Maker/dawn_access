@@ -50,7 +50,7 @@ namespace da::ways
         // In the list at the last look: a way listed (judged and kept in), a thing whatever its own
         // verdict (one still waiting for the map may yet give a way its road).
         bool shown = false;
-        bool streams = false;     // a way of no story that streams in more of the world (StreamsMore)
+        bool streams = false; // a way of no story that streams in more of the world (StreamsMore)
         // The way the scene's objective leads to: the scene waits for her there to turn its objective
         // off or set the next (scripts::EndsObjective). It is never left out on another's road.
         bool goal = false;
@@ -690,8 +690,7 @@ namespace da::ways
     // `reached`, `targetCost`); where it has not judged it, while it runs or once it ended short of
     // every cell within reach (`running`, `cutShort`: its budget or its bound), how far it got
     // (`frontier`); nothing of a target it found out of reach, nor with her off its ground.
-    std::optional<double> MapMeasure(bool judged, bool reached, double targetCost, bool running, bool cutShort, double frontier,
-                                     std::optional<double> herCost);
+    std::optional<double> MapMeasure(bool judged, bool reached, double targetCost, bool running, bool cutShort, double frontier, std::optional<double> herCost);
 
     // ---- a path the game holds her to ---------------------------------------------------------
 

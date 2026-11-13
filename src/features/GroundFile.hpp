@@ -62,7 +62,7 @@ namespace da::ground
         int x = 0, y = 0, level = 0;
         bool found = false;
         double floor = 0.0, normalZ = 1.0;
-        char why = 0; // 'n' none, 's' too steep
+        char why = 0;   // 'n' none, 's' too steep
         std::string on; // the level of the world the floor lies in, empty where not known
     };
 

@@ -248,9 +248,9 @@ namespace da::prompt
     // speak first"): the radio tower's ladders drew theirs 3.0 to 3.2 s after the climb began, and on
     // two of the three the way on was said 17 ms before it (research/sessions/s72-play.log, 11:25:52,
     // 11:26:57 and 11:28:09).
-    constexpr double kWayOnAfter = 1.0;      // the game's own prompt comes up first
-    constexpr double kStepPromptWait = 3.0;  // a step's own prompt comes once the step stands idle
-    constexpr double kPromptWait = 6.0;      // the longest the way waits for the game's own prompt
+    constexpr double kWayOnAfter = 1.0;     // the game's own prompt comes up first
+    constexpr double kStepPromptWait = 3.0; // a step's own prompt comes once the step stands idle
+    constexpr double kPromptWait = 6.0;     // the longest the way waits for the game's own prompt
 
     // Whether the game's prompt drawn at `promptAt` came with the stage noticed at `stageAt`: the stage
     // is looked at every sixth frame and the prompts every second, so a stage's own prompt can be read
@@ -411,8 +411,8 @@ namespace da::prompt
 
     private:
         std::vector<std::wstring> m_lines;
-        std::set<std::wstring> m_said;                      // the lines said while they stayed on the bar
-        std::map<std::wstring, std::wstring> m_byAction;   // the words said for each action while the scope stands
+        std::set<std::wstring> m_said;                   // the lines said while they stayed on the bar
+        std::map<std::wstring, std::wstring> m_byAction; // the words said for each action while the scope stands
         int64_t m_scope = -1;
         double m_changedAt = -1.0;
     };
@@ -442,8 +442,7 @@ namespace da::prompt
     // The bar's lines shown again with a document's page shown again as it is being read
     // (hud::PageResumedAt): those said within `within` seconds are still to be said behind the page,
     // the others are new and said. `saidAt` holds when each line was last said.
-    std::vector<std::wstring> NotSaidWithin(const std::vector<std::wstring>& fresh, const std::map<std::wstring, double>& saidAt, double now,
-                                            double within);
+    std::vector<std::wstring> NotSaidWithin(const std::vector<std::wstring>& fresh, const std::map<std::wstring, double>& saidAt, double now, double within);
 
     // A prompt that draws the grab beside a move of the stick (a push, a swipe, a half circle): the
     // move is made with the grab held. Of the interaction stages of the whole game, 79 draw such a

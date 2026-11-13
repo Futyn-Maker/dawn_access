@@ -190,8 +190,8 @@ namespace da::look
     double FramingLeft(const Framing& f, const Vec& here)
     {
         if (!f.waitsForDistance || f.distance <= 0.0) return 0.0;
-        const double gone = std::sqrt((here.x - f.start.x) * (here.x - f.start.x) + (here.y - f.start.y) * (here.y - f.start.y) +
-                                      (here.z - f.start.z) * (here.z - f.start.z));
+        const double gone =
+            std::sqrt((here.x - f.start.x) * (here.x - f.start.x) + (here.y - f.start.y) * (here.y - f.start.y) + (here.z - f.start.z) * (here.z - f.start.z));
         return std::max(0.0, f.distance - gone);
     }
 

@@ -40,7 +40,10 @@ namespace da::freed
                 RC::Unreal::UObjectArray::RemoveUObjectDeleteListener(this);
             }
 
-            virtual size_t GetAllocatedSize() const { return 0; }
+            virtual size_t GetAllocatedSize() const
+            {
+                return 0;
+            }
         };
 
         Listener g_listener;

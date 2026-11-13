@@ -6,8 +6,8 @@
 #include "diag/Diagnostics.hpp"
 #include "diag/SaveCopyRules.hpp"
 
-#include <windows.h>
 #include <shlobj.h>
+#include <windows.h>
 
 #include <algorithm>
 #include <cstdint>
@@ -20,9 +20,9 @@ namespace da::diag
 {
     namespace
     {
-        constexpr double kEvery = 2.0;                  // seconds between looks at the save
-        constexpr size_t kKept = 60;                    // the newest copies kept
-        constexpr uint64_t kLargest = 256ull << 20;     // a save larger than this is not read
+        constexpr double kEvery = 2.0;              // seconds between looks at the save
+        constexpr size_t kKept = 60;                // the newest copies kept
+        constexpr uint64_t kLargest = 256ull << 20; // a save larger than this is not read
         savecopy::Watch g_watch;
         double g_lookedAt = -100.0;
         std::wstring g_label;    // the act of the map last loaded

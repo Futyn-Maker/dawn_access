@@ -41,7 +41,7 @@ namespace da::lines
     // they do with subtitles; with subtitle reading off, Andrey never heard where the last scene takes
     // place (research/sessions/s64-play.log, 11:47:51.893). They are said whatever the reading's switch.
     constexpr const wchar_t* kOnScreenTextKeys[] = {L"epilogue_ost_001", L"bts_video_title_001", L"bts_video_title_002", L"bts_video_title_003",
-                                                     L"bts_video_title_004"};
+                                                    L"bts_video_title_004"};
     // Whether a subtitle line is one of those texts as the game words them now (`onScreen`), white
     // space and line breaks aside.
     bool OnScreenText(const std::wstring& line, const std::vector<std::wstring>& onScreen);
@@ -103,7 +103,7 @@ namespace da::lines
         void Hidden();
 
     private:
-        std::vector<int> m_last;  // the clock as last shown; empty before the first
+        std::vector<int> m_last;   // the clock as last shown; empty before the first
         double m_changedAt = -1.0; // when it last changed
     };
 
@@ -140,7 +140,7 @@ namespace da::lines
         }
 
     private:
-        double m_since = -1.0; // since when the card has been shown
+        double m_since = -1.0;   // since when the card has been shown
         bool m_bodySeen = false; // its body was drawn, or it was read whole after the longest wait
     };
 

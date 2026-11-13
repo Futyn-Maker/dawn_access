@@ -170,9 +170,8 @@ namespace da::gametext
     std::wstring CharacterName(std::wstring_view english)
     {
         static const std::pair<const wchar_t*, const wchar_t*> keys[] = {
-            {L"Mike", L"SMG013_65675"},  {L"Jessica", L"SMG013_65676"}, {L"Sam", L"SMG013_65677"},  {L"Chris", L"SMG013_65678"},
-            {L"Ashley", L"SMG013_65679"}, {L"Emily", L"SMG013_65680"},  {L"Matt", L"SMG013_65681"}, {L"Josh", L"SMG013_65682"},
-            {L"Hannah", L"SMG013_65684"}, {L"Beth", L"SMG013_65685"}};
+            {L"Mike", L"SMG013_65675"},  {L"Jessica", L"SMG013_65676"}, {L"Sam", L"SMG013_65677"},  {L"Chris", L"SMG013_65678"},  {L"Ashley", L"SMG013_65679"},
+            {L"Emily", L"SMG013_65680"}, {L"Matt", L"SMG013_65681"},    {L"Josh", L"SMG013_65682"}, {L"Hannah", L"SMG013_65684"}, {L"Beth", L"SMG013_65685"}};
         for (const auto& [name, key] : keys)
         {
             if (str::EqualsNoCase(english, name)) return ResolveWithFallback(key, english);

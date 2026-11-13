@@ -84,8 +84,8 @@ namespace da::calm
     {
         enum class Kind
         {
-            Ping,  // the double ping
-            Steer, // the signal of where to push
+            Ping,   // the double ping
+            Steer,  // the signal of where to push
             Blip,   // the marker's blip where it is, before the version is known
             Clock,  // the clock cue
             Moving, // the passive version: the low thud, the game sees the controller move
@@ -124,8 +124,8 @@ namespace da::calm
         bool steerChanged = false; // with a new way to push (else a repeat past the edge)
         int steerRight = 0;        // the way, in halves
         int steerUp = 0;
-        Way word = Way::None;      // the way to say now: a new way, not the word said last for this pull
-        bool moving = false;        // the passive version: the game counts the controller moving
+        Way word = Way::None; // the way to say now: a new way, not the word said last for this pull
+        bool moving = false;  // the passive version: the game counts the controller moving
         bool movingChanged = false;
     };
 

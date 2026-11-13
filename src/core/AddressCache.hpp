@@ -55,10 +55,19 @@ namespace da::cache
         }
 
         // The game has freed the object at this address: true when an answer was kept for it.
-        bool Forget(const void* address) { return m_slots.erase(address) > 0; }
+        bool Forget(const void* address)
+        {
+            return m_slots.erase(address) > 0;
+        }
 
-        void Clear() { m_slots.clear(); }
-        size_t Size() const { return m_slots.size(); }
+        void Clear()
+        {
+            m_slots.clear();
+        }
+        size_t Size() const
+        {
+            return m_slots.size();
+        }
 
     private:
         struct Slot

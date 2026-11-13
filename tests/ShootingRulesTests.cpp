@@ -276,7 +276,7 @@ TEST_CASE("the death room's dilemma is judged by the yaw's place between the sta
     const auto mid = shoot::DilemmaAt(0.0, -5.0, 3.7, 0.5);
     CHECK(mid.t == doctest::Approx(5.0 / 8.7));
     CHECK(mid.region == -1);
-    CHECK(mid.toFirst == doctest::Approx(-2.825));  // the first side's edge at -5 + 8.7 / 4
+    CHECK(mid.toFirst == doctest::Approx(-2.825)); // the first side's edge at -5 + 8.7 / 4
     CHECK(mid.toSecond == doctest::Approx(1.525)); // the second's at -5 + 8.7 * 3 / 4
     const auto chris = shoot::DilemmaAt(-3.0, -5.0, 3.7, 0.5);
     CHECK(chris.region == 0);

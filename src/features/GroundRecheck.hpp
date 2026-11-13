@@ -237,7 +237,7 @@ namespace da::recheck
     // turning, breathed 4 cm at a corner every few seconds, and the 424 steps about it were asked again
     // at each breath, each answering as it had (research/sessions/s63-play.log, 00:22:55 to 00:24:38).
     constexpr double kPropTolerance = 5.0;
-    constexpr double kPropRest = 1.0;      // seconds a prop that moved must stand still before its ground is asked
+    constexpr double kPropRest = 1.0; // seconds a prop that moved must stand still before its ground is asked
 
     // The widest a prop's box can be across the ground, in cm: the props the game moves are doors,
     // gates, a lift's cage and its cog (the widest moved yet a cupboard door's 232 cm; the cog of
@@ -279,8 +279,8 @@ namespace da::recheck
 
     private:
         bool m_seen = false;
-        std::optional<Box> m_rest;   // where it stood at rest, as the ground knows it
-        std::optional<Box> m_last;   // the last reading
+        std::optional<Box> m_rest; // where it stood at rest, as the ground knows it
+        std::optional<Box> m_last; // the last reading
         bool m_moving = false;
         double m_stillSince = 0.0;
     };
