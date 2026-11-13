@@ -5,6 +5,11 @@ usage: python -I tools/levels/sf_calls.py <lua root> <name> [...]
 (the scripts as tools/levels/lua_scripts.py writes them out)
 """
 import os, re, sys
+if len(sys.argv) > 1 and sys.argv[1] in ("-h", "--help"):
+    print(__doc__)
+    sys.exit(0)
+if len(sys.argv) < 3:
+    sys.exit(__doc__)
 root = sys.argv[1]
 names = sys.argv[2:]
 pat = re.compile(r'\b(' + '|'.join(re.escape(n) for n in names) + r')\(sm,\s*')

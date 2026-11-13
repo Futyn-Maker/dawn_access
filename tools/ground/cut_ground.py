@@ -11,10 +11,15 @@ import math
 import sys
 from collections import deque
 
+if len(sys.argv) > 1 and sys.argv[1] in ("-h", "--help"):
+    print(__doc__)
+    sys.exit(0)
 until = None
 if len(sys.argv) > 2 and sys.argv[1] == "--until":
     until = int(sys.argv[2])
     del sys.argv[1:3]
+if len(sys.argv) < 10:
+    sys.exit(__doc__)
 path, want = sys.argv[1], int(sys.argv[2])
 fx, fy = float(sys.argv[3]), float(sys.argv[4])
 x0, y0, x1, y1 = map(float, sys.argv[5:9])

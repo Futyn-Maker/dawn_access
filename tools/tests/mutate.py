@@ -45,6 +45,11 @@ def with_endings(s, text):
 
 
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] in ("-h", "--help"):
+        print(__doc__)
+        sys.exit(0)
+    if len(sys.argv) < 2:
+        sys.exit(__doc__)
     spec = json.load(open(sys.argv[1], encoding="utf-8"))
     caught = 0
     applied = 0

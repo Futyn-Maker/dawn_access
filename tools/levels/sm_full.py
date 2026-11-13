@@ -99,6 +99,11 @@ def parse(path):
     return out
 
 
+if len(sys.argv) > 1 and sys.argv[1] in ("-h", "--help"):
+    print(__doc__)
+    sys.exit(0)
+if len(sys.argv) < 2:
+    sys.exit(__doc__)
 for a in sys.argv[1:]:
     paths = []
     if os.path.isdir(a):

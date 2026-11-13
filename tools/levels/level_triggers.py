@@ -149,6 +149,11 @@ def mesh_hulls(path):
 
 
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] in ("-h", "--help"):
+        print(__doc__)
+        sys.exit(0)
+    if len(sys.argv) < 4:
+        sys.exit(__doc__)
     levels_root, meshes_root, out_path = sys.argv[1:4]
     meshes = {}
     for p in glob.glob(os.path.join(meshes_root, "**", "SM_T_*.json"), recursive=True):

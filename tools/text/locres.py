@@ -73,6 +73,13 @@ def clean(s):
 if __name__ == "__main__":
     # The game's texts in every language, whatever the console's code page.
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    if len(sys.argv) > 1 and sys.argv[1] in ("-h", "--help"):
+        print(__doc__)
+        sys.exit(0)
+    # dump and grep take a third argument, stats none.
+    least = {"dump": 3, "grep": 3, "stats": 2}
+    if len(sys.argv) < 2 or sys.argv[1] not in least or len(sys.argv) < least[sys.argv[1]] + 1:
+        sys.exit(__doc__)
     cmd = sys.argv[1]
     version, entries = read(sys.argv[2])
     if cmd == "dump":

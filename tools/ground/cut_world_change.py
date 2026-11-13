@@ -16,6 +16,11 @@ import math
 import sys
 from collections import deque
 
+if len(sys.argv) > 1 and sys.argv[1] in ("-h", "--help"):
+    print(__doc__)
+    sys.exit(0)
+if len(sys.argv) < 14:
+    sys.exit(__doc__)
 (
     path,
     want,

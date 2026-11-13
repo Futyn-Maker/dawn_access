@@ -7,6 +7,11 @@ usage: python -I tools/assets/bytecode.py <asset.json> [function name filter]
 import json, sys
 # Compact listing of Blueprint bytecode from a UAssetGUI JSON: one line per expression,
 # nested expressions indented; shows the names, strings and numbers each carries.
+if len(sys.argv) > 1 and sys.argv[1] in ("-h", "--help"):
+    print(__doc__)
+    sys.exit(0)
+if len(sys.argv) < 2:
+    sys.exit(__doc__)
 path = sys.argv[1]
 want = sys.argv[2].lower() if len(sys.argv) > 2 else None
 d = json.load(open(path, encoding='utf-8'))

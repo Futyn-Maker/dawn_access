@@ -5,6 +5,11 @@ python -I tools/logs/list_timeline.py <log> [from hh:mm:ss] [to hh:mm:ss]"""
 import re
 import sys
 
+if len(sys.argv) > 1 and sys.argv[1] in ("-h", "--help"):
+    print(__doc__)
+    sys.exit(0)
+if len(sys.argv) < 2:
+    sys.exit(__doc__)
 path = sys.argv[1]
 start = sys.argv[2] if len(sys.argv) > 2 else "00:00:00"
 end = sys.argv[3] if len(sys.argv) > 3 else "99:99:99"

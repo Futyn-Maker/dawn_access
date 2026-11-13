@@ -9,6 +9,11 @@ import json
 import os
 import sys
 
+if len(sys.argv) > 1 and sys.argv[1] in ("-h", "--help"):
+    print(__doc__)
+    sys.exit(0)
+if len(sys.argv) < 2:
+    sys.exit(__doc__)
 root = sys.argv[1]
 filt = sys.argv[2] if len(sys.argv) > 2 else None
 FOLLOW = ("Outcome", "Condition", "Option", "Action", "Transition")

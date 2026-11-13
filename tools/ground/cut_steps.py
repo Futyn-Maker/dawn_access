@@ -12,10 +12,15 @@ python -I tools/ground/cut_steps.py [--until N] <record.tsv> <anchor index> <x0>
 import math
 import sys
 
+if len(sys.argv) > 1 and sys.argv[1] in ("-h", "--help"):
+    print(__doc__)
+    sys.exit(0)
 until = None
 if len(sys.argv) > 2 and sys.argv[1] == "--until":
     until = int(sys.argv[2])
     del sys.argv[1:3]
+if len(sys.argv) < 9:
+    sys.exit(__doc__)
 path, want = sys.argv[1], int(sys.argv[2])
 x0, y0, x1, y1, margin = map(float, sys.argv[3:8])
 out_path = sys.argv[8]
