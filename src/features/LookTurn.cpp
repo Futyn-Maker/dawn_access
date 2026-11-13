@@ -182,10 +182,10 @@ namespace da::look
         return std::max(0.0, f.distance - gone);
     }
 
-    Vec FramingExit(const Framing& f, const Vec& here, double facingYaw, double turn)
+    Vec AwayFrom(const Vec& center, const Vec& here, double reach, double facingYaw, double turn)
     {
-        double dx = here.x - f.start.x;
-        double dy = here.y - f.start.y;
+        double dx = here.x - center.x;
+        double dy = here.y - center.y;
         double length = std::hypot(dx, dy);
         if (length < 1.0)
         {
@@ -198,8 +198,17 @@ namespace da::look
         const double ux = dx / length, uy = dy / length;
         const double rx = ux * std::cos(radians) - uy * std::sin(radians);
         const double ry = ux * std::sin(radians) + uy * std::cos(radians);
-        const double reach = f.distance + kFramingMargin;
-        return Vec{f.start.x + rx * reach, f.start.y + ry * reach, here.z};
+        return Vec{center.x + rx * reach, center.y + ry * reach, here.z};
+    }
+
+    Vec FramingExit(const Framing& f, const Vec& here, double facingYaw, double turn)
+    {
+        return AwayFrom(f.start, here, f.distance + kFramingMargin, facingYaw, turn);
+    }
+
+    Vec BackOffFrom(const Vec& spot, const Vec& here, double facingYaw, double turn)
+    {
+        return AwayFrom(spot, here, std::hypot(here.x - spot.x, here.y - spot.y) + kBackOff, facingYaw, turn);
     }
 
     std::optional<Vec> BackOffPoint(const std::vector<Vec>& route, double back)

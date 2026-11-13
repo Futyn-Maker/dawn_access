@@ -465,6 +465,7 @@ namespace da::features
         double g_walkBestWayAt = 0.0;
         bool g_backedOff = false;     // this walk has stepped back once to walk in again (look::BackOffPoint)
         bool g_framingStepped = false; // this walk has stepped her out past a framing camera's distance (look::Framing)
+        bool g_companionBackedOff = false; // this walk has stepped back once from a companion in its only way (ways::BacksOffFrom)
         bool g_backOffActive = false; // ... and is on its way back now, its detour the line back to the point
         Vec g_backOffPoint;           // the point stepped back to (look::BackOffLine)
         double g_walkTargetSince = 0.0; // since when the walk has gone to its thing (set off, or turned to another)
@@ -6826,6 +6827,10 @@ namespace da::features
             std::unique_ptr<grid::Straightener> straightener;
             bool tried = false;
             bool failed = false; // no way round him: the walk ends naming him
+            // The ground asked with him left out, once no way round him was found (ways::WhoStops):
+            // whether that search is running now, and whether it found the ground itself closed.
+            bool groundOnly = false;
+            bool closed = false;
             double startedAt = -1000.0;
             Vec origin; // the grid's corner the search's cells are on
         };
@@ -7052,6 +7057,54 @@ namespace da::features
         }
 
         // Runs the last stretch; false while the walk is still on its way there.
+        // Whether a straight walk from where she stands to a point is walkable: the point on the ground
+        // the map reached, and a capsule swept there clear of everything.
+        bool WalkableStraight(UObject* pawn, const Vec& here, const Vec& to)
+        {
+            if (!OnMappedGround(to, g_grid.capsuleHalf)) return false;
+            const double lift = g_grid.stepHeight / 2.0;
+            const Vec a{here.x, here.y, here.z + lift};
+            const Vec b{to.x, to.y, to.z + lift};
+            const double clear = SweepClear(pawn, a, b, g_grid.radius, SweepHalfHeight());
+            return clear >= 0.0 && clear >= Distance(a, b) - 1.0;
+        }
+
+        // Steps her back from the companion standing in the walk's only way, kBackOff farther from him than
+        // she stands, by the first walkable way out (look::AwayFrom), and lets the walk go in again when she
+        // is there (FollowGrid) with a fresh way round him should he still stand in it. False where no way
+        // back is walkable.
+        bool StepBackFromCompanion(UObject* pawn, Target& t, const Vec& here, double now)
+        {
+            g_companionBackedOff = true;
+            const Vec him = g_walkBlockerAt;
+            const double facing = FacingYaw(pawn);
+            for (const double turn : look::kFramingTurns)
+            {
+                const Vec back = look::AwayFrom(him, here, FlatDistance(here, him) + look::kBackOff, facing, turn);
+                if (!WalkableStraight(pawn, here, back)) continue;
+                const std::wstring who = g_detour.around;
+                g_detour = Detour{};
+                g_backOffActive = true;
+                g_backOffPoint = back;
+                t.detour = look::BackOffLine(here, back);
+                g_arriveSince = -1.0;
+                g_walkMeasure = {0, 0.0};
+                g_walkMovingAt = now;
+                g_walkLeanedAt = now;
+                g_walkBestWay = 1e9;
+                g_walkBestWayAt = now;
+                g_walkBlocker.clear();
+                g_walkBlockerName.clear();
+                g_slide.Spoiled();
+                log::Info(L"explore: {} stands in the only way to \"{}\": the walk steps her back to ({:.0f}, {:.0f}), turned {:+.0f} deg, for him to "
+                          L"come on, and walks in again",
+                          who, t.label, back.x, back.y, turn);
+                return true;
+            }
+            log::Info(L"explore: no way back from {} is walkable", g_detour.around);
+            return false;
+        }
+
         // Steps her out past the distance the framing camera on the view waits for (look::Framing), along
         // the first way out that lies on the ground the map reached and that a capsule sweep finds clear:
         // the walk's way back (look::BackOffLine), after which it walks in again (FollowGrid). False when
@@ -7069,15 +7122,11 @@ namespace da::features
                                                 : std::wstring(L"at a push of the stick"),
                       Distance(here, framing->start));
             if (left <= 0.0) return false;
-            const double lift = g_grid.stepHeight / 2.0;
-            const Vec from{here.x, here.y, here.z + lift};
+            const double facing = FacingYaw(pawn);
             for (const double turn : look::kFramingTurns)
             {
-                const Vec exit = look::FramingExit(*framing, here, FacingYaw(pawn), turn);
-                if (!OnMappedGround(exit, g_grid.capsuleHalf)) continue;
-                const Vec to{exit.x, exit.y, exit.z + lift};
-                const double clear = SweepClear(pawn, from, to, g_grid.radius, SweepHalfHeight());
-                if (clear < 0.0 || clear < Distance(from, to) - 1.0) continue;
+                const Vec exit = look::FramingExit(*framing, here, facing, turn);
+                if (!WalkableStraight(pawn, here, exit)) continue;
                 g_backOffActive = true;
                 g_backOffPoint = exit;
                 t.detour = look::BackOffLine(here, exit);
@@ -7235,7 +7284,20 @@ namespace da::features
                 if (!p.inside && !g_backedOff)
                 {
                     const bool fresh = !t.gridCorners.empty() && FlatDistance(Aim(t), t.gridGoal) < 50.0;
-                    const auto back = look::BackOffPoint(fresh ? t.gridCorners : std::vector<Vec>{});
+                    auto back = look::BackOffPoint(fresh ? t.gridCorners : std::vector<Vec>{});
+                    // No way to step back along: farther from her spot than she stands, by the first way
+                    // out that is walkable (look::BackOffFrom).
+                    if (!back)
+                    {
+                        const double facingNow = FacingYaw(pawn);
+                        for (const double turn : look::kFramingTurns)
+                        {
+                            const Vec out = look::BackOffFrom(spot, here, facingNow, turn);
+                            if (!WalkableStraight(pawn, here, out)) continue;
+                            back = out;
+                            break;
+                        }
+                    }
                     if (back && FlatDistance(*back, here) > look::kBackOffReached)
                     {
                         g_backedOff = true;
@@ -7573,6 +7635,19 @@ namespace da::features
                     if (overBudget()) break;
                 }
                 if (state == grid::Search::State::Running) return true;
+                // The ground with him left out: a way there means he is what stops her (ways::WhoStops).
+                if (g_detour.groundOnly)
+                {
+                    const bool groundWay = state != grid::Search::State::Failed;
+                    log::Info(L"explore: with {} left out, the ground {} \"{}\" ({} cells opened)", g_detour.around,
+                              groundWay ? L"has a way to" : L"has no way to", t.label, g_detour.search->Expanded());
+                    g_detour.search.reset();
+                    if (ways::WhoStops(groundWay) == ways::StopBy::Him)
+                        g_detour.failed = true;
+                    else
+                        g_detour.closed = true;
+                    return false;
+                }
                 if (state == grid::Search::State::Failed)
                 {
                     log::Info(L"explore: no way round {} to \"{}\": {} cells opened with the ground about him kept {:.0f} cm clear", g_detour.around,
@@ -7589,7 +7664,13 @@ namespace da::features
                         StartDetourSearch(pawn, t);
                         if (g_detour.search) return true;
                     }
-                    // The walk got nowhere and no way passes him: it ends now, naming him.
+                    // No way passes him: whether he is what stops her, the ground asked with him left out
+                    // tells (ways::WhoStops); the walk ends naming him, or saying the thing is gone.
+                    g_detour.groundOnly = true;
+                    g_detour.keep.clearance = 0.0;
+                    log::Info(L"explore: the walk to \"{}\" asks the ground with {} left out", t.label, g_detour.around);
+                    StartDetourSearch(pawn, t);
+                    if (g_detour.search) return true;
                     g_detour.failed = true;
                     return false;
                 }
@@ -7752,12 +7833,23 @@ namespace da::features
             }
             if (g_detour.failed && g_detour.forActor == target->actor)
             {
+                // A companion in the only way, the first time in this walk: she steps back from him, as a
+                // player steps back for him to come on and leave the way, and walks in again
+                // (ways::BacksOffFrom); the second time the walk ends naming him.
+                if (ways::BacksOffFrom(g_companionBackedOff, g_detour.groundOnly) && StepBackFromCompanion(pawn, *target, here, now)) return;
                 if (g_walkBlocker.empty())
                 {
                     g_walkBlocker = g_detour.around;
                     g_walkBlockerName = g_detour.aroundName;
                 }
                 StopWalkBlocked();
+                return;
+            }
+            // The ground itself has no way there now, him left out: the thing is gone from her reach.
+            if (g_detour.closed && g_detour.forActor == target->actor)
+            {
+                log::Info(L"explore: the walk to \"{}\" ends: the ground has closed between her and it, not {}", target->label, g_detour.around);
+                StopWalkSaying(locale::Mod(L"explore.walk.gone", target->label));
                 return;
             }
             EnsureRoute(pawn, here, *target, now, 0.5, true);
@@ -8019,6 +8111,7 @@ namespace da::features
             g_walking = true;
             g_backedOff = false;
             g_framingStepped = false;
+            g_companionBackedOff = false;
             g_backOffActive = false;
             g_walkFor = target->actor;
             g_walkForLabel = target->label;

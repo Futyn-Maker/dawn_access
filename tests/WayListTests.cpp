@@ -2740,3 +2740,23 @@ TEST_CASE("walks: the way back to walk in again holds the walk until the point s
     CHECK(look::StretchKeeps(false, false, 120.0, 30.0, 60.0, false));
     CHECK(look::StretchKeeps(true, false, 120.0, 30.0, 60.0, true));
 }
+
+TEST_CASE("ways: a walk with no way round a companion names him only where the ground without him has a way: the cellar's corridor, s73 17:32:01")
+{
+    // The scene walled the corridor off while Ashley said she would go no further, Chris standing by the
+    // wall: "Chris is in the way" was said, and half a second later the map found the totem closed off by
+    // the scene's spline wall. With him left out the ground had no way: the thing is gone, not blocked by him.
+    CHECK(ways::WhoStops(false) == ways::StopBy::Ground);
+    // The cellar's corridor of s72 (11:54): a way past him over the ground, he standing in it.
+    CHECK(ways::WhoStops(true) == ways::StopBy::Him);
+}
+
+TEST_CASE("ways: a companion in the walk's only way is stepped back from once before the walk names him: the old hotel's doorway, s73 11:46:39 to 11:47:16")
+{
+    // The ground without him had a way: the first time the walk steps back for him to come on.
+    CHECK(ways::BacksOffFrom(false, true));
+    // The second time in the walk it names him.
+    CHECK_FALSE(ways::BacksOffFrom(true, true));
+    // Where the ground without him was not asked (no way round searched), nothing is known of him.
+    CHECK_FALSE(ways::BacksOffFrom(false, false));
+}

@@ -292,10 +292,21 @@ namespace da::look
     // How far she must still go from `here` for the framing to end by her going: 0 when it ends by a
     // push of the stick, or she has gone far enough.
     double FramingLeft(const Framing& f, const Vec& here);
+    // A point `reach` cm from `center` on the line from it through `here`, turned by `turn` degrees
+    // about `center`, at her height; straight on from her forward (`facingYaw`, degrees) where she stands
+    // at the center.
+    Vec AwayFrom(const Vec& center, const Vec& here, double reach, double facingYaw, double turn);
     // The point to step out to: on the line from where the framing began through her, kFramingMargin
-    // past its distance, turned by `turn` degrees about where it began, at her height; straight on from
-    // her forward (`facingYaw`, degrees) when she stands where it began.
+    // past its distance (AwayFrom).
     Vec FramingExit(const Framing& f, const Vec& here, double facingYaw, double turn);
+    // The point a last stretch out of the place steps back to where the walk's way gives none (the way
+    // felt out for another spot than the place's, or none): kBackOff farther from the spot than she
+    // stands, on the line from the spot through her (AwayFrom). The cart in the mine on 2026-11-13: the
+    // stretch's pushes moved her nowhere 37 cm from her spot, no way to step back along was known, the
+    // walk said it could not get there, and walked to again from 1.7 m off she was in the place at once
+    // (research/sessions/s73-play.log, 13:22:23 to 13:22:41); Ashley's place to rejoin the group the
+    // same at 15:54:42.
+    Vec BackOffFrom(const Vec& spot, const Vec& here, double facingYaw, double turn);
     // The turns tried, in order, where the straight way out is walled: the nearest first, both ways.
     constexpr std::array<double, 10> kFramingTurns = {0.0, 35.0, -35.0, 70.0, -70.0, 105.0, -105.0, 140.0, -140.0, 180.0};
 

@@ -628,6 +628,27 @@ namespace da::ways
     // to 12:03:15; fixture ground-cellar-chris-mouth.tsv). `hers` and `his`: the capsules' radii.
     std::vector<double> KeepClearances(double hers, double his);
 
+    // A walk stopped where another character stands, with no way round him at any clearance: whether he
+    // is what stops it. The ground asked with him left out decides (`groundWay`: a way to the thing over
+    // the ground alone): with one, he stands in the only way, and the walk names him; with none, the
+    // ground itself is closed and he merely stands by, and the walk says the thing is gone. In the
+    // lodge's cellar on 2026-11-13 the scene walled the corridor off while Ashley said she would go no
+    // further; Chris stood by the wall, "Chris is in the way" was said, and the map found the totem closed
+    // off by the scene's spline wall half a second later (research/sessions/s73-play.log, 17:32:01).
+    enum class StopBy
+    {
+        Him,
+        Ground,
+    };
+    StopBy WhoStops(bool groundWay);
+    // Whether the walk steps back from a companion standing in its only way rather than ending: once a
+    // walk, where the ground without him was asked and had a way (`groundAsked`). In the old hotel on
+    // 2026-11-13 Chris stood in the doorway past the projector door, the walk went round him and met him
+    // again, and ended "Chris is in the way" twice; walked to again after the chains, the way was free
+    // (research/sessions/s73-play.log, 11:46:39 to 11:47:16, then 11:48:37). A player steps back for
+    // him to come on and leave the way.
+    bool BacksOffFrom(bool alreadyBackedOff, bool groundAsked);
+
     // Whether a walk whose target left the list ended in arriving: a way on's volume she stands in
     // (`wayVolume` and `inside`), which the scene it set going took off the list in the same look,
     // is reached and said so; a use location, or a volume she is not in, has gone. In the lodge's

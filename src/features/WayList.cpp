@@ -442,6 +442,16 @@ namespace da::ways
         return !thing.behind && !thing.offPath && !thing.unreachable && !thing.superseded && !thing.onRoad && !thing.apart;
     }
 
+    StopBy WhoStops(bool groundWay)
+    {
+        return groundWay ? StopBy::Him : StopBy::Ground;
+    }
+
+    bool BacksOffFrom(bool alreadyBackedOff, bool groundAsked)
+    {
+        return groundAsked && !alreadyBackedOff;
+    }
+
     std::vector<double> KeepClearances(double hers, double his)
     {
         return {hers + his + kKeepClearMargin, hers + his};

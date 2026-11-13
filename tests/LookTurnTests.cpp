@@ -1338,3 +1338,22 @@ TEST_CASE("look: a framing camera that ends only by distance is walked out of: t
     CHECK(look::kFramingTurns.front() == 0.0);
     CHECK(look::kFramingTurns[1] == -look::kFramingTurns[2]);
 }
+
+TEST_CASE("look: a last stretch with no way to step back along steps back away from its spot: the cart in the mine, s73 13:22:23 to 13:22:41")
+{
+    // The stretch's pushes moved her nowhere 37 cm from her spot and the walk had no way of its own to step
+    // back along; walked to again from 1.7 m off, she was in the place at once.
+    const look::Vec spot{-32645.0, 1671.0, -6960.0};
+    const look::Vec here{-32667.0, 1640.0, -6965.0};
+    const look::Vec back = look::BackOffFrom(spot, here, 0.0, 0.0);
+    CHECK(std::hypot(back.x - spot.x, back.y - spot.y) == doctest::Approx(std::hypot(here.x - spot.x, here.y - spot.y) + look::kBackOff));
+    CHECK(std::hypot(back.x - here.x, back.y - here.y) == doctest::Approx(look::kBackOff));
+    CHECK(back.z == here.z);
+    // Turned about the spot where the straight way back is walled, as far from the spot.
+    const look::Vec turned = look::BackOffFrom(spot, here, 0.0, 70.0);
+    CHECK(std::hypot(turned.x - spot.x, turned.y - spot.y) == doctest::Approx(std::hypot(here.x - spot.x, here.y - spot.y) + look::kBackOff));
+    // At the spot itself: straight back from her forward.
+    const look::Vec fromSpot = look::BackOffFrom(spot, spot, 180.0, 0.0);
+    CHECK(fromSpot.x == doctest::Approx(spot.x - look::kBackOff));
+    CHECK(fromSpot.y == doctest::Approx(spot.y).epsilon(1e-6));
+}
