@@ -268,6 +268,12 @@ namespace da::picture
         // The film on the lodge's cinema screen (133 s): a blank, scratched leader, Sam in her bath
         // (36.9 s), the saw and Josh (63.9 s), the leader again (69.9 s).
         if (lower == L"smg_sting") return {0.0, 36.9, 63.9, 69.9};
+        // Chapter 1's opening film (255 s), its first 102 s with no speech and no subtitle: the title
+        // (5 s), the cast's names over close-ups of objects (13 s), the crew and the song (72 s), then,
+        // under the radio's talk, the bus on the mountain road (104.5 s), Sam on the bus with the radio
+        // on her phone (137 s) and Josh's video on it (157.5 s), each where the film's frames show it
+        // (research/films/Intro_BusRide).
+        if (lower == L"intro_busride") return {4.5, 13.0, 72.0, 104.5, 137.0, 157.5};
         // The sisters at the cliff (9 s): its first five seconds are said with the film; the rest, where
         // Hannah lies at the foot of the cliff, only where the credits show it whole (scene01's queue, 9 s;
         // all_survivor_accounts shows 5 s).

@@ -590,6 +590,13 @@ TEST_CASE("pictures: a long film is said in parts as it plays, the part it stand
     CHECK(picture::PartsOf(L"death_act1_1_sisters_cliff") == std::vector<double>{5.5});
     CHECK(picture::PartKey(L"death_act1_1_sisters_cliff", 0) == L"film.death_act1_1_sisters_cliff.1");
     CHECK(picture::PartsOf(L"death_act1_1_sisters_cliff_alone").empty());
+    // Chapter 1's opening film: the title, the cast, the crew and the song, then the bus, Sam and Josh's
+    // video under the radio's talk (s68 01:06:35 skipped it at 106 s, before any word of it was said).
+    const auto bus = picture::PartsOf(L"Intro_BusRide");
+    REQUIRE(bus.size() == 6);
+    CHECK(bus.front() == 4.5);
+    CHECK(bus[3] == 104.5);
+    CHECK(picture::PartKey(L"Intro_BusRide", 5) == L"film.intro_busride.6");
 
     // The parts begin where the film shows them, measured on its own frames: the miners' photograph
     // at 20.5 s, the man with the flamethrower at 107.5 s.
@@ -644,6 +651,62 @@ TEST_CASE("pictures: the events of the past are described on the key, the part t
     CHECK_FALSE(picture::PartAt(parts, 25.0, false));
     // The epilogue's film begins its first part 5.5 s in: nothing before it.
     CHECK_FALSE(picture::PartAt(picture::PartsOf(L"sam_end_credits"), 2.0, true));
+}
+
+TEST_CASE("films: every flashback of the butterfly effect and every part of a film in parts has its words in the shipped table")
+{
+    std::ifstream in(std::filesystem::path(DA_REPO_ROOT) / "mod" / "lang" / "films" / "en_US.ini", std::ios::binary);
+    REQUIRE(in);
+    std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    std::set<std::wstring> keys;
+    size_t at = 0;
+    while (at < text.size())
+    {
+        size_t end = text.find('\n', at);
+        if (end == std::string::npos) end = text.size();
+        std::string line = text.substr(at, end - at);
+        at = end + 1;
+        if (line.starts_with("\xEF\xBB\xBF")) line.erase(0, 3);
+        const auto eq = line.find('=');
+        if (!line.starts_with("film.") || eq == std::string::npos) continue;
+        keys.insert(std::wstring(line.begin(), line.begin() + static_cast<std::ptrdiff_t>(eq)));
+    }
+    const auto described = [&](const std::wstring& film)
+    {
+        const auto tried = picture::FilmKeys(film);
+        return std::any_of(tried.begin(), tried.end(), [&](const std::wstring& key) { return keys.contains(key); });
+    };
+    // The 31 flashbacks of the game's Movies folder (causaleffect_*.bk2), played as a consequence comes:
+    // six of them played unsaid in sessions 70 to 73 ("no words for it").
+    const wchar_t* flashbacks[] = {
+        L"causaleffect_act1_3_samattackedbycrow",     L"causaleffect_act2_1_mattlooksthroughtelescope", L"causaleffect_act2_2_minetunnel",
+        L"causaleffect_act2_4_samfindsbaseballbat",   L"causaleffect_act2_5_jessthroughwindow_coat",    L"causaleffect_act2_5_jessthroughwindow_pants",
+        L"causaleffect_act2_5_jessthroughwindow_vest", L"causaleffect_act2_5_telescope",                L"causaleffect_act3_2_bridgefail",
+        L"causaleffect_act3_2_clifffail",             L"causaleffect_act3_2_cliffsafe",                 L"causaleffect_act3_2_grabfencefail",
+        L"causaleffect_act3_2_grabrootfail",          L"causaleffect_act3_2_jumpclifffail",             L"causaleffect_act3_2_mikefallsover",
+        L"causaleffect_act3_2_mikeisfast",            L"causaleffect_act3_2_pipefail",                  L"causaleffect_act3_2_shimmy",
+        L"causaleffect_act3_2_takestairs",            L"causaleffect_act3_2_wendigointower_fast",       L"causaleffect_act3_2_wendigointower_slow",
+        L"causaleffect_act3_4_lighterbehindboards",   L"causaleffect_act4_1_chrissavesash",             L"causaleffect_act4_2_mikebefriendswolf",
+        L"causaleffect_act4_2_mikekickswolf",         L"causaleffect_act4_2_mikelooksatswolf",          L"causaleffect_act4_2_mikestillhasmachete",
+        L"causaleffect_act4_2_wendigoheadinajar",     L"causaleffect_act5_2_emgivesflaretomatt",        L"causaleffect_act5_3_chrisshotashley",
+        L"causaleffect_act7_3_ashley_trapdoor",
+    };
+    for (const auto* film : flashbacks)
+    {
+        CAPTURE(std::wstring(film));
+        CHECK(described(film));
+    }
+    // A film said in parts has the words of each part.
+    for (const auto* film : {L"totem_events_of_the_past", L"sam_end_credits", L"smg_sting", L"death_act1_1_sisters_cliff", L"intro_busride"})
+    {
+        const auto parts = picture::PartsOf(film);
+        REQUIRE_FALSE(parts.empty());
+        for (size_t i = 0; i < parts.size(); ++i)
+        {
+            CAPTURE(picture::PartKey(film, i));
+            CHECK(keys.contains(picture::PartKey(film, i)));
+        }
+    }
 }
 
 TEST_CASE("films: played again where it stood, a film goes on; played anew, it begins again")
