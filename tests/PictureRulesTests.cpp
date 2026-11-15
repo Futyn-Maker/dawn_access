@@ -1004,3 +1004,53 @@ TEST_CASE("pictures: one class placed by two levels is described as the level th
     CHECK(picture::PlansFor(Names{L"I_wine_rack", L"I_wine_rack", L"BP_Wine_rack_C", L"", L"LV_Activities_cinema_to_kitchenstairs"}).size() == 1);
     CHECK(picture::PlansFor(Names{L"I_wine_rack", L"I_wine_rack", L"BP_Wine_rack_C", L"", L"LV_Activities_cinema_to_kitchenstairs"})[0].key == L"i_wine_rack");
 }
+
+TEST_CASE("pictures: the looks of chapters 4 to 6 that show no text are described as their looks stand, by the names the logs give them")
+{
+    using Names = std::vector<std::wstring>;
+    // research/sessions s49-s73, each "goes by core name" line and the states the look stood in.
+    struct Seen
+    {
+        Names names;
+        const wchar_t* key;
+        picture::Moment moment;
+        const wchar_t* state;
+    };
+    const Seen seen[] = {
+        {{L"I_ashleys_purse", L"I_ashleys_purse", L"BP_Ashleyspurse_C"}, L"i_ashleys_purse", picture::Moment::Reveals, L""},
+        {{L"I_investigate_blood_kitchen", L"I_investigate_blood_kitchen", L"BP_Bloodkitchen_C"},
+         L"i_investigate_blood_kitchen",
+         picture::Moment::State,
+         L"examine_idle"},
+        {{L"I_hospital_the_chair", L"I_hospital_the_chair", L"BP_Chair_lookat_C"}, L"i_hospital_the_chair", picture::Moment::State, L"examine_idle"},
+        {{L"I_morgue_security_gate_lookat", L"I_morgue_security_gate_lookat", L"BP_Morgue_security_gate_lookat_C"},
+         L"i_morgue_security_gate_lookat",
+         picture::Moment::State,
+         L"examine_idle"},
+        {{L"I_jackslair_look_into_church", L"I_jackslair_look_into_church", L"BP_Look_into_church_C"},
+         L"i_jackslair_look_into_church",
+         picture::Moment::State,
+         L"examine_idle"},
+        // The boiler room's window takes its class's core name, the skull's (s71: "goes by core name
+        // \"I_wendigo_skull\", the level's name \"I_BoilerRoom_Lookat\"").
+        {{L"I_wendigo_skull", L"I_BoilerRoom_Lookat", L"BP_BoilerRoom_C"}, L"i_boilerroom_lookat", picture::Moment::State, L"examine_idle"},
+        {{L"I_jackslair_storagechest", L"I_jackslair_storagechest", L"BP_Storage_chest_C"},
+         L"i_jackslair_storagechest",
+         picture::Moment::State,
+         L"examine_bone"},
+        {{L"I_warningsign", L"I_warningsign", L"BP_Warningsign_C"}, L"i_warningsign", picture::Moment::State, L"examine_idle"},
+        {{L"I_sams_sock", L"I_sams_sock", L"BP_Pickup_sams_sock_C"}, L"i_sams_sock", picture::Moment::State, L"ik_Pose_shot2"},
+        {{L"I_cooling_equipment", L"I_cooling_equipment", L"BP_Cooling_equipment_C"}, L"i_cooling_equipment", picture::Moment::State, L"examine_idle"},
+    };
+    for (const auto& s : seen)
+    {
+        CAPTURE(s.key);
+        const auto plans = picture::PlansFor(s.names);
+        REQUIRE(plans.size() == 1);
+        CHECK(plans[0].key == s.key);
+        CHECK(plans[0].moment == s.moment);
+        CHECK(plans[0].state == s.state);
+    }
+    // The wendigo skull itself is a clue: the boiler room's words never come at it.
+    CHECK(picture::PlansFor(Names{L"I_wendigo_skull", L"I_wendigo_skull", L"BP_Wendigo_skull_C"}).empty());
+}

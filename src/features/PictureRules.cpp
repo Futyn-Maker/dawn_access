@@ -53,7 +53,7 @@ namespace da::picture
 
         // The interactions whose pictures the mod describes, and when; the moments are the game's own
         // states, as the logs of chapters 5 and 6 show them.
-        constexpr std::array<Planned, 72> kPlans = {
+        constexpr std::array<Planned, 82> kPlans = {
             // Dr. Hill's card is picked up face down and turned over with the stick (act20_1,
             // BP_PsychSession_PickUp, which no other level places: its examine stage reveals). It has no
             // core name; its activity starts it as I_psychsession_1_Interaction.
@@ -228,6 +228,25 @@ namespace da::picture
             Planned{L"i_fallen_beams", L"bp_fallen_beams_c", Moment::State, L"examine_idle"},
             Planned{L"i_lookatmineexit", L"bp_lookat_mine_exit_c", Moment::State, L"examine_idle"},
             Planned{L"i_matts_shoe", L"bp_mattsshoe_c", Moment::State, L"IKexamine"},
+            // Chapters 4 to 6 (s74: scratchpad pics_p2): Chris holds up Ashley's purse and looks at the blood
+            // in the kitchen (act4_1); Mike in the sanatorium (act4_2) at the chair seen from the room
+            // beside it (its own look, not the clue's reveal), the morgue gate's reader (the game reuses the
+            // chapel's sign there), the chapel seen through the boards, the boiler room through a barred
+            // window (no core name of its own: it takes its class's I_wendigo_skull, so it goes by the level's
+            // name and its class, never by the skull's), and the bone he holds up from the chest for the wolves
+            // (a look inside an action, its examine_bone); Matt at the other half of the broken danger sign
+            // (act4_3, DAN over CLIFF); Sam's sock where her clothes were (act5_1); Ashley at the old hotel's
+            // cooling unit (act5_3).
+            Planned{L"i_ashleys_purse", L"bp_ashleyspurse_c", Moment::Reveals, L""},
+            Planned{L"i_investigate_blood_kitchen", L"bp_bloodkitchen_c", Moment::State, L"examine_idle"},
+            Planned{L"i_hospital_the_chair", L"bp_chair_lookat_c", Moment::State, L"examine_idle"},
+            Planned{L"i_morgue_security_gate_lookat", L"bp_morgue_security_gate_lookat_c", Moment::State, L"examine_idle"},
+            Planned{L"i_jackslair_look_into_church", L"bp_look_into_church_c", Moment::State, L"examine_idle"},
+            Planned{L"i_boilerroom_lookat", L"bp_boilerroom_c", Moment::State, L"examine_idle"},
+            Planned{L"i_jackslair_storagechest", L"bp_storage_chest_c", Moment::State, L"examine_bone"},
+            Planned{L"i_warningsign", L"bp_warningsign_c", Moment::State, L"examine_idle"},
+            Planned{L"i_sams_sock", L"bp_pickup_sams_sock_c", Moment::State, L"ik_Pose_shot2"},
+            Planned{L"i_cooling_equipment", L"bp_cooling_equipment_c", Moment::State, L"examine_idle"},
         };
 
         // A picture the game draws one of several ways by the player's earlier answers: the callforward its
