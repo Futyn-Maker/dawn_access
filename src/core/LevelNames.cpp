@@ -80,4 +80,14 @@ namespace da::level
         g_friendlyNames[obj::KeyOf(actor)] = name;
         return name;
     }
+
+    std::wstring PlacingLevel(UObject* actor)
+    {
+        if (!obj::IsLive(actor)) return {};
+        UObject* level = obj::Outer(actor);
+        if (!level || obj::ClassName(level) != L"Level") return {};
+        UObject* world = obj::Outer(level);
+        if (!world || obj::ClassName(world) != L"World") return {};
+        return obj::ObjectName(world);
+    }
 }

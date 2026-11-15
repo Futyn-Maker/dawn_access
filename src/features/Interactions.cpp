@@ -112,14 +112,16 @@ namespace da::features
             g_photoWords.clear();
             g_look.reset();
             if (!bound) return;
-            // The class's package last: two blueprints of one name (BP_Telescope of Act2_2 and of act2_3,
-            // their core names alike) are told apart by it.
+            // The class's package: two blueprints of one name (BP_Telescope of Act2_2 and of act2_3, their
+            // core names alike) are told apart by it. The level that places it last: one class placed in two
+            // levels may show two things (the wine cellar door, picture::PlansFor).
             UObject* package = bound->GetClassPrivate() ? bound->GetClassPrivate()->GetOuterPrivate() : nullptr;
             const std::vector<std::wstring> names = {level::CoreName(bound), level::FriendlyName(bound), obj::ClassName(bound),
-                                                     package ? obj::ObjectName(package) : std::wstring()};
+                                                     package ? obj::ObjectName(package) : std::wstring(), level::PlacingLevel(bound)};
             g_looks = picture::PlansFor(names);
             if (!g_looks.empty()) g_look = g_looks.front();
-            log::Info(L"interactions: {} goes by core name \"{}\", the level's name \"{}\"; {}", obj::ObjectName(bound), names[0], names[1],
+            log::Info(L"interactions: {} goes by core name \"{}\", the level's name \"{}\", placed by {}; {}", obj::ObjectName(bound), names[0], names[1],
+                      names[4].empty() ? std::wstring(L"no level read") : names[4],
                       g_look ? L"its picture is described as \"" + g_look->key + L"\"" : std::wstring(L"no picture of it is described"));
         }
 

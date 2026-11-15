@@ -21,4 +21,9 @@ namespace da::level
     // actor, since the answer comes back as a struct whose string and map stay with the pool. Asked on
     // the game thread.
     std::wstring FriendlyName(RC::Unreal::UObject* actor);
+
+    // The name of the level that places the actor (its outer ULevel's outer world: the streamed map,
+    // "LV_Scene01_cold_water_doors"); empty for none. One class placed in two levels may show two things:
+    // the wine cellar door of act2_4 keeps its knob, act5_3's wears a material without one.
+    std::wstring PlacingLevel(RC::Unreal::UObject* actor);
 }

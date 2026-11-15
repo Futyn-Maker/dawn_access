@@ -46,11 +46,14 @@ namespace da::picture
             Moment moment;
             std::wstring_view state;
             bool afterHud = false; // shown with words of the HUD's own, said after them (LookPlan::afterHud)
+            // The level that places it (lower case), where one class is placed by two levels that show it
+            // differently: the plan holds only there, and its key, with a suffix, matches no core name.
+            std::wstring_view level = {};
         };
 
         // The interactions whose pictures the mod describes, and when; the moments are the game's own
         // states, as the logs of chapters 5 and 6 show them.
-        constexpr std::array<Planned, 61> kPlans = {
+        constexpr std::array<Planned, 62> kPlans = {
             // Dr. Hill's card is picked up face down and turned over with the stick (act20_1,
             // BP_PsychSession_PickUp, which no other level places: its examine stage reveals). It has no
             // core name; its activity starts it as I_psychsession_1_Interaction.
@@ -148,7 +151,12 @@ namespace da::picture
             Planned{L"i_doll_house_lookat_keyhole", L"bp_doll_house_lookat_keyhole_c", Moment::State, L"examine_idle"},
             Planned{L"i_doll_house_key", L"bp_doll_house_key_c", Moment::State, L"ik_animation"},
             Planned{L"i_wine_rack", L"bp_wine_rack_c", Moment::State, L"examine_idle"},
-            Planned{L"i_wine_cellar_door", L"bp_wine_cellar_door_lookat_c", Moment::State, L"examine_idle"},
+            // The wine cellar door, one class placed by two levels at one spot (Planned::level): act5_3's
+            // door wears a material that hides its knob (MI_wine_cellar_door_no_handle_VTS_UP), act2_4's, which
+            // Sam may look at in chapter 2, keeps its knob.
+            Planned{L"i_wine_cellar_door.act5_3", L"bp_wine_cellar_door_lookat_c", Moment::State, L"examine_idle", false,
+                    L"lv_activities_cinema_to_kitchenstairs"},
+            Planned{L"i_wine_cellar_door.act2_4", L"bp_wine_cellar_door_lookat_c", Moment::State, L"examine_idle", false, L"lv_scene01_cold_water_doors"},
             Planned{L"i_doll_head", L"bp_dolls_head_c", Moment::Reveals, L""},
             Planned{L"i_doll_head.roaches", L"bp_dolls_head_c", Moment::State, L"cockroach_panic"},
             Planned{L"i_sams_sack", L"bp_samsack_c", Moment::State, L"EndPose"},
@@ -403,7 +411,10 @@ namespace da::picture
                                                const std::wstring lower = str::ToLower(name);
                                                return p.key == lower || (!p.className.empty() && p.className == lower);
                                            });
-            if (named) plans.push_back(LookPlan{p.moment, std::wstring(p.state), std::wstring(p.key), p.afterHud});
+            // A plan held to a level holds only for the interaction that level places (Planned::level).
+            const bool placed = p.level.empty() || std::any_of(names.begin(), names.end(),
+                                                               [&](const std::wstring& name) { return !name.empty() && str::ToLower(name) == p.level; });
+            if (named && placed) plans.push_back(LookPlan{p.moment, std::wstring(p.state), std::wstring(p.key), p.afterHud});
         }
         return plans;
     }

@@ -934,3 +934,28 @@ TEST_CASE("pictures: every look at a thing says its picture again, and a film pl
     CHECK(showing.Says(0));
     CHECK_FALSE(showing.Says(0));
 }
+
+TEST_CASE("pictures: one class placed by two levels is described as the level that places it shows it: the wine cellar door, 2026-11-15")
+{
+    using Names = std::vector<std::wstring>;
+    // Both doors give the same core name, level name, class and class package (s72 11:13:20 in act5_3; act2_4's
+    // was listed in s71); act5_3's wears a material hiding its knob, act2_4's keeps it.
+    const auto door = [](const wchar_t* level)
+    {
+        return picture::PlansFor(Names{L"I_wine_cellar_door", L"I_wine_cellar_door", L"BP_Wine_cellar_door_lookat_C",
+                                       L"/Game/Gameplay/Gameobjects/interactions/Act5_3/Wine_cellar_door/BP_Wine_cellar_door_lookat", level});
+    };
+    const auto cellar = door(L"LV_Activities_cinema_to_kitchenstairs");
+    REQUIRE(cellar.size() == 1);
+    CHECK(cellar[0].key == L"i_wine_cellar_door.act5_3");
+    CHECK(cellar[0].state == L"examine_idle");
+    const auto basement = door(L"LV_Scene01_cold_water_doors");
+    REQUIRE(basement.size() == 1);
+    CHECK(basement[0].key == L"i_wine_cellar_door.act2_4");
+    // A level the mod could not read, or another, gets no words: none is better than the other door's.
+    CHECK(door(L"").empty());
+    CHECK(door(L"LV_Scene02_the_boiler_secondary_interactions").empty());
+    // A level's name alone takes no plan: the door's class is wanted with it.
+    CHECK(picture::PlansFor(Names{L"I_wine_rack", L"I_wine_rack", L"BP_Wine_rack_C", L"", L"LV_Activities_cinema_to_kitchenstairs"}).size() == 1);
+    CHECK(picture::PlansFor(Names{L"I_wine_rack", L"I_wine_rack", L"BP_Wine_rack_C", L"", L"LV_Activities_cinema_to_kitchenstairs"})[0].key == L"i_wine_rack");
+}
