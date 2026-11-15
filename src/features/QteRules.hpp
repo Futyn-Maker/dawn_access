@@ -124,6 +124,15 @@ namespace da::qte
     };
     ExampleStep Example(double setUpAt, double now, bool shown);
 
+    // An example the game ends with no verdict and leaves drawn stands on its page, as a prompt paused
+    // in play stands until the press (whose key is said every kRepeat meanwhile: research/sessions/
+    // s45-full.log, 23:44:42): the settings' "pause on timeout" runs its example a second, ends it with
+    // none and leaves it up until the value or the row changes (2026-11-15, 20:15:05.591 to 20:15:13.009:
+    // WBP_QTEPrompt_C_2147476619), and the demonstration turned on in that time found nothing left to
+    // voice, the example taken for gone once it ended. Every other mode's example ends with a verdict (timed
+    // out, succeeded) or is taken from the page, and a prompt in play never stands so.
+    bool Stands(bool example, long long result, bool drawn);
+
     // ---- the settings' demonstration ---------------------------------------------------------
     //
     // The accessibility tab's QTE rows (Setting_QTEBehaviour, Setting_QTEIcon, Setting_SingleQTEAction,

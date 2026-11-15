@@ -42,6 +42,7 @@ namespace da::features
             sounds::Cue cue = sounds::Cue::Up;
             bool exampleWaits = false; // an example not said yet (qte::Example)
             bool voiced = false;       // an example the demonstration voices as a prompt in play (qte::Demo)
+            bool standing = false;     // an example the game ended with no verdict and left drawn (qte::Stands)
         };
         std::vector<Qte> g_qtes;
         qte::Examples g_examples; // a page can show the same example in several places at once
@@ -225,6 +226,19 @@ namespace da::features
         void Finish(Qte& qte, int64_t result, const wchar_t* readFrom)
         {
             if (qte.finished) return;
+            // The pause on timeout's example stands on its page, as a paused prompt in play waits for the
+            // press: kept, and voiced as such while the demonstration plays (its key every second), until
+            // it is taken from the page.
+            if (qte::Stands(qte.demonstration || qte.voiced, result, obj::IsWidgetShown(qte.widget) || ui::LayerWidgetDrawn(qte.widget)))
+            {
+                if (!qte.standing)
+                {
+                    qte.standing = true;
+                    log::Info(L"qte: the example {} stands after {:.2f} s, ended with no verdict (from {}){}", obj::ObjectName(qte.widget),
+                              gamethread::NowSeconds() - qte.setUpAt, readFrom, qte.voiced ? L", voiced on" : L"");
+                }
+                return;
+            }
             qte.finished = true;
             // Ended with no verdict: no word and no tone, as the prompt shows none.
             const qte::Outcome outcome = qte::OutcomeOf(result);
@@ -370,16 +384,13 @@ namespace da::features
             const double now = gamethread::NowSeconds();
             for (auto& q : g_qtes)
             {
-                if (!q.demonstration || q.exampleWaits || !obj::IsLive(q.widget)) continue;
+                if (!q.demonstration || q.exampleWaits || q.finished || !obj::IsLive(q.widget)) continue;
                 if (!(obj::IsWidgetShown(q.widget) || ui::LayerWidgetDrawn(q.widget))) continue;
-                // The example on the page now: a running one voiced on from here, one standing (the pause
-                // on timeout's) said as it stands.
-                if (!q.finished)
-                {
-                    q.voiced = true;
-                    q.demonstration = false;
-                }
-                log::Info(L"qte: the demonstration voices the example on the page, {}", obj::ObjectName(q.widget));
+                // The example on the page now, running or standing (the pause on timeout's, qte::Stands):
+                // voiced on from here as a prompt in play is. One that has ended is over.
+                q.voiced = true;
+                q.demonstration = false;
+                log::Info(L"qte: the demonstration voices the example on the page, {}{}", obj::ObjectName(q.widget), q.standing ? L", which stands" : L"");
                 Speak(q, now, true);
                 break;
             }

@@ -122,4 +122,9 @@ namespace da::qte
         if (!shown) return ExampleStep::Drop;
         return now - setUpAt < kExampleSettle ? ExampleStep::Wait : ExampleStep::Say;
     }
+
+    bool Stands(bool example, long long result, bool drawn)
+    {
+        return example && drawn && OutcomeOf(result) == Outcome::None;
+    }
 }

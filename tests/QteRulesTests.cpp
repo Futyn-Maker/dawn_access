@@ -327,3 +327,38 @@ TEST_CASE("qte: the settings' examples are silent until the player's key plays t
     CHECK_FALSE(demo.Here());
     CHECK(demo.Toggled() == qte::Demo::Toggle::NotHere);
 }
+
+TEST_CASE("qte: the pause on timeout's example stands once the game ends it with no verdict, and is voiced on as a paused prompt: 2026-11-15")
+{
+    // Andrey's log of 2026-11-15: on "Пауза по истечении времени" the page's example
+    // (WBP_QTEPrompt_C_2147476619, set up 20:15:04.586) ended by the game's own call with no verdict
+    // 1.00 s on, at 20:15:05.591, and stayed drawn until the value changed at 20:15:13.009; the
+    // demonstration turned on at 20:15:06.614 had nothing left to voice.
+    CHECK(qte::Stands(true, 0, true));
+    // The other modes' examples end with a verdict: standard times out, succeed on timeout succeeds.
+    CHECK_FALSE(qte::Stands(true, 3, true));
+    CHECK_FALSE(qte::Stands(true, 1, true));
+    // The copies the page sets up with it are never drawn, and end as they go.
+    CHECK_FALSE(qte::Stands(true, 0, false));
+    // A prompt in play that the game ends with none is over, drawn as it fades or not.
+    CHECK_FALSE(qte::Stands(false, 0, true));
+
+    // Standing and voiced, it is a prompt paused in play (research/sessions/s45-full.log 23:44:42 to
+    // 23:44:44.563): its key every second while it stands drawn...
+    qte::Prompt example;
+    example.setUpAt = 0.0;
+    example.spokenAt = 2.0; // said as the demonstration was turned on
+    example.opened = true;
+    const Run standing = Play(example, 2.0, 6.0, true, qte::Stage{});
+    CHECK(standing.finishedAt < 0.0);
+    REQUIRE(standing.repeats.size() == 3);
+    CHECK(standing.repeats[0] == doctest::Approx(3.0));
+    CHECK(standing.repeats[2] == doctest::Approx(5.0));
+    // ... silent once the demonstration stops (an example again)...
+    example.demonstration = true;
+    CHECK(Play(example, 6.0, 9.0, true, qte::Stage{}).repeats.empty());
+    // ... and over, with no verdict, at the poll after it is seen taken from the page.
+    const Run gone = Play(example, 9.0, 10.0, false, qte::Stage{});
+    CHECK(gone.finishedAt == doctest::Approx(9.0 + kFrame));
+    CHECK(gone.last.result == 0);
+}
