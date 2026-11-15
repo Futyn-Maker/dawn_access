@@ -192,6 +192,19 @@ namespace da::grid
         return std::nullopt;
     }
 
+    std::optional<FloorProbe> FloorAmid(const FloorProbe& middle, const std::vector<FloorProbe>& around, double walkableZ)
+    {
+        if (!middle.hit) return std::nullopt;
+        if (middle.normalZ >= walkableZ) return middle;
+        std::optional<FloorProbe> best;
+        for (const auto& p : around)
+        {
+            if (!p.hit || p.normalZ < walkableZ) continue;
+            if (!best || p.z > best->z) best = p;
+        }
+        return best;
+    }
+
     Arrival PickArrival(const Flood& flood, Cell goal, int reach, const std::function<bool(Cell)>& deep, const std::function<bool(Cell)>& touches,
                         const std::function<bool(Cell)>& off)
     {

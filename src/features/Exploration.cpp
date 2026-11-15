@@ -557,6 +557,8 @@ namespace da::features
             // those swept again from a spot of the cell where she stands free (ways::SweepFromFreeSpot).
             int stuckSteps = 0;
             int freedSteps = 0;
+            // Floors found beside a column whose middle stood on ground too steep (grid::FloorAmid).
+            int floorsBeside = 0;
             bool unavailableLogged = false;
         };
         GridState g_grid;
@@ -669,6 +671,7 @@ namespace da::features
             int sweepsAtStart = 0;
             int stuckAtStart = 0; // GridState's stuck and freed steps when the map began
             int freedAtStart = 0;
+            int besideAtStart = 0; // and its floors found beside a steep middle
             // The rooms its ground lies in (rooms::Area), counted cell by cell as it reaches them,
             // under one count of the level's rooms.
             rooms::Area area;
@@ -4249,15 +4252,41 @@ namespace da::features
             const Vec to{x, y, level * kLevelSize - g_grid.stepHeight - 5.0};
             TraceHit trace;
             RunTrace(g_lineTrace, pawn, from, to, 0.0, 0.0, trace);
-            bool hit = trace.hit;
-            const Vec where = trace.location;
-            const Vec normal = trace.hit ? trace.impactNormal : Vec{0.0, 0.0, 1.0};
             ++g_grid.sweeps;
-            // Ground steeper than the character stands on is no floor to step onto: she
-            // would slide back down it.
-            const bool steep = hit && normal.z < g_grid.walkableZ;
-            if (steep) hit = false;
-            const int on = hit ? LevelIdOf(trace.component) : -1;
+            const auto probeOf = [](const TraceHit& t) { return grid::FloorProbe{t.hit, t.location.z, t.hit ? t.impactNormal.z : 1.0}; };
+            const grid::FloorProbe middle = probeOf(trace);
+            // Ground steeper than the character stands on is no floor to step onto: she would slide back
+            // down it. Under the middle alone it may be a sliver her capsule stands over: the lines beside
+            // it are asked, and the highest walkable is her floor (grid::FloorAmid).
+            std::vector<grid::FloorProbe> around;
+            std::vector<UObject*> aroundOn;
+            if (middle.hit && middle.normalZ < g_grid.walkableZ)
+            {
+                const double d = grid::kFloorAround;
+                for (const auto& [dx, dy] : {std::pair{d, 0.0}, std::pair{-d, 0.0}, std::pair{0.0, d}, std::pair{0.0, -d}})
+                {
+                    TraceHit side;
+                    RunTrace(g_lineTrace, pawn, Vec{x + dx, y + dy, from.z}, Vec{x + dx, y + dy, to.z}, 0.0, 0.0, side);
+                    ++g_grid.sweeps;
+                    around.push_back(probeOf(side));
+                    aroundOn.push_back(side.hit ? side.component : nullptr);
+                }
+            }
+            const auto amid = grid::FloorAmid(middle, around, g_grid.walkableZ);
+            bool hit = amid.has_value();
+            const bool steep = middle.hit && !hit;
+            UObject* component = trace.component;
+            if (amid && !around.empty())
+            {
+                ++g_grid.floorsBeside;
+                for (size_t i = 0; i < around.size(); ++i)
+                {
+                    if (around[i].z == amid->z && around[i].normalZ == amid->normalZ) component = aroundOn[i];
+                }
+            }
+            const Vec where{x, y, amid ? amid->z : middle.z};
+            const Vec normal{0.0, 0.0, amid ? amid->normalZ : middle.normalZ};
+            const int on = hit ? LevelIdOf(component) : -1;
             ground::Probe record;
             record.x = column.x;
             record.y = column.y;
@@ -5534,6 +5563,7 @@ namespace da::features
             g_reach.sweepsAtStart = g_grid.sweeps;
             g_reach.stuckAtStart = g_grid.stuckSteps;
             g_reach.freedAtStart = g_grid.freedSteps;
+            g_reach.besideAtStart = g_grid.floorsBeside;
             g_settle.Begin(now);
             log::Info(L"explore: the reach map is begun from cell ({}, {}) on level {} at ({:.0f}, {:.0f}, {:.0f})", start.x, start.y, start.level, middle.x,
                       middle.y, middle.z);
@@ -5876,6 +5906,8 @@ namespace da::features
                     log::Info(L"explore: since the map began {} steps of the ground began pressed into something and got nowhere after the engine's push "
                               L"out of it; {} of them were swept again from a spot of the cell where she stands free and found free",
                               stuck, g_grid.freedSteps - g_reach.freedAtStart);
+                if (const int beside = g_grid.floorsBeside - g_reach.besideAtStart; beside > 0)
+                    log::Info(L"explore: since the map began {} floor(s) were found beside a cell's middle that stood on ground too steep to stand on", beside);
             }
             CountArea();
             if (done && !g_zones.empty())

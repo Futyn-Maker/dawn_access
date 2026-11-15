@@ -2760,3 +2760,42 @@ TEST_CASE("ways: a companion in the walk's only way is stepped back from once be
     // Where the ground without him was not asked (no way round searched), nothing is known of him.
     CHECK_FALSE(ways::BacksOffFrom(false, false));
 }
+
+TEST_CASE("ways: a step begun touching a wall, hit at no distance with nothing to push out of, is swept from a free spot: act8_5's mine, s74")
+{
+    // One lattice phase in 64 across act8_5's corridor (the level's collision replayed offline, scratchpad
+    // s74 corridor) began a step 0.003 cm into the wall: a hit at once that is no penetration, so no push,
+    // and the step was refused without the free spot a stuck one is given.
+    int calls = 0;
+    const auto touching = [&](const Vec& f, const Vec& t)
+    {
+        ++calls;
+        ways::SweepHit hit;
+        // The first sweep, from the cell's middle, meets the wall at once; from a spot off it, nothing.
+        if (std::hypot(f.x, f.y) < 1e-6)
+        {
+            hit.hit = true;
+            hit.distance = 0.0;
+            hit.normal = Vec{0.0, -1.0, 0.0};
+        }
+        (void)t;
+        return hit;
+    };
+    const auto swept = ways::SweepOut(touching, Vec{0.0, 0.0, 0.0}, Vec{20.0, 0.0, 0.0});
+    CHECK(swept.hit);
+    CHECK(swept.clear < ways::kStuckClear);
+    CHECK(swept.stuck);
+    // Stuck, it is walked from a spot of the cell where she stands free, and gets to the next cell.
+    const auto freed = ways::SweepFromFreeSpot(touching, Vec{0.0, 0.0, 0.0}, Vec{20.0, 0.0, 0.0}, 10.0);
+    REQUIRE(freed.has_value());
+    CHECK(std::hypot(freed->x - 20.0, freed->y) <= 10.0);
+    // A sweep that gets half a centimetre or more before it meets something is no step begun touching.
+    const auto later = [&](const Vec&, const Vec&)
+    {
+        ways::SweepHit hit;
+        hit.hit = true;
+        hit.distance = 4.0;
+        return hit;
+    };
+    CHECK_FALSE(ways::SweepOut(later, Vec{0.0, 0.0, 0.0}, Vec{20.0, 0.0, 0.0}).stuck);
+}

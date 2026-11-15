@@ -817,7 +817,11 @@ namespace da::ways
         bool hit = false;   // it met something short of the end
         bool stuck = false; // begun pressed in, and still pressed in after the push, or met something at once
     };
-    constexpr double kStuckClear = 0.5; // cm: a sweep after the push that gets no farther met something at once
+    // cm: a sweep that gets no farther met something at once, whether after the push or begun only
+    // touching it, which the engine answers with a hit at no distance and nothing to push out of: one
+    // lattice in 64 across act8_5's mine corridor started a step 0.003 cm into the wall so, and was
+    // given no spot to stand free at (the level's collision replayed offline, s74).
+    constexpr double kStuckClear = 0.5;
     StepSweep SweepOut(const Sweep& sweep, const Vec& from, const Vec& to);
 
     // A step stuck so is swept again from a spot of its cell where her capsule stands free: the push

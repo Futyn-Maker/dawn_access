@@ -691,7 +691,7 @@ namespace da::ways
                 out.clear = std::clamp(hit.distance, 0.0, distance);
                 const double share = distance > 0.0 ? out.clear / distance : 0.0;
                 out.reached = Vec{f.x + (t.x - f.x) * share, f.y + (t.y - f.y) * share, f.z + (t.z - f.z) * share};
-                out.stuck = attempt == 1 && (hit.penetrating || out.clear < kStuckClear);
+                out.stuck = (attempt == 1 && hit.penetrating) || out.clear < kStuckClear;
                 return out;
             }
             const double push = hit.depth + 1.0;

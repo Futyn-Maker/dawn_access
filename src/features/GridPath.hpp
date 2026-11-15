@@ -53,6 +53,26 @@ namespace da::grid
     // (research/sessions/s56-full.log, 23:47:21). None when no step back is known free.
     std::optional<int> MirroredLanding(const KnownStep& known, Cell a, int bx, int by);
 
+    // What a line down a column met: whether it met anything, how high, and how steep (the z of the
+    // surface's normal).
+    struct FloorProbe
+    {
+        bool hit = false;
+        double z = 0.0;
+        double normalZ = 1.0;
+    };
+    // A column's floor as her capsule stands on it: the line down its middle, unless what it meets there is
+    // too steep to stand on (`normalZ` under `walkableZ`), when the lines kFloorAround cm off it along x and
+    // y are asked (`around`) and the highest walkable of them is the floor: her capsule rests on the highest
+    // ground under it, and a sliver of steep triangle under one point holds nothing up. In act8_5's mine a
+    // sliver of the floor mesh 1 to 2 cm wide (normal z 0.58) lay under the one column between the
+    // corridor's walls at its narrowest, on the grid Matt's map was laid on; the map took it for no floor,
+    // and the scene's trigger beyond was left out as closed off, the player stuck with Jessica at the lift
+    // (2026-11-14, a friend's run; the level's collision replayed offline, scratchpad s74 corridor). A line
+    // that meets nothing is no floor, whatever lies beside it: a hole is not bridged. None for no floor.
+    constexpr double kFloorAround = 5.0;
+    std::optional<FloorProbe> FloorAmid(const FloorProbe& middle, const std::vector<FloorProbe>& around, double walkableZ);
+
     // A way from a cell to one that is not its neighbour, which no step between neighbours finds:
     // the game's guidance passage through a doorway too tight for the cells' middles, which it takes
     // the character through from one end to the other. `cost` is in cells, as a step's.

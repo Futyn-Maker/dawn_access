@@ -758,3 +758,33 @@ TEST_CASE("the way between two cells of one flood goes back to where their paths
     // Paths of two floods share nothing.
     CHECK(grid::TreeWay({a1, a2}, {b1, b2}).empty());
 }
+
+TEST_CASE("grid: a column whose middle stands on a sliver too steep takes the highest walkable floor beside it: act8_5's mine, 2026-11-14")
+{
+    // The level's collision replayed offline (scratchpad s74 corridor, sliver_regression.json): the column
+    // (-10341.83, -14728.78) of the grid Matt's map was laid on, the one between the corridor's walls at its
+    // narrowest. The line down its middle meets a sliver of SM_lift_to_skiliftview_section06_VTS_UP 1 to 2 cm
+    // wide; the lines 5 cm off along x and y meet the same mesh's walkable floor.
+    const double walkable = 0.71;
+    const grid::FloorProbe middle{true, 4379.555, 0.5828};
+    const std::vector<grid::FloorProbe> around = {
+        {true, 4379.805, 0.9872}, // +5 along x
+        {true, 4379.187, 0.9978}, // -5 along x
+        {true, 4380.375, 0.9949}, // +5 along y
+        {true, 4379.195, 0.9908}, // -5 along y
+    };
+    const auto floor = grid::FloorAmid(middle, around, walkable);
+    REQUIRE(floor.has_value());
+    CHECK(floor->z == doctest::Approx(4380.375));
+    CHECK(floor->normalZ >= walkable);
+    // The step onto it from the cell south of it (floor 4376.82) is a step up of 3.6 cm.
+    CHECK(floor->z - 4376.82 < 45.0);
+    // A walkable middle is the floor as it is: nothing beside it is asked.
+    const auto flat = grid::FloorAmid(grid::FloorProbe{true, 4377.0, 0.99}, {}, walkable);
+    REQUIRE(flat.has_value());
+    CHECK(flat->z == doctest::Approx(4377.0));
+    // Steep under the middle and beside it: no floor (a slope she would slide down).
+    CHECK_FALSE(grid::FloorAmid(middle, {{true, 4380.0, 0.5}, {true, 4381.0, 0.6}}, walkable).has_value());
+    // A middle that meets nothing is no floor, whatever lies beside it: a hole is not bridged.
+    CHECK_FALSE(grid::FloorAmid(grid::FloorProbe{}, around, walkable).has_value());
+}
