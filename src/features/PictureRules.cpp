@@ -53,7 +53,7 @@ namespace da::picture
 
         // The interactions whose pictures the mod describes, and when; the moments are the game's own
         // states, as the logs of chapters 5 and 6 show them.
-        constexpr std::array<Planned, 62> kPlans = {
+        constexpr std::array<Planned, 72> kPlans = {
             // Dr. Hill's card is picked up face down and turned over with the stick (act20_1,
             // BP_PsychSession_PickUp, which no other level places: its examine stage reveals). It has no
             // core name; its activity starts it as I_psychsession_1_Interaction.
@@ -208,6 +208,26 @@ namespace da::picture
             Planned{L"i_telescope_look_only", L"bp_telescope_look_only_c", Moment::Begins, L""},
             Planned{L"i_motivation_board", L"bp_motivation_board_c", Moment::State, L"lookatboard"},
             Planned{L"i_motivation_board_lookat", L"bp_motivation_board_lookat_c", Moment::State, L"examine_idle"},
+            // Every look of the game that is no clue and shows no text, the looks whose only words are a
+            // character's that say nothing of what is shown included (Andrey, 2026-11-15), each settled from
+            // walkthroughs of the remake, or, for a thing held up close, by the thing's own mesh and texture
+            // (s74: scratchpad pics_p1, pics_p3). Mike's second look into the old truck's cab after the snow
+            // wipe's scare, Josh's baseball and the carved heart (act2_5); Sam at the shooting range's booth
+            // (act1_3) and at the basement's painting in chapter 2 (act2_4: the frame chapter 6's look shows,
+            // at the same spot; its class is the dollhouse look's, so it goes by its core name). Sam's snow
+            // globe in the psycho's lair (act6_2), Mike's figurine (act7_2), the cave-in by the mine's lift
+            // (act8_5: three placements, one spot, one camera), the mine's exit door (act8_1), and Matt's boot
+            // in Hannah's lair (act6_1, only if Matt died and not to the wendigo).
+            Planned{L"i_snowwipe_tractor_revisit", L"bp_snowwipe_tractor_revisit_c", Moment::State, L"look_idle_shot6"},
+            Planned{L"i_joshsbaseball", L"bp_joshsbaseball_c", Moment::State, L"IK"},
+            Planned{L"i_loveheart", L"bp_loveheart_c", Moment::State, L"examine_idle"},
+            Planned{L"i_rifle_lookat", L"bp_rifle_lookat_c", Moment::State, L"examine_idle"},
+            Planned{L"i_look_at_picture", L"", Moment::State, L"examine_idle"},
+            Planned{L"i_rush_of_blood_snowglobe", L"bp_rush_of_blood_snowglobe_c", Moment::State, L"ik_animation"},
+            Planned{L"i_chess_piece", L"bp_chess_piece_c", Moment::State, L"ik_animation"},
+            Planned{L"i_fallen_beams", L"bp_fallen_beams_c", Moment::State, L"examine_idle"},
+            Planned{L"i_lookatmineexit", L"bp_lookat_mine_exit_c", Moment::State, L"examine_idle"},
+            Planned{L"i_matts_shoe", L"bp_mattsshoe_c", Moment::State, L"IKexamine"},
         };
 
         // A picture the game draws one of several ways by the player's earlier answers: the callforward its

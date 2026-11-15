@@ -144,7 +144,8 @@ TEST_CASE("pictures: a photo is known by its texture, a thing in the hand by any
     CHECK(board->moment == picture::Moment::State);
     CHECK(board->state == L"lift_paper_idle");
     CHECK(picture::PlanFor(Names{L"I_look_at_dollshouse", L"I_look_at_dollshouse", L"BP_Look_at_picture_C"})->state == L"examine_idle");
-    CHECK_FALSE(picture::PlanFor(Names{L"I_look_at_picture", L"I_look_at_picture", L"BP_Look_at_picture_C"}).has_value());
+    // The painting beside it shares the class: it takes its own words (s74), never the dollhouse's.
+    CHECK(picture::PlanFor(Names{L"I_look_at_picture", L"I_look_at_picture", L"BP_Look_at_picture_C"})->key == L"i_look_at_picture");
     const auto doll = picture::PlanFor(Names{L"", L"I_Headlessdoll", L"BP_Headlessdoll_C"});
     REQUIRE(doll.has_value());
     CHECK(doll->moment == picture::Moment::Reveals);
@@ -933,6 +934,50 @@ TEST_CASE("pictures: every look at a thing says its picture again, and a film pl
     CHECK(showing.Says(-1));
     CHECK(showing.Says(0));
     CHECK_FALSE(showing.Says(0));
+}
+
+TEST_CASE("pictures: every look that is no clue and shows no text is described, a character's words of nothing it shows included: Andrey, 2026-11-15")
+{
+    using Names = std::vector<std::wstring>;
+    // The names the levels give them, as the logs' "goes by core name" and "uses" lines show them where
+    // Andrey used them (s46 and s71 the truck's cab, the heart and the baseball; s63 and s66 the figurine,
+    // the mine's exit door and the fallen beams), else as the levels place them.
+    struct Seen
+    {
+        Names names;
+        const wchar_t* key;
+        const wchar_t* state;
+    };
+    const Seen seen[] = {
+        {{L"I_SnowWipe_Tractor_Revisit", L"I_SnowWipe_Tractor_Revisit", L"BP_Snowwipe_tractor_revisit_C"}, L"i_snowwipe_tractor_revisit", L"look_idle_shot6"},
+        {{L"", L"I_JoshsBaseball", L"BP_JoshsBaseball_C"}, L"i_joshsbaseball", L"IK"},
+        {{L"I_Loveheart", L"I_Loveheart", L"BP_Loveheart_C"}, L"i_loveheart", L"examine_idle"},
+        {{L"I_rifle_lookat", L"I_rifle_lookat", L"BP_Rifle_lookat_C"}, L"i_rifle_lookat", L"examine_idle"},
+        {{L"I_look_at_picture", L"I_look_at_picture", L"BP_Look_at_picture_C"}, L"i_look_at_picture", L"examine_idle"},
+        {{L"", L"I_rush_of_blood_snowglobe", L"BP_rush_of_blood_snowglobe_C"}, L"i_rush_of_blood_snowglobe", L"ik_animation"},
+        {{L"I_chess_piece", L"I_chess_piece", L"BP_chess_piece_C"}, L"i_chess_piece", L"ik_animation"},
+        {{L"I_LookAtMineExit", L"I_LookAtMineExit", L"BP_Lookat_mine_exit_C"}, L"i_lookatmineexit", L"examine_idle"},
+        {{L"I_matts_shoe", L"I_matts_shoe", L"BP_Mattsshoe_C"}, L"i_matts_shoe", L"IKexamine"},
+        // The cave-in by the lift, one class at one spot in the three ways chapter 10 goes there.
+        {{L"I_fallen_beams_jessicasjourney", L"I_fallen_beams_jessicasjourney", L"BP_Fallen_beams_C"}, L"i_fallen_beams", L"examine_idle"},
+        {{L"I_fallen_beams_together", L"I_fallen_beams_together", L"BP_Fallen_beams_C"}, L"i_fallen_beams", L"examine_idle"},
+        {{L"I_fallen_beams_mattsjourney", L"I_fallen_beams_mattsjourney", L"BP_Fallen_beams_C"}, L"i_fallen_beams", L"examine_idle"},
+    };
+    for (const auto& s : seen)
+    {
+        CAPTURE(s.key);
+        const auto plans = picture::PlansFor(s.names);
+        REQUIRE(plans.size() == 1);
+        CHECK(plans[0].key == s.key);
+        CHECK(plans[0].moment == picture::Moment::State);
+        CHECK(plans[0].state == s.state);
+    }
+    // The painting's class is the dollhouse look's too: each goes by its own core name.
+    const auto dollhouse = picture::PlansFor(Names{L"I_look_at_dollshouse", L"I_look_at_dollshouse", L"BP_Look_at_picture_C"});
+    REQUIRE(dollhouse.size() == 1);
+    CHECK(dollhouse[0].key == L"i_look_at_dollshouse");
+    // The first snow wipe, whose scare shows the mask inside its sequence, is an action with no plan.
+    CHECK(picture::PlansFor(Names{L"I_SnowWipe_Tractor", L"I_SnowWipe_Tractor", L"BP_Snowwipe_tractor_C"}).empty());
 }
 
 TEST_CASE("pictures: one class placed by two levels is described as the level that places it shows it: the wine cellar door, 2026-11-15")
