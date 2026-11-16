@@ -1,0 +1,67 @@
+---
+paths:
+    - "src/features/{GridPath,GroundFile,GroundRecheck,WorldStream,Shapes,WorldRead,Vec}.*"
+    - "tests/fixtures/**"
+    - "tests/audit/**"
+    - "tools/ground/**"
+    - "tools/levels/**"
+---
+
+# The ground: grid, reach map, collision, streaming, records
+
+- **Anything about where things stand, what a road does or what a volume covers is settled from data before it is coded or claimed:** the level's collision, the trigger meshes' own shapes, the session's ground record. Never a plausibility sketch.
+    - Heights decide as much as the plan. Volumes are turned, and their meshes carry shapes in their points. A road is judged at every sample, never by its corners.
+    - A prediction about what the game does next comes from the scripts and the data, checked. One that leaves a rule of the mod's own out is wrong.
+- **There is no navigation mesh for the player's walk,** so the mod feels the ground out with the character's own body.
+    - The capsule is the live one (`GetScaledCapsuleRadius`, the half height: 42 and 90, a male body's 100), never a default. Offline replays used a wrong capsule once, and nothing agreed.
+    - The collision is the `Pawn` profile, through `UKismetSystemLibrary::LineTraceSingleByProfile` and `CapsuleTraceSingleByProfile`, with their UFunctions and parameter offsets prepared once (`PreparedTrace`).
+- **The grid (`features/GridPath`).**
+    - **Cells** are 20 cm, keyed by (x, y, level), with level = floor(floorZ / 50 cm).
+    - **A floor** is the first hit of a line down through a band from a step above the level's top to a step below its bottom.
+        - Ground steeper than the character's `WalkableFloorZ` is no floor.
+        - Where the middle of a column meets a steep sliver, the 4 points 5 cm beside it are tried and the highest walkable hit kept (`grid::FloorAmid`); a miss stays no floor. A 1 to 2 cm sliver of a floor mesh under one column once closed a corridor for one grid alignment in twenty.
+    - **A step is free** when the floors differ by at most `CharacterMovement.MaxStepHeight` and the capsule swept from floor to floor, spanning [floor + step, floor + 2 × half height], comes within half a cell (10 cm) of the target cell's middle.
+    - **Starting in contact.** A sweep that starts penetrating is pulled back along the normal by the depth + 1 cm and tried once more, as the character movement does.
+        - A step whose first sweep meets something within 0.5 cm, or penetrates, is stuck (`ways::SweepOut`). It is walked again from the first free spot of its cell (`ways::SweepFromFreeSpot`: rings at 5 and 10 cm, across the step's way first), recorded as `R`.
+        - The engine's push out of a triangle mesh gives no way out of a 3 to 4 cm overlap, which closed a corridor 96 cm wide for an 84 cm capsule.
+    - **A step known free one way is free the other** (`grid::MirroredLanding`): the sweep is not even both ways in a passage no wider than the capsule.
+    - **A step into a cell whose landing is known** from its column's probe is not asked again (`grid::Flood::SetLanding`).
+    - **A path pulled straight** takes the columns along the run within a step of each other (`GroundRuns`), never a capsule floating over a drop.
+- **The reach map** (`grid::Flood`: one Dijkstra per hand-over, per 15 m walked, per story move, per change of the ground) judges every target the same way.
+    - It runs within a frame budget (3 ms, 10 ms while a hold's first list waits).
+    - A target is reached where the capsule touches its real collision (`grid::Flood::BestWhere`). The arrival is a cell with her middle inside the place (`grid::PickArrival`), out of the volumes the game turns it off in.
+    - A search (A*) runs only for what a cut-short map left unjudged. A failed search keeps its partial way (`grid::Search::PartialPath`).
+- **Collision of volumes (`features/Shapes`, engine-free).** Trigger meshes carry their shape in their points: thousands of the game's trigger meshes over-reach their own local box by more than 30 cm, some by metres.
+    - So a volume's collision is read from its `UBodySetup::AggGeom` (convex elements with their transforms, boxes, spheres, capsules), placed by the component's transform.
+    - The capsule's touch is a GJK distance with the capsule's height (`shapes::CapsuleTouches`).
+    - A turned box (`VolumeBox`: the component's location, scale, rotation and local bounds) is the fallback for meshes with no simple collision.
+    - The engine's `GetActorBounds` is axis-aligned and never stands for a turned or long volume.
+- **The game's doorways** (`ABatesGuidancePassageVolume`, `BP_Doorway`; `EntryPointA`/`B` arrows) are read per level and walked as the character movement walks a doorway (`ways::PassageWalk`: straight, sliding along what she touches, re-aimed, lines beside it tried). A passage switched on, free, with no door leaf across it links its two ends (`ways::PassageLinks`).
+- **Door leaves are walls** while their door can be opened.
+    - A door's leaves are its interaction's `BoundObjects` props (soft references read by path, `recheck::FindBound`), their physics bodies placed by `GetSocketTransform(bone)`.
+    - A sleeping prop has its collision off, so leaves are weighed whatever their collision (`recheck::Weighed`).
+    - A thing a character carries (`ABatesHeldItemBase.CachedCarryingCharacter`) is never a leaf (`recheck::LeafOfDoor`).
+    - Doors always close behind the character: passing one is an interaction, never an open doorway.
+- **Other characters and creatures** go into the traces' `ActorsToIgnore`, and a sweep that meets one counts as free (`OtherCharacter`). Living creatures are known by the mesh's rig (`recheck::LivingCreature`), never named, never watched as props.
+- **The ground changes under her** (`features/GroundRecheck`).
+    - **A walk that gets nowhere** asks the steps ahead again.
+    - **Props** (`BatesBindableProp` within 25 m and 3 m of her height, and the runtime `BatesAnimatedSequenceActor` spawnables, such as a door a scene slams) are read every 0.5 s by their colliding bounds (`recheck::PropWatch`: 5 cm tolerance, 1 s at rest, arrivals from nowhere included). One that moved has the steps under its before-and-after box asked again.
+    - **Only an answer that differs** changes the ground (`recheck::Reask`, `Changed`: free against refused only), and each step keeps the answer the ground gives it (`KeptAnswers`).
+    - **Filtered props:** a prop none of whose components blocks `ECC_Pawn` is skipped (`recheck::StopsPawn`; a companion's torch "moved" hundreds of times). So is bounds no prop could fill (`recheck::PropFills`: an x or y span of 30 m or more; a lift's bounds once read 2 km and stalled the game for a minute).
+    - **A world change** counts once at least `ways::kWorldChangeSteps` steps changed.
+- **The world streams under her** (`features/WorldStream`). Each answer rests on the level of what a trace met, or on nothing in the way.
+    - What a streamed level held while it is away is kept and never asked again.
+    - What rests on nothing in the way is asked again once any level comes in.
+    - A wall or floor of a level gone for good is dropped.
+    - Nothing is felt out while the game is adding or removing a level (`UWorld::CurrentLevelPendingVisibility/Invisibility`, a listed level not yet `bIsVisible`), nor until 1.5 s after.
+    - A change that only lets levels go leaves the list as it was.
+    - The grid is laid once per world and body (`stream::Reanchors`), and a checkpoint loaded anew forgets the old world's ground.
+    - A section's triggers say what streams where: `LoadOnEntry` and `HintOnEntry` name sections, and `UBatesLevelStreamingManager::IsLevelLoaded` says what is loaded.
+- **The ground record** (`features/GroundFile`; `[Diag] GroundRecords=1`, `dumps\ground-<time>.tsv`) writes the anchor and capsule, probes, steps with their levels and refusals, mirrored steps, way collisions (`V`), passages (`G`, `K`), level changes (`L in|out`), and positions. It is the walk's evidence.
+    - `tools\ground\cut_ground.py`, `cut_steps.py` and `cut_world_change.py` cut it into replay fixtures (`tests\fixtures\*.tsv`, read by `ground::Record`). A later refusal overrides a free answer.
+    - `tools\ground\ground_window.py` draws the recorded ground round a failed search.
+    - A record keeps only part of a map's sweeps, so a fix whose cause lies in the level's collision itself is replayed over that collision offline, extracted from the level and checked cell for cell against the record.
+- **Offline audits.**
+    - `tools\levels\level_triggers.py` lists a level's triggers with their collision. `build\tests\audit.exe <ground> <volumes>` judges them over a record with the mod's own rules.
+    - `tools\levels\trigger_shapes.py` catalogues the trigger meshes' shapes, and `rooms_audit.py` the rooms.
+    - Offline projections of the game's generic examine cameras proved wrong against footage, so they are no evidence of what a camera shows.

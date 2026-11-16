@@ -1,0 +1,40 @@
+---
+paths:
+    - "tools/**"
+---
+
+# Research tools
+
+- **Running a tool.** Every tool runs as `python -I tools/<area>/<tool>.py`, answers `--help`, and states its usage in its docstring. The packages they need are in `tools/requirements.txt`.
+    - Extracted data, dumps and outputs go to `research\` (git-ignored), never into the repository.
+    - A tool that stays useful beyond one question belongs here, checked against the data it was first written for. A one-off script stays in `research\`.
+- **No window may open.** UAssetGUI and FModel run only with their command-line arguments: started bare, they open a window and the command never returns. FModel is not needed at all.
+    - RAD Video Tools' converter (`radvideo64.exe BinkConv <in.bk2> <out.png> /O /#`) shows a progress window for its whole run, so start it hidden (`STARTUPINFO` with `SW_HIDE`) and with a time limit. Give it `/NoAudio` for frames: a film whose only sound track is not track 0 hangs it.
+    - From Git Bash, `MSYS_NO_PATHCONV=1` keeps `/O` and `/#` from becoming paths.
+    - For any new external program, check once during a run that it has no visible window.
+- **Assets** (`tools/assets/`).
+    - `extract.py <path substring>` pulls packages from the IoStore as legacy files with retoc. retoc reads the Paks folder, since it needs `global.utoc`, and fetches the Oodle library on first use.
+    - `tojson.py <legacy root> <json root> [--mappings Bates|BatesPlay]` converts them with UAssetGUI:
+        - The mappings are applied only by a name registered in `%LOCALAPPDATA%\UAssetGUI\Mappings`. A path on the command line is silently ignored and every export comes out raw.
+        - `Bates` (dumped at the main menu) covers the native classes. `BatesPlay` (dumped in play) adds the Blueprint classes of the levels' actors.
+        - A level converted inside retoc's output tree comes out raw; convert a flat copy.
+    - `USMapDump/` is the UE4SS Lua mod that dumps the mappings inside the running game. Enable it for one launch only: it dumps at every launch.
+    - `bytecode.py <asset.json> [function]` lists a Blueprint's bytecode, which is how a Blueprint decides: its `BP_` events, timers, calls, and whether an override calls its parent.
+    - `widget_tree.py` prints a widget Blueprint's tree with texts and visibility.
+- **The executable** (`tools/exe/`).
+    - `pdb_symbols.py dump` writes the PDB's function and public symbol tables and the canary through the DIA SDK (`msdia140.dll` of Visual Studio). `dasm.py <function>` disassembles by name, naming calls by the PDB. `callers.py <function>` finds direct call sites: a function inlined everywhere, or reached only through a vtable or a delegate, has none.
+    - `crash.py collect | read` keeps and reads crash dumps (CLAUDE.md, Testing and Diagnosis).
+- **Levels and scripts** (`tools/levels/`).
+    - `lua_scripts.py` writes out the scene scripts' Lua source from their assets. `sm_dump.py` and `sm_full.py` dump their SMED2 state machines with reachability, and `sf_calls.py <root> <SF_name>` lists every call of a script function with its arguments.
+    - `stage_graph.py` prints every activity's stage graph: each stage, its settings, every outcome and the stage it leads to.
+    - `level_triggers.py` places every trigger volume's collision in the world, as the ground record's `V` lines. `trigger_shapes.py` catalogues the trigger meshes' shapes, and `rooms_audit.py` the rooms against the use locations and doors.
+- **Ground records** (`tools/ground/`): `cut_ground.py`, `cut_steps.py` and `cut_world_change.py` cut replay fixtures out of a `dumps\ground-*.tsv`; `ground_window.py` replays a record and draws the reached cells round a point (`.claude/rules/ground.md`).
+- **Logs and text.**
+    - `tools/logs/list_timeline.py <log>` prints the exploration list's changes over a session.
+    - `tools/text/audit_dump.py <screen dump> <log>` lists the texts a screen dump shows that no `SAY` line spoke before it.
+    - `tools/text/locres.py dump|grep|stats <Game.locres>` reads the game's string tables.
+- **The mod's own files.**
+    - `tools/lang/langtable.py insert|replace|append` edits every language table at once, keeping each file's byte order mark, line endings and order (`--folder` for a table folder such as `rooms`).
+    - `tools/release/collect_licences.py` collects the licences of the libraries UE4SS is built from into `third_party/ue4ss-licences`.
+    - `tools/saves/restart_act.py` restarts an act in a save (`.claude/rules/saves.md`).
+    - `tools/tests/mutate.py <spec.json>` proves a test catches the old code (`.claude/rules/tests.md`).
