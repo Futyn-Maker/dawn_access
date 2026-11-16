@@ -188,8 +188,6 @@ namespace da::diag
                 speech::Announce(cmd.substr(4));
             else if (str::StartsWith(lower, L"note "))
                 log::Info(L"note: {}", str::Trim(cmd.substr(5)));
-            else if (str::StartsWith(lower, L"note "))
-                log::Info(L"note: {}", str::Trim(cmd.substr(5)));
             else if (lower == L"walkkeys")
                 log::Info(L"input: {}", input::DescribeWalkKeys());
             else if (str::StartsWith(lower, L"key "))
