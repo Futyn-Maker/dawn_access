@@ -84,6 +84,7 @@ paths:
 - **Overlays with fixed decoration.** An overlay whose only text is its own furniture is read by its prompts alone (`lines::FurnitureOnly`), and a line of digits never names a bare key (`lines::NamesBareKey`): the selfie's camera screen draws a static "3" by a stopwatch.
 - **The loading screen** says "Loading" and its share.
 - **The in-play action bar** is read while no screen is up, each new line once after 0.1 s steady; it drops the menus' `IA_UI_*` prompts that linger after a menu.
+    - The skip over the films an act opens with (`UBatesPreviouslyOnManager`: the butterfly introduction, the bus ride) comes only in answer to a key. Once the level behind the film has loaded (`UBatesLevelStreamingManager::UpdateStreaming` fires the game state's handler, which then listens), the first key or button the game receives, axes left out, puts "Skip: key" on the bar (`ABatesGameState::OnShowSkipButtonInput`), and the key it names skips (`SkipPreviouslyOn`). The mod's keyboard keys are kept from the game, so a film heard through with only those pressed draws no skip.
 
 ## Documents
 
