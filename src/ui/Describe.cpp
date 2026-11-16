@@ -33,7 +33,10 @@ namespace da::ui
             if (!kind.empty()) words.push_back(kind);
         }
         if (!d.value.empty()) words.push_back(d.value);
-        if (detailed && !d.state.empty()) words.push_back(d.state);
+        // A control the game has switched off says so at either level: the state is the game's
+        // own, drawn as the row greyed out, as its label and value are, and a row heard without it
+        // would seem to take a press.
+        if (!d.state.empty()) words.push_back(d.state);
         // The place is a detail, except for a control with no words of its own, which has
         // nothing else to be told apart by.
         const bool nameless = d.label.empty() && d.value.empty();

@@ -18,7 +18,7 @@ namespace
     }
 }
 
-TEST_CASE("Speak says label, kind, value, state and place in detail, and only label, value and tip briefly")
+TEST_CASE("Speak says label, kind, value, state and place in detail, and briefly label, value, state and tip: a greyed row is unavailable at either level")
 {
     TempDir dir;
     LoadEnglish(dir);
@@ -33,6 +33,10 @@ TEST_CASE("Speak says label, kind, value, state and place in detail, and only la
     d.tip = L"Sets the size of the subtitles.";
     CHECK(U8(ui::Speak(d, true, true)) == "Subtitles. Size, selector, Medium, unavailable, 3 of 6. Sets the size of the subtitles.");
     CHECK(U8(ui::Speak(d, true, false)) == "Size, selector, Medium, unavailable, 3 of 6. Sets the size of the subtitles.");
+    // The state is the game's own, drawn as the row greyed out: brief leaves out only what the mod
+    // adds, the kind and the place.
+    CHECK(U8(ui::Speak(d, false, true)) == "Subtitles. Size, Medium, unavailable. Sets the size of the subtitles.");
+    d.state.clear();
     CHECK(U8(ui::Speak(d, false, true)) == "Subtitles. Size, Medium. Sets the size of the subtitles.");
 }
 

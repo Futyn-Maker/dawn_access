@@ -39,8 +39,9 @@ namespace da::ui
         std::wstring action; // the game's input action behind the key, for the log
     };
 
-    // The spoken form of a control. At the detailed level the kind, the position and the
-    // state are said; briefly only the label, the value and the tip. A changed group is said
+    // The spoken form of a control. At the detailed level the kind and the position are said;
+    // briefly only the label, the value, the state and the tip, which the game shows itself (a
+    // row drawn greyed out is unavailable at either level). A changed group is said
     // first, as the heading it is, except before the game's own narration of the control, which
     // names what the control belongs to in its own words: a totem slot's is "Тотем смерти, 6,
     // Недоступно" under the caption "Смерть".
