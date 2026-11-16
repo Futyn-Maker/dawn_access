@@ -7,9 +7,10 @@
     Windows\Bates\Binaries\Win64\dwmapi.dll               the loader that starts UE4SS with the game
     Windows\Bates\Binaries\Win64\ue4ss\                   UE4SS with its configuration for the game
     Windows\Bates\Binaries\Win64\ue4ss\Mods\DawnAccess\   the mod with the Prism speech library, its settings, language tables and licenses
-  dist\DawnAccess-<version>.zip is the release archive: its entries begin at Windows/, so that
-  unpacked into the game's folder it installs the mod. It is read back and held to the folder's
-  file list before the script reports success.
+  dist\dawn-access-windows.zip is the release archive: its entries begin at Windows/, so that
+  unpacked into the game's folder it installs the mod. Its name is the same for every version, so
+  that the README's link to the latest release's archive keeps working. It is read back and held to
+  the folder's file list before the script reports success.
   Before anything is laid out the language tables are checked (scripts\check-lang.ps1) and the
   tests are run (scripts\test.cmd); -SkipChecks leaves them out. A tree with changes not
   committed is warned about: the release then is no commit's.
@@ -63,7 +64,7 @@ $name = "$DaModName-$version"
 $dist = Join-Path $DaRoot "dist"
 $release = Join-Path $dist $name
 $symbols = Join-Path $dist "$name-symbols"
-$zip = Join-Path $dist "$name.zip"
+$zip = Join-Path $dist "dawn-access-windows.zip"
 Remove-DaPath $release
 Remove-DaPath $symbols
 Remove-DaPath $zip
