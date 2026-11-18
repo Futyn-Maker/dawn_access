@@ -28,11 +28,12 @@ paths:
     - Live is not "still the one drawn". BMUI hands pooled widgets out again for other content with the same address and name, and a released widget keeps its flags. A memory of a widget that outlives its frame is keyed by `obj::ObjectKey` (`obj::KeyOf`) and pruned with `obj::IsSame`.
     - A cache keyed by any address also keys by the object's identity, its name and outer (`core/AddressCache`), and the engine's delete listener (`core/Freed`) forgets objects as they go. A freed UFunction's address once came back as another Blueprint's function, and Stay Calm's verdict hook answered the wrong function in two scenes.
 - **`core/Symbols` (`sym::`).**
-    - It holds every RVA and every offset of a member reflection does not list, taken from the game's PDB.
-    - `sym::Address` and `sym::MemberOf` answer null unless the running executable's CodeView record names that very PDB (GUID and age, `sym::RunningBuild`, decided once and logged).
+    - It holds every RVA and every offset of a member reflection does not list, in a table per build of the game (`sym::Tables`). The first is the reference, Steam's build, read from the PDB it ships; the others were found from it.
+    - A table belongs to the PDB its executable names in the CodeView record (GUID and age, `sym::RunningBuild`). `sym::Running` picks the running build's once and logs it. `sym::Address`, `sym::MemberOf`, `sym::Rva` and `sym::Offset` answer from that table, and null or 0 on a build no table names.
+    - On such a build every feature that needs a place falls back or stands down, and the log names the build's GUID and age.
+    - Every table names exactly the reference's places and members, each place at an address of its own, and keeps each optional's flag right after its value (`SymbolsTests`). The relations a table was found by (the Lua functions in the order of their names) are tested for that build alone.
     - A code pointer read through a stub is trusted only after the stub's bytes are checked: the pad library's read pointers are found so.
     - The PDB's layouts are the native layout: a member is reflected only if it is a `UPROPERTY`. Read reflected members by name, and take an offset only for the rest.
-    - After a game update, re-derive the table and the canary (`tools/exe/pdb_symbols.py`).
 - **Soft references.** A `TSoftObjectPtr` (40 bytes) has its weak half filled only once something looks the object up. `obj::SoftObjectAt` reads the weak half, else `StaticFindObject` by the path, else the live object of that full name.
     - A door's leaves are the keys of its interaction's `BoundObjects` map, so reading only the weak half found no leaf for any door not used yet. For days no shut door stood as a wall.
     - Every new read of a soft reference goes this way.
@@ -43,7 +44,7 @@ paths:
     - A costly call passed as an argument to a rule runs at every poll: ask the game only when the rule needs the answer (a QTE stage's `bHasStarted` only while it has no verdict and drives the prompt).
 - **The game state** (`watch/GameState`, `EBatesGameState`: None, Booting, Menu, Paused, Loading, Game, GameStarting, GameEnding, LoadingNewLevel, FreezeScreen) is asked of `ABatesGameState` at every poll that needs it (`gamestate::Refresh`). `ProcessNewGameState` sets the pause and the state in one call, and a value read only every few frames lets a fade and a pause arrive in the wrong order.
 - **The Lua state** (`core/GameLua`) is the scene scripts' Lua 5.1 state (PUC, floats): `ULuaScriptUpdater::RunningScript` → `UScript::mScriptData` (a `lua_State*`) behind `mScriptAccessMutex`.
-    - It is read between frames, when no script runs, under the lock, with the stack restored and SEH guarded. The Lua functions are linked into the executable; their RVAs, checked by their first bytes, are in `core/Symbols`.
+    - It is read between frames, when no script runs, under the lock, with the stack restored and SEH guarded. The Lua functions are linked into the executable, and their RVAs are in `core/Symbols`' table for each build: the mod calls them directly, so each is shown to be that function before it goes in.
     - `lua::Global` reads a global's field, `lua::Nested` a nested table's, and `lua::Machines` every running state machine's current state.
     - A failed read keeps the last answer: a read taken for "nil" once made a spent trigger new again.
 - **Names of things** (`core/LevelNames`).

@@ -10,14 +10,11 @@ namespace da::sym
 {
     namespace
     {
-        struct Entry
-        {
-            std::wstring_view name;
-            uintptr_t rva;
-        };
-
-        // Offsets from Bates-Win64-Shipping.exe (build of the database above), read with the
-        // disassembly beside them on 2026-10-20.
+        // The reference build: Steam's build 20076348 of the game, whose executable states
+        // ++Unreal+release_patch_108+siebuild_LIV-FPQA-BLD13-CL-132155 and names the program
+        // database 303AD133527FF19AE0F8417A59CFEE79, age 2, which the game ships beside it. Its
+        // places and members were read from that database with the disassembly beside them on
+        // 2026-10-20; the RVAs in the comments are this build's.
         //
         // The game loads Sony's pad library, libScePad.dll, at run time: every call into it
         // goes through a stub of the executable's own, which names the call in a string for
@@ -26,7 +23,7 @@ namespace da::sym
         // are scePadRead, for the reports queued since the last frame, and scePadReadState,
         // for the pad's state when nothing was queued (FSonyControllers::SendControllerEvents,
         // 0x47bbcf0, calls both).
-        constexpr Entry kEntries[] = {
+        constexpr Place kSteamPlaces[] = {
             {L"scePadRead", 0x5d05fb0},              // the stub
             {L"scePadRead.pointer", 0x8a33c08},      // the pointer it calls through
             {L"scePadReadState", 0x5d06050},         // the stub
@@ -55,14 +52,8 @@ namespace da::sym
             {L"ReportCrash.calls", 0x8797ed0}, // int32
         };
 
-        struct Member
-        {
-            std::wstring_view name;
-            size_t offset;
-        };
-
-        // Members of the game's objects that reflection does not list, from the database's
-        // layouts. The UI subsystem keeps the vendor whose icons the player chose in the
+        // Members of the game's objects that reflection does not list, from the reference
+        // database's layouts. The UI subsystem keeps the vendor whose icons the player chose in the
         // controller settings ("Xbox", "PS5", or nothing for the pad connected): its icon
         // picker (UBMUIActionIcons::GetBestIconForKey, 0x4213f50) draws for that vendor
         // when it is set, and for GetCurrentGamepadVendor() otherwise.
@@ -259,6 +250,10 @@ namespace da::sym
             {L"FKeyWithChord.ChordAction", 0x18},          // TObjectPtr<const UInputAction>
         };
 
+        constexpr Table kTables[] = {
+            {L"303AD133527FF19AE0F8417A59CFEE79", 2, L"++Unreal+release_patch_108+siebuild_LIV-FPQA-BLD13-CL-132155", kSteamPlaces, kMembers},
+        };
+
         struct CodeViewRecord
         {
             uint32_t signature; // 'RSDS'
@@ -279,18 +274,32 @@ namespace da::sym
         }
     }
 
-    uintptr_t Rva(std::wstring_view name)
+    std::span<const Table> Tables()
     {
-        for (const Entry& entry : kEntries)
+        return kTables;
+    }
+
+    const Table* TableFor(std::wstring_view guid, uint32_t age)
+    {
+        for (const Table& table : kTables)
         {
-            if (entry.name == name) return entry.rva;
+            if (table.guid == guid && table.age == age) return &table;
+        }
+        return nullptr;
+    }
+
+    uintptr_t Rva(const Table& table, std::wstring_view name)
+    {
+        for (const Place& place : table.places)
+        {
+            if (place.name == name) return place.rva;
         }
         return 0;
     }
 
-    size_t Offset(std::wstring_view name)
+    size_t Offset(const Table& table, std::wstring_view name)
     {
-        for (const Member& member : kMembers)
+        for (const Member& member : table.members)
         {
             if (member.name == name) return member.offset;
         }
@@ -322,27 +331,47 @@ namespace da::sym
         return build;
     }
 
-    bool BuildMatches()
+    const Table* Running()
     {
-        static int verdict = -1;
-        if (verdict >= 0) return verdict == 1;
-        const Build running = RunningBuild();
-        const bool matches = running.guid == kBuildGuid && running.age == kBuildAge;
-        verdict = matches ? 1 : 0;
-        if (matches)
-            log::Info(L"symbols: the game is the build the mod knows ({} age {})", running.guid, running.age);
-        else if (running.guid.empty())
-            log::Info(L"symbols: the game names no program database, so the places the mod knows by offset are not used");
-        else
-            log::Info(L"symbols: the game is build {} age {}, not {} age {}; the places the mod knows by offset are not used", running.guid, running.age,
-                      kBuildGuid, kBuildAge);
-        return matches;
+        static const Table* const running = []
+        {
+            const Build build = RunningBuild();
+            const Table* table = build.guid.empty() ? nullptr : TableFor(build.guid, build.age);
+            // A build the mod does not know is an error at every log level: the greeting asks the
+            // player for the log, and the log must name the build.
+            if (table)
+                log::Info(L"symbols: the game is build {} age {}, {}, which the mod knows", build.guid, build.age, table->version);
+            else if (build.guid.empty())
+                log::Error(L"symbols: the game names no program database, so the places the mod knows by offset are not used");
+            else
+                log::Error(L"symbols: the game is build {} age {}, which the mod does not know; the places it knows by offset are not used", build.guid,
+                           build.age);
+            return table;
+        }();
+        return running;
+    }
+
+    bool BuildKnown()
+    {
+        return Running() != nullptr;
+    }
+
+    uintptr_t Rva(std::wstring_view name)
+    {
+        const Table* table = Running();
+        return table ? Rva(*table, name) : 0;
+    }
+
+    size_t Offset(std::wstring_view name)
+    {
+        const Table* table = Running();
+        return table ? Offset(*table, name) : 0;
     }
 
     void* Address(std::wstring_view name)
     {
         const uintptr_t rva = Rva(name);
-        if (rva == 0 || !BuildMatches()) return nullptr;
+        if (rva == 0) return nullptr;
         auto* base = reinterpret_cast<uint8_t*>(GetModuleHandleW(nullptr));
         return base ? base + rva : nullptr;
     }
@@ -350,7 +379,7 @@ namespace da::sym
     void* MemberOf(void* object, std::wstring_view name)
     {
         const size_t offset = Offset(name);
-        if (!object || offset == 0 || !BuildMatches()) return nullptr;
+        if (!object || offset == 0) return nullptr;
         return static_cast<uint8_t*>(object) + offset;
     }
 }

@@ -8300,7 +8300,7 @@ namespace da::features
         // BoundCharacterData for her, else null.
         const uint8_t* LocoRecordOf(UObject* activity, UObject* pawn)
         {
-            if (!pawn || !obj::IsLive(activity) || !sym::BuildMatches()) return nullptr;
+            if (!pawn || !obj::IsLive(activity) || !sym::BuildKnown()) return nullptr;
             const int32_t index = pawn->GetInternalIndex();
             const auto* map = static_cast<const uint8_t*>(sym::MemberOf(activity, L"ABatesSpecialLocoActivityActor.BoundCharacterData"));
             if (!map) return nullptr;

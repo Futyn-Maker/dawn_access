@@ -197,7 +197,7 @@ The game folder (the one holding `Windows\Bates.exe`) comes from `-GameDir`, the
 
 - **The core modules:**
     - `core/ObjectUtil` (`obj::`) is name-based reflection over UE4SS: properties, struct members, arrays, soft references, `ProcessEvent` calls (`Call`, `CallForBool`), widget trees, visibility (`IsWidgetShown`, `IsLayerWidget`), liveness (`IsLive`, `IsSame`, `KeyOf`) and SEH guards (`SafeInvoke`, `SafeInvokeLogged`).
-    - `core/Symbols` (`sym::`) holds the places reflection does not reach: functions and unreflected members by name, with RVAs and offsets taken from the PDB the game ships. They are handed out only while the running executable names that very PDB (its GUID and age, `sym::RunningBuild`); a mismatch is logged and every feature falls back or stands down.
+    - `core/Symbols` (`sym::`) holds the places reflection does not reach: functions, globals and unreflected members by name, with their RVAs and offsets in a table per build of the game the mod knows. A table is handed out only while the running executable names that build's PDB (its GUID and age, `sym::RunningBuild`). On a build no table names, every feature falls back or stands down, and the log says so.
     - `core/AddressCache` keys every cache by address and identity (name and outer), and `core/Freed` forgets objects as the engine deletes them.
     - `core/GameLua` reads the scene scripts' Lua state (`lua::Global`, `Nested`, `Machines`) between frames, under the script's lock.
     - `core/LevelNames` gives an actor's core name, its name in the level's actor database, and its placing level.
@@ -234,7 +234,8 @@ The game folder (the one holding `Windows\Bates.exe`) comes from `-GameDir`, the
 
 ## Game Facts That Shape Everything
 
-- **The game ships its full PDB** (`Bates-Win64-Shipping.pdb`, 1.6 GB). Functions, vtables, enums and native layouts are all named, so natives are found by symbol, never by signature guessing. Every RVA, and every offset of a member reflection does not list, comes from the table in `core/Symbols`, behind the build's GUID and age; only the engine's own containers (a `TMap`'s hash and sparse array) are read by their layout. After a game update, re-derive the table (`tools/exe/pdb_symbols.py`) and the canary.
+- **Steam's build ships its full PDB** (`Bates-Win64-Shipping.pdb`, 1.6 GB). Functions, vtables, enums and native layouts are all named, so natives are found by symbol, never by signature guessing. Every RVA, and every offset of a member reflection does not list, comes from `core/Symbols`' table for the running build; only the engine's own containers (a `TMap`'s hash and sparse array) are read by their layout.
+    - Steam's table, read from that PDB, is the reference.
 - **BMUI pools its widgets** (`UBMUIUserWidgetPool`). Glints, interaction prompts, QTE prompts, choice options, credit lines and menu rows are handed out again for other content, with the same address and name. Identity is never the pointer:
     - a menu row is its page, its place and its rendered text;
     - a cached widget is keyed by `obj::ObjectKey` and checked against still being the one drawn;

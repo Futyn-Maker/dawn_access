@@ -170,7 +170,7 @@ public:
         da::sounds::Init(settings.soundVolume);
         // The mod falls silent the moment the game goes away (speech::rules::Closing). The build's
         // check is decided here, before the speech thread first asks the symbols.
-        da::sym::BuildMatches();
+        da::sym::Running();
         da::outputs::WatchClosing(&GameClosingSigns);
 
         // English strings first; the game's language is applied once the engine reports it.

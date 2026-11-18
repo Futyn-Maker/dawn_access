@@ -372,11 +372,11 @@ namespace da::input
         }
 
         // The key the cache keeps for an action and a device: the value's keyboard and mouse key (its
-        // first member) or the pad's, each an FKeyWithChord, its FKey's name first. The layouts are the
-        // database's, used only for its build and a value of its size.
+        // first member) or the pad's, each an FKeyWithChord, its FKey's name first. The layouts are those
+        // of core/Symbols' table, used only on a build the mod knows and for a value of its size.
         bool ReadShownKey(UObject* cache, UObject* action, bool pad, ShownKey& out)
         {
-            if (!cache || !action || !sym::BuildMatches()) return false;
+            if (!cache || !action || !sym::BuildKnown()) return false;
             auto* prop = obj::FindProperty(cache, L"ProcessedActionMappings");
             if (!prop || obj::PropertyTypeName(prop) != L"MapProperty") return false;
             auto* map = static_cast<RC::Unreal::FMapProperty*>(prop);
