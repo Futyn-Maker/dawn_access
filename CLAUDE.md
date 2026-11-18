@@ -197,7 +197,7 @@ The game folder (the one holding `Windows\Bates.exe`) comes from `-GameDir`, the
 
 - **The core modules:**
     - `core/ObjectUtil` (`obj::`) is name-based reflection over UE4SS: properties, struct members, arrays, soft references, `ProcessEvent` calls (`Call`, `CallForBool`), widget trees, visibility (`IsWidgetShown`, `IsLayerWidget`), liveness (`IsLive`, `IsSame`, `KeyOf`) and SEH guards (`SafeInvoke`, `SafeInvokeLogged`).
-    - `core/Symbols` (`sym::`) holds the places reflection does not reach: functions, globals and unreflected members by name, with their RVAs and offsets in a table per build of the game the mod knows. A table is handed out only while the running executable names that build's PDB (its GUID and age, `sym::RunningBuild`). On a build no table names, every feature falls back or stands down, and the log says so.
+    - `core/Symbols` (`sym::`) holds the places reflection does not reach: functions, globals and unreflected members by name, with their RVAs and offsets in a table per build of the game the mod knows. A table is handed out only while the running executable names that build's PDB (its GUID and age, `sym::RunningBuild`). On a build no table names, every feature falls back or stands down, the log says so, and the greeting tells the player (`core/Greeting`).
     - `core/AddressCache` keys every cache by address and identity (name and outer), and `core/Freed` forgets objects as the engine deletes them.
     - `core/GameLua` reads the scene scripts' Lua state (`lua::Global`, `Nested`, `Machines`) between frames, under the script's lock.
     - `core/LevelNames` gives an actor's core name, its name in the level's actor database, and its placing level.

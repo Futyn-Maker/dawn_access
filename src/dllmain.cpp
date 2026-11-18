@@ -4,6 +4,7 @@
 #include "core/Config.hpp"
 #include "core/Freed.hpp"
 #include "core/GameThread.hpp"
+#include "core/Greeting.hpp"
 #include "core/Log.hpp"
 #include "core/ObjectUtil.hpp"
 #include "core/Strings.hpp"
@@ -280,14 +281,19 @@ private:
         da::log::Info(L"self-check: script handlers {}", da::hooks::ScriptHandlerCount());
         LogGameState();
 
-        if (da::cfg::Get().speakOnLoad)
         {
             const std::wstring output = da::speech::OutputName();
-            const std::wstring reader = output.empty() ? da::locale::Mod(L"greeting.noreader") : output;
-            // What the mod runs with belongs in the log either way; briefly the player is
-            // told only that it is there.
-            da::speech::Announce(da::cfg::Detailed() ? da::locale::Mod(L"greeting", std::vector<std::wstring>{ModVersion, reader, da::locale::CurrentCode()})
-                                                     : da::locale::Mod(L"greeting.brief"));
+            // What the mod runs with belongs in the log either way; briefly the player is told
+            // only that it is there, and at either level when the game is a build it does not know.
+            da::greeting::Facts facts;
+            facts.speakOnLoad = da::cfg::Get().speakOnLoad;
+            facts.detailed = da::cfg::Detailed();
+            facts.version = ModVersion;
+            facts.reader = output.empty() ? da::locale::Mod(L"greeting.noreader") : output;
+            facts.language = da::locale::CurrentCode();
+            facts.buildKnown = da::sym::BuildKnown();
+            const std::wstring words = da::greeting::Words(facts);
+            if (!words.empty()) da::speech::Announce(words);
         }
         da::features::InstallAll();
         da::log::Info(L"ready");

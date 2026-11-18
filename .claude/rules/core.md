@@ -30,7 +30,7 @@ paths:
 - **`core/Symbols` (`sym::`).**
     - It holds every RVA and every offset of a member reflection does not list, in a table per build of the game (`sym::Tables`). The first is the reference, Steam's build, read from the PDB it ships; the others were found from it.
     - A table belongs to the PDB its executable names in the CodeView record (GUID and age, `sym::RunningBuild`). `sym::Running` picks the running build's once and logs it. `sym::Address`, `sym::MemberOf`, `sym::Rva` and `sym::Offset` answer from that table, and null or 0 on a build no table names.
-    - On such a build every feature that needs a place falls back or stands down, and the log names the build's GUID and age.
+    - On such a build every feature that needs a place falls back or stands down. The greeting says so at either level, even with the greeting switched off, and asks for a report with the log (`core/Greeting`); the log names the build's GUID and age.
     - Every table names exactly the reference's places and members, each place at an address of its own, and keeps each optional's flag right after its value (`SymbolsTests`). The relations a table was found by (the Lua functions in the order of their names) are tested for that build alone.
     - A code pointer read through a stub is trusted only after the stub's bytes are checked: the pad library's read pointers are found so.
     - The PDB's layouts are the native layout: a member is reflected only if it is a `UPROPERTY`. Read reflected members by name, and take an offset only for the rest.

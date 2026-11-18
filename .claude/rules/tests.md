@@ -16,7 +16,7 @@ paths:
 - **Every decision of a feature lives in an engine-free module, and the feature only reads the game and voices.**
     - The `*Rules` modules: Calm, Qte, Choice, Prompt, Text, Menu, Shooting, Nudge, Credits, Picture, Achievement, Speech, SaveCopy.
     - Exploration's modules: `Hold`, `WayList`, `GridPath`, `GroundFile`, `LookTurn`, `Rooms`, `Shapes`, `SceneScripts`, `WorldStream`, `GroundRecheck`, `ExploreText`.
-    - And `KeyChoice`, `Describe`, `Strings`, `Config`, `Symbols`, `Fault`, `Locale`, `KeySpec`, `HotkeyTable`.
+    - And `KeyChoice`, `Describe`, `Strings`, `Config`, `Symbols`, `Greeting`, `Fault`, `Locale`, `KeySpec`, `HotkeyTable`.
 
     A decision still inside a feature is moved out before it is fixed, so that the test exercises the code the game runs, not a copy of it.
 
