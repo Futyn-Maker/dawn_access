@@ -34,7 +34,7 @@ namespace
 
 TEST_CASE("every build's table names the reference's places and members, each once, each place at an address of its own")
 {
-    REQUIRE(!Tables().empty());
+    REQUIRE(Tables().size() >= 2);
     for (const Table& table : Tables())
     {
         CAPTURE(std::wstring(table.version));
@@ -85,6 +85,10 @@ TEST_CASE("a build is known by its database's GUID and age, spelled as the execu
     const Table* steam = TableFor(L"303AD133527FF19AE0F8417A59CFEE79", 2);
     REQUIRE(steam != nullptr);
     CHECK(steam == &Reference());
+    // The build of CL 132096, which a player's copy of the game is, shipped without its database.
+    const Table* other = TableFor(L"E5B9131E174B2F57AC29CF7F66872456", 2);
+    REQUIRE(other != nullptr);
+    CHECK(other != steam);
     CHECK(TableFor(L"303AD133527FF19AE0F8417A59CFEE79", 3) == nullptr);
     CHECK(TableFor(L"303ad133527ff19ae0f8417a59cfee79", 2) == nullptr);
     CHECK(TableFor(L"00000000000000000000000000000000", 2) == nullptr);
@@ -101,6 +105,46 @@ TEST_CASE("the reference's places: the pad library's stubs and their pointers, t
     CHECK(Rva(steam, L"scePadOpen") == 0);
     CHECK(Rva(steam, L"") == 0);
     CHECK(Rva(steam, L"FShaderPipelineCache::NumPrecompilesRemaining") == 0x224f130);
+}
+
+TEST_CASE("the build of CL 132096 has places of its own and the reference's members")
+{
+    const Table* other = TableFor(L"E5B9131E174B2F57AC29CF7F66872456", 2);
+    REQUIRE(other != nullptr);
+    CHECK(Rva(*other, L"scePadRead") == 0x5d57c20);
+    CHECK(Rva(*other, L"scePadRead.pointer") == 0x8a1e908);
+    CHECK(Rva(*other, L"lua_gettop") == 0x3965850);
+    CHECK(Rva(*other, L"lua_settop") == 0x39666c0);
+    CHECK(Rva(*other, L"GIsRequestingExit") == 0x871bd5a);
+    CHECK(Rva(*other, L"ReportCrash.calls") == 0x8747e58);
+    for (const Place& place : other->places)
+    {
+        CAPTURE(std::wstring(place.name));
+        CHECK(place.rva != Rva(Reference(), place.name));
+    }
+    // Every member was shown at the reference's offset in this build's own code.
+    CHECK(other->members.data() == Reference().members.data());
+    CHECK(other->members.size() == Reference().members.size());
+}
+
+TEST_CASE("the places of CL 132096 keep the reference's neighbourhood, which they were found by")
+{
+    // The Lua library lies in the order of its functions' names, the engine's exit flags side by side,
+    // and the pad library's pointers one after the other, in both builds.
+    for (const Table* table : {&Reference(), TableFor(L"E5B9131E174B2F57AC29CF7F66872456", 2)})
+    {
+        REQUIRE(table != nullptr);
+        CAPTURE(std::wstring(table->version));
+        const wchar_t* byName[] = {L"lua_checkstack", L"lua_getfield",  L"lua_gettop",   L"lua_rawgeti", L"lua_settop",
+                                   L"lua_toboolean",  L"lua_tolstring", L"lua_tonumber", L"lua_type"};
+        for (size_t i = 1; i < std::size(byName); ++i)
+        {
+            CAPTURE(std::wstring(byName[i]));
+            CHECK(Rva(*table, byName[i - 1]) < Rva(*table, byName[i]));
+        }
+        CHECK(Rva(*table, L"GIsCriticalError") + 6 == Rva(*table, L"GIsRequestingExit"));
+        CHECK(Rva(*table, L"scePadReadState.pointer") + 8 == Rva(*table, L"scePadRead.pointer"));
+    }
 }
 
 TEST_CASE("the reference's members: the layouts of its database")

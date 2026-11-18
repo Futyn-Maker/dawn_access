@@ -250,8 +250,41 @@ namespace da::sym
             {L"FKeyWithChord.ChordAction", 0x18},          // TObjectPtr<const UInputAction>
         };
 
+        // Another build, whose executable states
+        // ++Unreal+ms_latest_minimal+bmautobuilder_BM129-CL-132096 and names the database
+        // E5B9131E174B2F57AC29CF7F66872456, age 2, which it does not ship. Its compiler's code
+        // differs from the reference's, so its places were found in its executable (2026-11-18,
+        // .claude/rules/core.md): by their code with every address masked, unique in the image,
+        // where marked "exact"; otherwise at the shift of their exactly-found neighbours, checked
+        // instruction by instruction against the reference's, and for the data by the
+        // instructions of the found functions that read or write them; then each again by an
+        // independent review. Its members are the reference's: every one was shown at the same
+        // offset in a function of this build that touches it, and its reflected properties sit at
+        // the reference's offsets in every class but the telemetry manager's.
+        constexpr Place kCl132096Places[] = {
+            {L"scePadRead", 0x5d57c20},              // exact
+            {L"scePadRead.pointer", 0x8a1e908},      // the stub's load
+            {L"scePadReadState", 0x5d57cc0},         // exact
+            {L"scePadReadState.pointer", 0x8a1e900}, // the stub's load
+            {L"FShaderPipelineCache::NumPrecompilesRemaining", 0x2255780},
+            // The library's functions lie in the order of their names in both builds.
+            {L"lua_gettop", 0x3965850}, // exact
+            {L"lua_settop", 0x39666c0},
+            {L"lua_checkstack", 0x39652a0}, // called where the reference's lua_getfield and lua_rawgeti call it
+            {L"lua_getfield", 0x3965700},
+            {L"lua_type", 0x3966920},     // exact
+            {L"lua_tonumber", 0x3966830}, // exact
+            {L"lua_toboolean", 0x3966720},
+            {L"lua_rawgeti", 0x3966210},
+            {L"lua_tolstring", 0x3966790},     // exact
+            {L"GIsRequestingExit", 0x871bd5a}, // RequestEngineExit's store (exact)
+            {L"GIsCriticalError", 0x871bd54},  // FFeedbackContext::AddToHistory's test (exact), 6 bytes before as in the reference
+            {L"ReportCrash.calls", 0x8747e58}, // ReportCrash's lock xadd (exact)
+        };
+
         constexpr Table kTables[] = {
             {L"303AD133527FF19AE0F8417A59CFEE79", 2, L"++Unreal+release_patch_108+siebuild_LIV-FPQA-BLD13-CL-132155", kSteamPlaces, kMembers},
+            {L"E5B9131E174B2F57AC29CF7F66872456", 2, L"++Unreal+ms_latest_minimal+bmautobuilder_BM129-CL-132096", kCl132096Places, kMembers},
         };
 
         struct CodeViewRecord

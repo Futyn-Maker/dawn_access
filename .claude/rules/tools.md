@@ -24,6 +24,7 @@ paths:
 - **The executable** (`tools/exe/`).
     - `pdb_symbols.py dump` writes the PDB's function and public symbol tables and the canary through the DIA SDK (`msdia140.dll` of Visual Studio). `dasm.py <function>` disassembles by name, naming calls by the PDB. `callers.py <function>` finds direct call sites: a function inlined everywhere, or reached only through a vtable or a delegate, has none.
     - `crash.py collect | read` keeps and reads crash dumps (CLAUDE.md, Testing and Diagnosis).
+    - `port_build.py places | members | layout | side | callee` finds the reference table's places and members in a build that ships no PDB (`.claude/rules/core.md`, A new build).
 - **Levels and scripts** (`tools/levels/`).
     - `lua_scripts.py` writes out the scene scripts' Lua source from their assets. `sm_dump.py` and `sm_full.py` dump their SMED2 state machines with reachability, and `sf_calls.py <root> <SF_name>` lists every call of a script function with its arguments.
     - `stage_graph.py` prints every activity's stage graph: each stage, its settings, every outcome and the stage it leads to.

@@ -34,6 +34,17 @@ paths:
     - Every table names exactly the reference's places and members, each place at an address of its own, and keeps each optional's flag right after its value (`SymbolsTests`). The relations a table was found by (the Lua functions in the order of their names) are tested for that build alone.
     - A code pointer read through a stub is trusted only after the stub's bytes are checked: the pad library's read pointers are found so.
     - The PDB's layouts are the native layout: a member is reflected only if it is a `UPROPERTY`. Read reflected members by name, and take an offset only for the rest.
+- **A new build** (a game update, or a copy whose greeting reported it) gets a table of its own.
+    1. Get its `Bates-Win64-Shipping.exe` and, if it ships one, its `Bates-Win64-Shipping.pdb`.
+    2. With its PDB, dump it (`tools/exe/pdb_symbols.py`, `DA_SYMBOLS` for another folder) and read every place and member by name, as the reference's were read.
+    3. Without one, match it against the reference with `tools/exe/port_build.py`. A wrong place crashes the game or misleads a feature, so nothing goes in on a likeness score alone.
+        - `places` matches each function by its code with its addresses masked. "Exact" means the masked code is that function's alone in the reference and begins exactly one function of the new build, naming the same strings: the pad library's 27 stubs share one shape.
+        - A "near" candidate is taken only once `side` shows it is the same function: the same calls, constants and offsets, and calls that land on the other places found. A compiler of its own reorders registers and branches.
+        - A place of data is read at the same instruction of every matched function that uses it, and all must agree. A place only one function uses (a stub's pointer) is checked with `side`.
+        - `members` shows each member at its offset in a function of the new build that uses it, with the instruction. An exact match proves only what that instruction touches, so a small offset, or another class's function, is read before it counts: a destructor freeing the string at that offset counts, a local of the frame does not. `callee` reaches a function whose own code changed through a caller that did not.
+        - `layout` compares every reflected property's offset: the unreflected members of a class that moved must be found anew. Bools carry no offset there, and a property added at the end of a class shows among the records of one build only, which are listed to be read.
+    4. Add the table to `kTables` in `core/Symbols.cpp`: its GUID, age and the version its executable states, its places, each with how it was found, and its members (the reference's array where every one held, else an array of its own). Add its own places to `SymbolsTests`.
+    5. Build, test, and ask the player for a session log at `LogLevel=Verbose`. It shows "which the mod knows", then the readings exploration and aiming depend on.
 - **Soft references.** A `TSoftObjectPtr` (40 bytes) has its weak half filled only once something looks the object up. `obj::SoftObjectAt` reads the weak half, else `StaticFindObject` by the path, else the live object of that full name.
     - A door's leaves are the keys of its interaction's `BoundObjects` map, so reading only the weak half found no leaf for any door not used yet. For days no shut door stood as a wall.
     - Every new read of a soft reference goes this way.

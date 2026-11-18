@@ -236,6 +236,7 @@ The game folder (the one holding `Windows\Bates.exe`) comes from `-GameDir`, the
 
 - **Steam's build ships its full PDB** (`Bates-Win64-Shipping.pdb`, 1.6 GB). Functions, vtables, enums and native layouts are all named, so natives are found by symbol, never by signature guessing. Every RVA, and every offset of a member reflection does not list, comes from `core/Symbols`' table for the running build; only the engine's own containers (a `TMap`'s hash and sparse array) are read by their layout.
     - Steam's table, read from that PDB, is the reference.
+    - Another build (a game update, a copy from elsewhere) gets a table of its own: from its PDB where it ships one, else by matching its code against the reference, every place and member checked (`.claude/rules/core.md`).
 - **BMUI pools its widgets** (`UBMUIUserWidgetPool`). Glints, interaction prompts, QTE prompts, choice options, credit lines and menu rows are handed out again for other content, with the same address and name. Identity is never the pointer:
     - a menu row is its page, its place and its rendered text;
     - a cached widget is keyed by `obj::ObjectKey` and checked against still being the one drawn;
@@ -275,7 +276,7 @@ Only the installed game is needed. Keep extracted files, dumps, sessions and sav
     - `tools/assets/extract.py` pulls packages to legacy files with retoc, by a path substring.
     - `tools/assets/tojson.py` converts them with UAssetGUI. The mappings must be registered by name: a path on the command line is silently ignored, and every export comes out raw.
     - A level converted inside retoc's output tree comes out raw too; convert a flat copy.
-- **Code:** natives by the PDB (`tools/exe/pdb_symbols.py`, `dasm.py`, `callers.py`); Blueprint logic by its bytecode in the asset JSON (`tools/assets/bytecode.py`); live classes and members by the `objects` and `headers` commands.
+- **Code:** natives by the PDB (`tools/exe/pdb_symbols.py`, `dasm.py`, `callers.py`); another build's places by `tools/exe/port_build.py`; Blueprint logic by its bytecode in the asset JSON (`tools/assets/bytecode.py`); live classes and members by the `objects` and `headers` commands.
 - **Strings:** `tools/text/locres.py` dumps every string table by key. The game's own words come from its string table `ST_Localized` at run time (`gametext::Resolve`).
 - **Levels and scripts:** `tools/levels/` lists triggers, their collision, shapes and rooms, dumps the Lua state machines and the `SF_` calls, and reads an activity's stage graph. The scripts of every act stay loaded in the game; the level's own group is `ULuaScriptUpdater.CurrentLevelScript`.
 - **Films:** Bink 2 (ffmpeg decodes Bink 1 only); RAD Video Tools converts them, started hidden. Textures are decoded from the cooked assets.
